@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Danng Neynartodes!! - Full Platform</title>
+  <title>Danng Neynartodes!! - Season 0 Beta</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -42,10 +42,10 @@
 
   <script type="text/babel">
     const { useState, useEffect } = React;
-    const { Play, Users, Coins, MessageSquare, Calendar, Trophy, Copy, Clock, Wallet, Gift, Award, TrendingUp, History, ThumbsUp, ThumbsDown, Flame, Crown, Sparkles, Zap, Search, User, Shield, Star } = lucide;
+    const { Play, Users, Coins, MessageSquare, Calendar, Trophy, Copy, Clock, Wallet, Gift, Award, TrendingUp, History, ThumbsUp, ThumbsDown, Flame, Crown, Sparkles, Zap } = lucide;
 
     // ═══════════════════════════════════════════════════════════
-    // CONFIGURATION
+    // CONFIGURATION - SEASON 0 BETA
     // ═══════════════════════════════════════════════════════════
 
     const NEYNAR_API_KEY = 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D';
@@ -65,11 +65,25 @@
       neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
     };
 
-    const BASE_RPC = 'https://mainnet.base.org';
     const TOKEN_GATE = '20000'; // 20K NEYNARTODES for Season 0
+    const BASE_RPC = 'https://mainnet.base.org';
+
+    // Whitelist FIDs (74 beta testers)
+    const WHITELIST_FIDS = [
+      1020, 10956, 202051, 217530, 280534, 368206, 466345, 473136,
+      655816, 918820, 1009822, 1188162, 1328864, 8425, 16538, 191870,
+      191933, 208744, 217695, 239249, 244344, 250003, 250084, 255153,
+      257004, 268567, 277673, 291258, 303218, 332768, 384418, 403173,
+      403845, 410577, 418419, 460229, 460627, 484444, 493501, 499575,
+      516336, 548258, 560260, 764587, 843635, 851606, 882521, 883491,
+      916167, 921736, 924978, 926344, 932195, 978603, 978640, 1024904,
+      1045847, 1106257, 1108825, 1109570, 1149403, 1163132, 1278135,
+      1336727, 1363858, 1383575, 1400301, 1418938, 1419659, 1419944,
+      1439709, 1445897, 1448496
+    ];
 
     // ═══════════════════════════════════════════════════════════
-    // MAIN APP COMPONENT
+    // MAIN APP
     // ═══════════════════════════════════════════════════════════
 
     function NeynartodesFullPlatform() {
@@ -86,17 +100,22 @@
       // View state
       const [currentView, setCurrentView] = useState('leaderboard');
 
-      // Season & Prize Pool
+      // Season state
       const [currentSeason, setCurrentSeason] = useState(0); // Season 0
       const [hostPrizePoolETH, setHostPrizePoolETH] = useState('0');
       const [voterPrizePoolETH, setVoterPrizePoolETH] = useState('0');
 
-      // Leaderboard (will fetch from Neynar)
+      // Leaderboard
       const [leaderboardData, setLeaderboardData] = useState([]);
       const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
 
+      // Voting state
+      const [votesUsedToday, setVotesUsedToday] = useState(0);
+      const [votesRemaining, setVotesRemaining] = useState(10);
+      const [voterEntries, setVoterEntries] = useState(0);
+
       // ═══════════════════════════════════════════════════════════
-      // WALLET CONNECTION
+      // WALLET CONNECTION WITH WEB3
       // ═══════════════════════════════════════════════════════════
 
       const connectWallet = async () => {
@@ -116,7 +135,7 @@
 
           setUserAddress(address);
 
-          // Check token balance
+          // Check token balance on Base
           const tokenContract = new ethers.Contract(
             CONTRACTS.neynartodes,
             ['function balanceOf(address) external view returns (uint256)'],
@@ -127,7 +146,7 @@
           const formatted = ethers.formatEther(balance);
           setTokenBalance(formatted);
 
-          // Check whitelist
+          // Check whitelist in PrizeNFT contract
           const prizeNFTContract = new ethers.Contract(
             CONTRACTS.prizeNFT,
             ['function whitelist(address) external view returns (bool)'],
@@ -137,7 +156,7 @@
           const whitelisted = await prizeNFTContract.whitelist(address);
           setIsWhitelisted(whitelisted);
 
-          // Check token gate
+          // Check token gate (20K NEYNARTODES)
           const required = ethers.parseEther(TOKEN_GATE);
           const hasTokens = balance >= required;
 
@@ -145,7 +164,7 @@
             setHasAccess(true);
             setIsLoggedIn(true);
 
-            // Try to fetch Farcaster profile
+            // Fetch Farcaster profile
             await fetchFarcasterProfile(address);
 
             // Load leaderboard
@@ -153,7 +172,7 @@
           } else {
             setHasAccess(false);
             const reason = !whitelisted
-              ? 'You are not whitelisted for Season 0 Beta'
+              ? 'You are not whitelisted for Season 0 Beta (74 testers only)'
               : `You need ${TOKEN_GATE} NEYNARTODES tokens (you have ${parseFloat(formatted).toFixed(0)})`;
             alert(`🚫 Access Denied!\n\n${reason}`);
           }
@@ -162,7 +181,7 @@
 
         } catch (error) {
           console.error('Error connecting wallet:', error);
-          alert('Failed to connect wallet');
+          alert('Failed to connect wallet. Make sure you're on Base network!');
           setIsCheckingToken(false);
         }
       };
@@ -198,27 +217,12 @@
         setIsLoadingLeaderboard(true);
 
         try {
-          // Get whitelisted addresses from contract
-          // For now, we'll use the whitelist from FINAL_WHITELIST.csv
-          const whitelistedFIDs = [
-            1020, 10956, 202051, 217530, 280534, 368206, 466345, 473136,
-            655816, 918820, 1009822, 1188162, 1328864, 8425, 16538, 191870,
-            191933, 208744, 217695, 239249, 244344, 250003, 250084, 255153,
-            257004, 268567, 277673, 291258, 303218, 332768, 384418, 403173,
-            403845, 410577, 418419, 460229, 460627, 484444, 493501, 499575,
-            516336, 548258, 560260, 764587, 843635, 851606, 882521, 883491,
-            916167, 921736, 924978, 926344, 932195, 978603, 978640, 1024904,
-            1045847, 1106257, 1108825, 1109570, 1149403, 1163132, 1278135,
-            1336727, 1363858, 1383575, 1400301, 1418938, 1419659, 1419944,
-            1439709, 1445897, 1448496
-          ];
-
-          // Fetch bulk user data from Neynar (max 100 at a time)
+          // Fetch all 74 whitelisted users from Neynar in batches
           const batchSize = 100;
           let allUsers = [];
 
-          for (let i = 0; i < whitelistedFIDs.length; i += batchSize) {
-            const batch = whitelistedFIDs.slice(i, i + batchSize);
+          for (let i = 0; i < WHITELIST_FIDS.length; i += batchSize) {
+            const batch = WHITELIST_FIDS.slice(i, i + batchSize);
             const fidsParam = batch.join(',');
 
             const response = await fetch(
@@ -245,14 +249,15 @@
             displayName: user.display_name,
             followers: user.follower_count || 0,
             following: user.following_count || 0,
-            totalScore: (user.follower_count || 0) * 10, // Simple scoring for now
+            totalScore: (user.follower_count || 0) * 10, // Simple scoring
             voteScore: 0,
             contests: 0,
             givingPower: 0,
+            badges: [],
             verifiedAddresses: user.verified_addresses?.eth_addresses || [],
           }));
 
-          // Sort by totalScore
+          // Sort by totalScore (follower count)
           leaderboard.sort((a, b) => b.totalScore - a.totalScore);
 
           // Update ranks
@@ -263,9 +268,56 @@
           setLeaderboardData(leaderboard);
         } catch (error) {
           console.error('Error loading leaderboard:', error);
+          alert('Failed to load leaderboard. Check console for details.');
         } finally {
           setIsLoadingLeaderboard(false);
         }
+      };
+
+      // ═══════════════════════════════════════════════════════════
+      // VOTING FUNCTIONS
+      // ═══════════════════════════════════════════════════════════
+
+      const voteForHost = async (hostFid, isUpvote) => {
+        if (votesRemaining <= 0) {
+          alert('You have used all 10 votes for today! Come back tomorrow.');
+          return;
+        }
+
+        // In real implementation, call VotingManager contract
+        // For now, just update local state
+
+        const votePoints = isUpvote ? 5000 : -5000;
+        const newData = leaderboardData.map(host => {
+          if (host.fid === hostFid) {
+            return {
+              ...host,
+              voteScore: host.voteScore + votePoints,
+              totalScore: host.totalScore + votePoints
+            };
+          }
+          return host;
+        }).sort((a, b) => b.totalScore - a.totalScore);
+
+        // Update ranks
+        newData.forEach((user, idx) => {
+          user.rank = idx + 1;
+        });
+
+        setLeaderboardData(newData);
+        setVotesUsedToday(prev => prev + 1);
+        setVotesRemaining(prev => prev - 1);
+
+        const votedHost = newData.find(h => h.fid === hostFid);
+        alert(`${isUpvote ? '👍 Upvote' : '👎 Downvote'} cast for @${votedHost.username}!\n\nVotes remaining: ${votesRemaining - 1}/10`);
+      };
+
+      const getBadgeEmoji = (badge) => {
+        if (badge === 'gold') return '🥇';
+        if (badge === 'silver') return '🥈';
+        if (badge === 'bronze') return '🥉';
+        if (badge === 'purple') return '🟣';
+        return '';
       };
 
       // ═══════════════════════════════════════════════════════════
@@ -288,7 +340,6 @@
                   background: 'linear-gradient(45deg, #9333ea, #ec4899, #a855f7)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
-                  textShadow: '2px 2px 4px rgba(147, 51, 234, 0.3)',
                   letterSpacing: '-0.02em'
                 }}>
                   Danng<br/>Neynartodes!!
@@ -315,19 +366,18 @@
                 onClick={connectWallet}
                 disabled={isCheckingToken}
                 className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-500 via-pink-500 to-purple-600 hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-5 rounded-2xl font-black text-xl transition-all shadow-lg mb-4 transform hover:scale-105 border-2 border-purple-300"
-                style={{textShadow: '1px 1px 2px rgba(0,0,0,0.3)'}}
               >
                 <Wallet size={28} />
                 {isCheckingToken ? 'Checking...' : 'Connect Wallet'}
               </button>
 
               <div className="mt-8 p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
-                <p className="text-sm text-purple-800 mb-2 font-semibold">📋 Requirements:</p>
+                <p className="text-sm text-purple-800 mb-2 font-semibold">📋 Season 0 Requirements:</p>
                 <ul className="text-xs text-purple-700 space-y-1 text-left">
-                  <li>• Base network wallet</li>
-                  <li>• 20,000 NEYNARTODES tokens</li>
-                  <li>• Season 0 whitelist access</li>
-                  <li>• MetaMask or compatible wallet</li>
+                  <li>• Base network wallet (use MetaMask)</li>
+                  <li>• 20,000 NEYNARTODES tokens minimum</li>
+                  <li>• Season 0 whitelist (74 beta testers only)</li>
+                  <li>• Farcaster account (optional, for profile)</li>
                 </ul>
               </div>
 
@@ -366,9 +416,9 @@
           <div className="max-w-7xl mx-auto relative z-10">
             {/* Header */}
             <div className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-500 rounded-2xl shadow-2xl p-5 mb-6 border-4 border-purple-300">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <h1 className="text-3xl font-black text-white flex items-center gap-2 drop-shadow-lg" style={{textShadow: '2px 2px 4px rgba(0,0,0,0.3)'}}>
+                  <h1 className="text-3xl font-black text-white flex items-center gap-2 drop-shadow-lg">
                     🦎 Danng Neynartodes!! 🌊
                   </h1>
                   <p className="text-sm text-purple-100 font-semibold">
@@ -408,6 +458,20 @@
               </div>
             </div>
 
+            {/* Voting Info */}
+            <div className="bg-gradient-to-r from-pink-100 to-purple-100 rounded-2xl shadow-xl p-6 border-4 border-purple-300 mb-6">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <p className="font-black text-purple-800 text-lg">Your Voting Power Today:</p>
+                  <p className="text-sm text-purple-700">Vote for your favorite beta testers!</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-4xl font-black text-purple-600">{votesRemaining}/10</p>
+                  <p className="text-xs text-purple-700">Votes Left</p>
+                </div>
+              </div>
+            </div>
+
             {/* Leaderboard */}
             <div className="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
               <div className="flex items-center gap-3 mb-6">
@@ -421,7 +485,7 @@
               {isLoadingLeaderboard ? (
                 <div className="text-center py-12">
                   <div className="animate-spin text-6xl mb-4">🌀</div>
-                  <p className="text-xl font-bold text-purple-600">Loading participants...</p>
+                  <p className="text-xl font-bold text-purple-600">Loading participants from Neynar API...</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -434,6 +498,7 @@
                         <th className="text-right py-3 px-2 font-semibold text-gray-700">Followers</th>
                         <th className="text-right py-3 px-2 font-semibold text-gray-700">Following</th>
                         <th className="text-right py-3 px-2 font-semibold text-gray-700">Score</th>
+                        <th className="text-center py-3 px-2 font-semibold text-gray-700">Vote</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -457,8 +522,11 @@
                                 <span className="text-2xl">{user.pfp}</span>
                               )}
                               <div>
-                                <div className="font-semibold text-gray-800">
+                                <div className="font-semibold text-gray-800 flex items-center gap-1">
                                   @{user.username}
+                                  {user.badges && user.badges.map((badge, idx) => (
+                                    <span key={idx} title={badge}>{getBadgeEmoji(badge)}</span>
+                                  ))}
                                 </div>
                                 {user.displayName && (
                                   <div className="text-xs text-gray-500">{user.displayName}</div>
@@ -486,6 +554,26 @@
                               {user.totalScore.toLocaleString()}
                             </div>
                           </td>
+                          <td className="py-4 px-2">
+                            <div className="flex gap-1 justify-center">
+                              <button
+                                onClick={() => voteForHost(user.fid, true)}
+                                disabled={votesRemaining <= 0}
+                                className="p-2 bg-green-100 hover:bg-green-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-green-600 rounded transition-colors"
+                                title="Upvote (+5000 pts)"
+                              >
+                                <ThumbsUp size={16} />
+                              </button>
+                              <button
+                                onClick={() => voteForHost(user.fid, false)}
+                                disabled={votesRemaining <= 0}
+                                className="p-2 bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-red-600 rounded transition-colors"
+                                title="Downvote (-5000 pts)"
+                              >
+                                <ThumbsDown size={16} />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -497,6 +585,9 @@
                 <p className="font-black text-purple-800 text-lg">🎉 Season 0 Beta - Test Phase 🎉</p>
                 <p className="text-sm text-purple-700 mt-2">
                   Thank you for being one of our 74 whitelisted beta testers!
+                </p>
+                <p className="text-xs text-purple-600 mt-2">
+                  All data loaded live from Neynar API ✨
                 </p>
               </div>
             </div>
