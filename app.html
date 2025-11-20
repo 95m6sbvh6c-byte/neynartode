@@ -327,8 +327,9 @@
     }
 
     function renderMainPlatform() {
-      const displayName = state.userProfile ? `@${state.userProfile.username}` : state.userAddress.slice(0, 6) + '...' + state.userAddress.slice(-4);
-      const fid = state.userProfile ? `FID: ${state.userProfile.fid}` : '';
+      const displayName = state.userProfile ? '@' + state.userProfile.username : state.userAddress.slice(0, 6) + '...' + state.userAddress.slice(-4);
+      const fidText = state.userProfile ? 'FID: ' + state.userProfile.fid : '';
+      const fidHTML = fidText ? '<span class="ml-2">' + fidText + '</span>' : '';
 
       return `
         <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6">
@@ -341,7 +342,7 @@
                     🦎 Danng Neynartodes!! 🌊
                   </h1>
                   <p class="text-sm text-purple-100 font-semibold">
-                    ${displayName} ${fid ? '<span class="ml-2">' + fid + '</span>' : ''}
+                    ${displayName} ${fidHTML}
                   </p>
                   <p class="text-xs text-white font-bold mt-1 bg-purple-600 bg-opacity-50 inline-block px-3 py-1 rounded-full">
                     🦎 ${parseFloat(state.tokenBalance).toLocaleString()} $NEYNARTODES
@@ -418,27 +419,27 @@
                       </tr>
                     </thead>
                     <tbody>
-                      ${state.leaderboardData.slice(0, 20).map(user => `
+                      ${state.leaderboardData.slice(0, 20).map(user => {
+                        const rankClass = user.rank <= 3 ? 'text-xl' : 'text-purple-600';
+                        const rankDisplay = user.rank === 1 ? '👑' : user.rank === 2 ? '🥈' : user.rank === 3 ? '🥉' : '#' + user.rank;
+                        const pfpHTML = user.pfp.startsWith('http') ?
+                          '<img src="' + user.pfp + '" alt="' + user.username + '" class="w-8 h-8 rounded-full" />' :
+                          '<span class="text-2xl">' + user.pfp + '</span>';
+                        const displayNameHTML = user.displayName ? '<div class="text-xs text-gray-500">' + user.displayName + '</div>' : '';
+
+                        return `
                         <tr class="border-b-2 border-purple-100 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 transition-all">
                           <td class="py-4 px-2">
-                            <div class="font-black text-lg ${
-                              user.rank === 1 ? 'text-xl' :
-                              user.rank === 2 ? 'text-xl' :
-                              user.rank === 3 ? 'text-xl' :
-                              'text-purple-600'
-                            }">
-                              ${user.rank === 1 ? '👑' : user.rank === 2 ? '🥈' : user.rank === 3 ? '🥉' : `#${user.rank}`}
+                            <div class="font-black text-lg ${rankClass}">
+                              ${rankDisplay}
                             </div>
                           </td>
                           <td class="py-4 px-2">
                             <div class="flex items-center gap-2">
-                              ${user.pfp.startsWith('http') ?
-                                `<img src="${user.pfp}" alt="${user.username}" class="w-8 h-8 rounded-full" />` :
-                                `<span class="text-2xl">${user.pfp}</span>`
-                              }
+                              ${pfpHTML}
                               <div>
                                 <div class="font-semibold text-gray-800">@${user.username}</div>
-                                ${user.displayName ? `<div class="text-xs text-gray-500">${user.displayName}</div>` : ''}
+                                ${displayNameHTML}
                               </div>
                             </div>
                           </td>
@@ -475,7 +476,8 @@
                             </div>
                           </td>
                         </tr>
-                      `).join('')}
+                      `;
+                      }).join('')}
                     </tbody>
                   </table>
                 </div>
