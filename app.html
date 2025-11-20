@@ -85,20 +85,18 @@
       }
 
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-
-        // Request account access
-        await provider.send('eth_requestAccounts', []);
+        // Request account access first
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
 
         // Check and switch to Base network if needed
-        const network = await provider.getNetwork();
-        const BASE_CHAIN_ID = 8453;
+        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+        const BASE_CHAIN_ID = '0x2105'; // 8453 in hex
 
-        if (Number(network.chainId) !== BASE_CHAIN_ID) {
+        if (chainId !== BASE_CHAIN_ID) {
           try {
             await window.ethereum.request({
               method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0x2105' }], // 8453 in hex
+              params: [{ chainId: BASE_CHAIN_ID }],
             });
           } catch (switchError) {
             // Chain not added, try to add it
@@ -106,7 +104,7 @@
               await window.ethereum.request({
                 method: 'wallet_addEthereumChain',
                 params: [{
-                  chainId: '0x2105',
+                  chainId: BASE_CHAIN_ID,
                   chainName: 'Base',
                   nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
                   rpcUrls: ['https://mainnet.base.org'],
@@ -119,6 +117,8 @@
           }
         }
 
+        // Now create provider AFTER network is correct
+        const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
         const address = await signer.getAddress();
 
@@ -164,7 +164,18 @@
 
       } catch (error) {
         console.error('Error connecting wallet:', error);
-        alert('Failed to connect wallet. Make sure you are on Base network!');
+
+        let errorMessage = 'Failed to connect wallet.';
+
+        if (error.code === 4001) {
+          errorMessage = 'Connection request rejected. Please try again.';
+        } else if (error.code === -32002) {
+          errorMessage = 'Connection request already pending. Please check MetaMask.';
+        } else if (error.message) {
+          errorMessage = 'Error: ' + error.message;
+        }
+
+        alert('🚫 ' + errorMessage);
       }
     }
 
