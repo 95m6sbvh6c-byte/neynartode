@@ -136,14 +136,22 @@
         state.tokenBalance = formatted;
 
         // Check whitelist
-        const prizeNFTContract = new ethers.Contract(
-          CONTRACTS.prizeNFT,
-          ['function whitelist(address) external view returns (bool)'],
-          provider
-        );
+        let whitelisted = false;
+        try {
+          const prizeNFTContract = new ethers.Contract(
+            CONTRACTS.prizeNFT,
+            ['function whitelist(address) external view returns (bool)'],
+            provider
+          );
 
-        const whitelisted = await prizeNFTContract.whitelist(address);
-        state.isWhitelisted = whitelisted;
+          whitelisted = await prizeNFTContract.whitelist(address);
+          state.isWhitelisted = whitelisted;
+        } catch (whitelistError) {
+          console.error('Error checking whitelist:', whitelistError);
+          // If contract call fails, assume not whitelisted
+          whitelisted = false;
+          state.isWhitelisted = false;
+        }
 
         const required = ethers.parseEther(TOKEN_GATE);
         const hasTokens = balance >= required;
@@ -156,9 +164,16 @@
           await loadLeaderboard();
           renderApp();
         } else {
-          const reason = !whitelisted
-            ? 'You are not whitelisted for Season 0 Beta (74 testers only)'
-            : `You need ${TOKEN_GATE} NEYNARTODES tokens (you have ${parseFloat(formatted).toFixed(0)})`;
+          let reason = '';
+
+          if (!whitelisted && !hasTokens) {
+            reason = `You need:\n• Season 0 whitelist (not whitelisted)\n• ${TOKEN_GATE} NEYNARTODES (you have ${parseFloat(formatted).toFixed(0)})`;
+          } else if (!whitelisted) {
+            reason = `You are not whitelisted for Season 0 Beta.\n\nYour address: ${address}\n\nOnly 74 beta testers have access.`;
+          } else {
+            reason = `You need ${TOKEN_GATE} NEYNARTODES tokens (you have ${parseFloat(formatted).toFixed(0)})`;
+          }
+
           alert(`🚫 Access Denied!\n\n${reason}`);
         }
 
