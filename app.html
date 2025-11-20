@@ -86,7 +86,39 @@
 
       try {
         const provider = new ethers.BrowserProvider(window.ethereum);
+
+        // Request account access
         await provider.send('eth_requestAccounts', []);
+
+        // Check and switch to Base network if needed
+        const network = await provider.getNetwork();
+        const BASE_CHAIN_ID = 8453;
+
+        if (Number(network.chainId) !== BASE_CHAIN_ID) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0x2105' }], // 8453 in hex
+            });
+          } catch (switchError) {
+            // Chain not added, try to add it
+            if (switchError.code === 4902) {
+              await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: '0x2105',
+                  chainName: 'Base',
+                  nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+                  rpcUrls: ['https://mainnet.base.org'],
+                  blockExplorerUrls: ['https://basescan.org']
+                }]
+              });
+            } else {
+              throw switchError;
+            }
+          }
+        }
+
         const signer = await provider.getSigner();
         const address = await signer.getAddress();
 
