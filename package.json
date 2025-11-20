@@ -1,0 +1,16 @@
+{
+  "name": "neynartodes-frame",
+  "version": "1.0.0",
+  "description": "NEYNARtodes Season 0 Farcaster Frame",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "ethers": "^6.9.0"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.0"
+  }
+}

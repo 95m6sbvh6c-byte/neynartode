@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEYNARtodes - Season 0 Beta</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Ethers.js v6 -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.umd.min.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    #root {
+      width: 100%;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { Play, Users, Coins, MessageSquare, Calendar, Trophy, Copy, Clock, Wallet, Gift, Award, TrendingUp, History, ThumbsUp, ThumbsDown, Flame, Crown, Sparkles, Zap, Search, User, Shield, Star } = lucide;
+
+    // ═══════════════════════════════════════════════════════════
+    // NEYNAR API CONFIGURATION
+    // ═══════════════════════════════════════════════════════════
+
+    const NEYNAR_API_KEY = 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D';
+    const NEYNAR_BASE_URL = 'https://api.neynar.com/v2/farcaster';
+
+    // ═══════════════════════════════════════════════════════════
+    // CONTRACT ADDRESSES - BASE MAINNET (SEASON 0 - UPDATED)
+    // ═══════════════════════════════════════════════════════════
+
+    const CONTRACTS = {
+      // Season 0 Contracts (ACTIVE)
+      prizeNFT: '0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81',
+      votingManager: '0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99',
+
+      // V2 System (ACTIVE)
+      clankerCollector: '0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280',
+      captainHook: '0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B',
+
+      // Core Contracts
+      treasury: '0xB5A1a3AAD5962dBF2B8DF3C5712d137c1640A176',
+      neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
+    };
+
+    // ═══════════════════════════════════════════════════════════
+    // SIMPLE APP COMPONENT
+    // ═══════════════════════════════════════════════════════════
+
+    function NeynartodesFrame() {
+      const [isConnected, setIsConnected] = useState(false);
+      const [address, setAddress] = useState('');
+      const [balance, setBalance] = useState('0');
+      const [hasAccess, setHasAccess] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const connectWallet = async () => {
+        try {
+          setIsLoading(true);
+          setError('');
+
+          if (!window.ethereum) {
+            setError('Please install MetaMask!');
+            return;
+          }
+
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          await provider.send('eth_requestAccounts', []);
+          const signer = await provider.getSigner();
+          const userAddress = await signer.getAddress();
+
+          setAddress(userAddress);
+
+          // Check token balance
+          const tokenContract = new ethers.Contract(
+            CONTRACTS.neynartodes,
+            ['function balanceOf(address) external view returns (uint256)'],
+            provider
+          );
+
+          const bal = await tokenContract.balanceOf(userAddress);
+          const formatted = ethers.formatEther(bal);
+          setBalance(formatted);
+
+          // Season 0: 20K token gate
+          const required = ethers.parseEther('20000');
+          setHasAccess(bal >= required);
+
+          setIsConnected(true);
+
+        } catch (err) {
+          console.error(err);
+          setError('Failed to connect wallet');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      if (!isConnected) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-purple-900 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 border-4 border-purple-300">
+
+              <div className="text-center mb-8">
+                <div className="text-6xl mb-4">🐸</div>
+                <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
+                  NEYNARtodes
+                </h1>
+                <p className="text-gray-600 font-semibold text-sm">
+                  Season 0 Beta - 74 Whitelisted Testers! 🌊
+                </p>
+              </div>
+
+              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 mb-6">
+                <p className="text-sm text-yellow-800 font-semibold mb-2">
+                  🔐 Season 0 Beta Requirements:
+                </p>
+                <ul className="text-xs text-yellow-700 space-y-1">
+                  <li>• Base network wallet</li>
+                  <li>• 20K NEYNARTODES tokens</li>
+                  <li>• Whitelist access (74 beta testers)</li>
+                  <li>• Farcaster account linked</li>
+                </ul>
+              </div>
+
+              <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 mb-6">
+                <p className="text-sm text-blue-800 font-semibold mb-2">
+                  ✨ Updated Contracts:
+                </p>
+                <ul className="text-xs text-blue-700 space-y-1">
+                  <li>• PrizeNFT Season 0 ✅</li>
+                  <li>• VotingManager Season 0 ✅</li>
+                  <li>• Captain Hook V2 ✅</li>
+                  <li>• Clanker Collector V2 ✅</li>
+                </ul>
+              </div>
+
+              <button
+                onClick={connectWallet}
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-4 rounded-xl font-black text-xl shadow-lg transition-all transform hover:scale-105 disabled:scale-100"
+              >
+                {isLoading ? 'Connecting...' : '🔗 Connect Wallet'}
+              </button>
+
+              {error && (
+                <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-xl p-4">
+                  <p className="text-sm text-red-700 font-semibold">{error}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      if (!hasAccess) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-purple-900 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 border-4 border-red-300">
+              <div className="text-center">
+                <div className="text-6xl mb-4">🚫</div>
+                <h2 className="text-3xl font-black text-red-600 mb-4">
+                  Access Denied
+                </h2>
+
+                <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6 mb-6">
+                  <p className="text-lg font-bold text-red-700 mb-4">
+                    You need 20K NEYNARTODES for Season 0 Beta!
+                  </p>
+
+                  <div className="bg-white rounded-lg p-4 border-2 border-red-200">
+                    <p className="text-sm text-gray-600 mb-2">Your Balance:</p>
+                    <p className="text-2xl font-black text-red-600">
+                      {parseFloat(balance).toLocaleString()} NEYNARTODES
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => window.open('https://app.uniswap.org', '_blank')}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-black transition-all mb-4"
+                >
+                  🦄 Get NEYNARTODES on Uniswap
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsConnected(false);
+                    setAddress('');
+                  }}
+                  className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-3 rounded-xl font-bold transition-all"
+                >
+                  Disconnect Wallet
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-purple-900 p-4">
+          <div className="max-w-6xl mx-auto">
+
+            <div className="bg-white rounded-3xl shadow-2xl p-6 mb-6 border-4 border-purple-300">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-purple-600">
+                    Connected ✅
+                  </h2>
+                  <p className="text-sm text-gray-600 font-mono">
+                    {address.slice(0, 6)}...{address.slice(-4)}
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-4 border-2 border-purple-200">
+                  <p className="text-xs text-purple-700 font-bold mb-1">Your Balance</p>
+                  <p className="text-lg font-black text-purple-600">
+                    {parseFloat(balance).toLocaleString()} 🐸
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsConnected(false);
+                    setAddress('');
+                  }}
+                  className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all"
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl shadow-2xl p-8 border-4 border-green-300">
+              <div className="text-center">
+                <div className="text-6xl mb-4">🎉</div>
+                <h2 className="text-3xl font-black text-green-600 mb-4">
+                  Season 0 Beta Access Granted!
+                </h2>
+
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-purple-100 rounded-xl p-6">
+                    <p className="text-sm text-purple-700 font-bold mb-2">PrizeNFT Season 0</p>
+                    <p className="text-xs font-mono text-purple-600">{CONTRACTS.prizeNFT}</p>
+                  </div>
+                  <div className="bg-pink-100 rounded-xl p-6">
+                    <p className="text-sm text-pink-700 font-bold mb-2">VotingManager Season 0</p>
+                    <p className="text-xs font-mono text-pink-600">{CONTRACTS.votingManager}</p>
+                  </div>
+                  <div className="bg-blue-100 rounded-xl p-6">
+                    <p className="text-sm text-blue-700 font-bold mb-2">Captain Hook V2</p>
+                    <p className="text-xs font-mono text-blue-600">{CONTRACTS.captainHook}</p>
+                  </div>
+                  <div className="bg-green-100 rounded-xl p-6">
+                    <p className="text-sm text-green-700 font-bold mb-2">Clanker Collector V2</p>
+                    <p className="text-xs font-mono text-green-600">{CONTRACTS.clankerCollector}</p>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-6">
+                  <p className="text-lg font-black text-purple-600 mb-4">
+                    🚀 You're ready to participate in Season 0 Beta!
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    All contracts are updated and ready. Use your Web3 wallet to interact with the Season 0 system.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    // Render the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<NeynartodesFrame />);
+  </script>
+</body>
+</html>
