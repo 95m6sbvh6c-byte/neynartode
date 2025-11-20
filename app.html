@@ -18,9 +18,6 @@
   <!-- Ethers.js v6 -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.umd.min.js"></script>
 
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-
   <style>
     body {
       margin: 0;
@@ -41,8 +38,14 @@
   <div id="root"></div>
 
   <script type="text/babel">
+    // Wait for all libraries to load
+    if (!window.React || !window.ReactDOM || !window.ethers) {
+      console.error('Required libraries not loaded!');
+      document.getElementById('root').innerHTML = '<div style="padding: 40px; text-align: center; color: red;"><h1>Error: Libraries failed to load</h1><p>Please refresh the page.</p></div>';
+      throw new Error('Required libraries not loaded');
+    }
+
     const { useState, useEffect } = React;
-    const { Play, Users, Coins, MessageSquare, Calendar, Trophy, Copy, Clock, Wallet, Gift, Award, TrendingUp, History, ThumbsUp, ThumbsDown, Flame, Crown, Sparkles, Zap } = lucide;
 
     // ═══════════════════════════════════════════════════════════
     // CONFIGURATION - SEASON 0 BETA
@@ -275,7 +278,7 @@
       };
 
       // ═══════════════════════════════════════════════════════════
-      // VOTING FUNCTIONS
+      // VOTING FUNCTIONS - CONNECTED TO BLOCKCHAIN
       // ═══════════════════════════════════════════════════════════
 
       const voteForHost = async (hostFid, isUpvote) => {
@@ -284,32 +287,76 @@
           return;
         }
 
-        // In real implementation, call VotingManager contract
-        // For now, just update local state
-
-        const votePoints = isUpvote ? 5000 : -5000;
-        const newData = leaderboardData.map(host => {
-          if (host.fid === hostFid) {
-            return {
-              ...host,
-              voteScore: host.voteScore + votePoints,
-              totalScore: host.totalScore + votePoints
-            };
+        try {
+          if (!window.ethereum) {
+            alert('Please connect your wallet first!');
+            return;
           }
-          return host;
-        }).sort((a, b) => b.totalScore - a.totalScore);
 
-        // Update ranks
-        newData.forEach((user, idx) => {
-          user.rank = idx + 1;
-        });
+          // Connect to VotingManager contract
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
 
-        setLeaderboardData(newData);
-        setVotesUsedToday(prev => prev + 1);
-        setVotesRemaining(prev => prev - 1);
+          // VotingManager ABI for voting
+          const votingManagerABI = [
+            'function vote(uint256 contestId, uint256 candidateFid, bool isUpvote) external',
+            'function getVotesUsedToday(address voter) external view returns (uint256)',
+            'function MAX_VOTES_PER_DAY() external view returns (uint256)'
+          ];
 
-        const votedHost = newData.find(h => h.fid === hostFid);
-        alert(`${isUpvote ? '👍 Upvote' : '👎 Downvote'} cast for @${votedHost.username}!\n\nVotes remaining: ${votesRemaining - 1}/10`);
+          const votingContract = new ethers.Contract(
+            CONTRACTS.votingManager,
+            votingManagerABI,
+            signer
+          );
+
+          // Show loading state
+          const votedHost = leaderboardData.find(h => h.fid === hostFid);
+          alert(`Submitting ${isUpvote ? '👍 Upvote' : '👎 Downvote'} for @${votedHost.username}...\n\nPlease confirm the transaction in your wallet.`);
+
+          // Submit vote on-chain (contestId = 0 for Season 0)
+          const tx = await votingContract.vote(0, hostFid, isUpvote);
+
+          alert(`⏳ Transaction submitted!\n\nWaiting for confirmation...\nTx: ${tx.hash.slice(0, 10)}...`);
+
+          // Wait for transaction confirmation
+          await tx.wait();
+
+          // Update local state to reflect vote
+          const votePoints = isUpvote ? 5000 : -5000;
+          const newData = leaderboardData.map(host => {
+            if (host.fid === hostFid) {
+              return {
+                ...host,
+                voteScore: host.voteScore + votePoints,
+                totalScore: host.totalScore + votePoints
+              };
+            }
+            return host;
+          }).sort((a, b) => b.totalScore - a.totalScore);
+
+          // Update ranks
+          newData.forEach((user, idx) => {
+            user.rank = idx + 1;
+          });
+
+          setLeaderboardData(newData);
+          setVotesUsedToday(prev => prev + 1);
+          setVotesRemaining(prev => prev - 1);
+
+          alert(`✅ Vote confirmed on-chain!\n\n${isUpvote ? '👍 Upvote' : '👎 Downvote'} cast for @${votedHost.username}!\n\nVotes remaining: ${votesRemaining - 1}/10\n\nTx: ${tx.hash}`);
+
+        } catch (error) {
+          console.error('Error voting:', error);
+
+          if (error.code === 'ACTION_REJECTED') {
+            alert('❌ Transaction cancelled by user.');
+          } else if (error.message.includes('MAX_VOTES_PER_DAY')) {
+            alert('❌ You have reached your maximum votes for today!');
+          } else {
+            alert(`❌ Failed to submit vote:\n\n${error.message}\n\nMake sure you're on Base network and have enough ETH for gas.`);
+          }
+        }
       };
 
       const getBadgeEmoji = (badge) => {
@@ -367,7 +414,7 @@
                 disabled={isCheckingToken}
                 className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-500 via-pink-500 to-purple-600 hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-5 rounded-2xl font-black text-xl transition-all shadow-lg mb-4 transform hover:scale-105 border-2 border-purple-300"
               >
-                <Wallet size={28} />
+                <span className="text-2xl">👛</span>
                 {isCheckingToken ? 'Checking...' : 'Connect Wallet'}
               </button>
 
@@ -475,7 +522,7 @@
             {/* Leaderboard */}
             <div className="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
               <div className="flex items-center gap-3 mb-6">
-                <TrendingUp className="text-purple-600" size={36} />
+                <span className="text-4xl">📊</span>
                 <div>
                   <h2 className="text-3xl font-black text-purple-800">🦎 Season 0 Beta Testers 🦎</h2>
                   <p className="text-sm text-purple-600 font-bold">74 Whitelisted Participants</p>
@@ -559,18 +606,18 @@
                               <button
                                 onClick={() => voteForHost(user.fid, true)}
                                 disabled={votesRemaining <= 0}
-                                className="p-2 bg-green-100 hover:bg-green-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-green-600 rounded transition-colors"
+                                className="p-2 bg-green-100 hover:bg-green-200 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors text-lg"
                                 title="Upvote (+5000 pts)"
                               >
-                                <ThumbsUp size={16} />
+                                👍
                               </button>
                               <button
                                 onClick={() => voteForHost(user.fid, false)}
                                 disabled={votesRemaining <= 0}
-                                className="p-2 bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-red-600 rounded transition-colors"
+                                className="p-2 bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors text-lg"
                                 title="Downvote (-5000 pts)"
                               >
-                                <ThumbsDown size={16} />
+                                👎
                               </button>
                             </div>
                           </td>
