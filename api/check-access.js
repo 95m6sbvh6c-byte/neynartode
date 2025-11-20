@@ -138,7 +138,7 @@ function returnFrame(res, { image }) {
         <meta property="fc:frame:button:1:action" content="post" />
         <meta property="fc:frame:button:2" content="🎮 Launch App" />
         <meta property="fc:frame:button:2:action" content="link" />
-        <meta property="fc:frame:button:2:target" content="https://YOUR_DOMAIN/app" />
+        <meta property="fc:frame:button:2:target" content="https://neynartode.vercel.app/app" />
       </head>
     </html>
   `;

@@ -18,10 +18,10 @@ export default async function handler(req, res) {
           <meta property="fc:frame:image" content="data:image/svg+xml;base64,${Buffer.from(generateConnectImage(fid)).toString('base64')}" />
           <meta property="fc:frame:button:1" content="📊 Check My Access" />
           <meta property="fc:frame:button:1:action" content="post" />
-          <meta property="fc:frame:button:1:target" content="https://YOUR_DOMAIN/api/check-access" />
+          <meta property="fc:frame:button:1:target" content="https://neynartode.vercel.app/api/check-access" />
           <meta property="fc:frame:button:2" content="🎮 Launch App" />
           <meta property="fc:frame:button:2:action" content="link" />
-          <meta property="fc:frame:button:2:target" content="https://YOUR_DOMAIN/app" />
+          <meta property="fc:frame:button:2:target" content="https://neynartode.vercel.app/app" />
         </head>
       </html>
     `;
