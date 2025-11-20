@@ -140,11 +140,11 @@
         try {
           const prizeNFTContract = new ethers.Contract(
             CONTRACTS.prizeNFT,
-            ['function whitelist(address) external view returns (bool)'],
+            ['function whitelisted(address) external view returns (bool)'],
             provider
           );
 
-          whitelisted = await prizeNFTContract.whitelist(address);
+          whitelisted = await prizeNFTContract.whitelisted(address);
           state.isWhitelisted = whitelisted;
         } catch (whitelistError) {
           console.error('Error checking whitelist:', whitelistError);

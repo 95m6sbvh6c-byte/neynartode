@@ -1,0 +1,63 @@
+# Whitelist Your Dev Wallet
+
+Your dev wallet `0x78EeAA6F014667A339fCF8b4eCd74743366603fb` needs to be whitelisted in the PrizeNFT contract.
+
+## Method 1: Using the Script (Easiest)
+
+```bash
+cd "/Users/brianwharton/Desktop/Neynartodes /frame"
+./whitelist-dev.sh
+```
+
+Enter your **contract owner's private key** when prompted.
+
+## Method 2: Manual Cast Command
+
+```bash
+cast send 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
+  "addToWhitelist(address)" \
+  0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
+  --rpc-url https://mainnet.base.org \
+  --private-key YOUR_OWNER_PRIVATE_KEY
+```
+
+Replace `YOUR_OWNER_PRIVATE_KEY` with the private key of the wallet that deployed/owns the PrizeNFT contract.
+
+## Method 3: Using Environment Variable
+
+```bash
+export PRIVATE_KEY="your_owner_private_key_here"
+
+cast send 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
+  "addToWhitelist(address)" \
+  0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
+  --rpc-url https://mainnet.base.org \
+  --private-key $PRIVATE_KEY
+```
+
+## After Whitelisting
+
+1. Wait for transaction confirmation (check BaseScan)
+2. Visit https://neynartode.vercel.app/app
+3. Click "Connect Wallet"
+4. You should now have full access!
+
+## Contract Info
+
+- **PrizeNFT Address**: `0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81`
+- **Network**: Base Mainnet (Chain ID: 8453)
+- **Function**: `addToWhitelist(address)`
+- **Your Dev Wallet**: `0x78EeAA6F014667A339fCF8b4eCd74743366603fb`
+
+## Verify Whitelist Status
+
+After the transaction confirms, you can verify with:
+
+```bash
+cast call 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
+  "whitelist(address)(bool)" \
+  0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
+  --rpc-url https://mainnet.base.org
+```
+
+Should return `true` (or `0x0000000000000000000000000000000000000000000000000000000000000001`)
