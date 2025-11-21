@@ -51,6 +51,7 @@
       // Auth
       isLoggedIn: false,
       isCheckingWhitelist: false,
+      walletStatus: null, // Status message during wallet connection
       isWhitelisted: false,
       hasTokens: false,
       userAddress: '',
@@ -460,10 +461,7 @@
     // ===== BLOCKCHAIN FUNCTIONS =====
     async function connectWallet() {
       try {
-        state.isCheckingWhitelist = true;
-        render();
-
-        // Helper for timeout
+        // Helper for timeout (no longer used for wallet connection - we wait indefinitely)
         const withTimeout = (promise, ms, errorMsg) => Promise.race([
           promise,
           new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg || 'Request timed out')), ms))
@@ -494,28 +492,35 @@
 
         if (!ethProvider) {
           alert('No wallet found. Please use Warpcast or install MetaMask!');
-          state.isCheckingWhitelist = false;
-          render();
           return false;
         }
 
-        // Connect to wallet with timeout (60s for unlock)
+        // Show "waiting for wallet" state - NO timeout, wait for user to unlock
+        state.isCheckingWhitelist = true;
+        state.walletStatus = 'Waiting for wallet unlock...';
+        render();
+
+        // Connect to wallet - NO TIMEOUT, wait indefinitely for unlock
         let accounts;
         try {
-          accounts = await withTimeout(
-            ethProvider.request({ method: 'eth_requestAccounts' }),
-            60000,
-            'Wallet connection timed out. Please unlock your wallet and try again.'
-          );
+          console.log('Requesting wallet accounts (waiting for unlock if needed)...');
+          accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
         } catch (e) {
           state.isCheckingWhitelist = false;
+          state.walletStatus = null;
           render();
-          alert(e.message || 'Failed to connect wallet. Please try again.');
+          // User rejected or other error
+          if (e.code === 4001) {
+            alert('Wallet connection rejected. Please try again.');
+          } else {
+            alert(e.message || 'Failed to connect wallet. Please try again.');
+          }
           return false;
         }
 
         // Store the provider for later use
         window.activeEthProvider = ethProvider;
+        state.walletStatus = 'Connected! Checking access...';
 
         if (!accounts || accounts.length === 0) {
           state.isCheckingWhitelist = false;
@@ -629,6 +634,7 @@
 
         state.isLoggedIn = true;
         state.isCheckingWhitelist = false;
+        state.walletStatus = null;
 
         // Load leaderboard data
         await loadLeaderboard();
@@ -638,6 +644,7 @@
       } catch (error) {
         console.error('Wallet connection error:', error);
         state.isCheckingWhitelist = false;
+        state.walletStatus = null;
         render();
         alert('Failed to connect wallet: ' + error.message);
         return false;
@@ -955,7 +962,8 @@
             ${state.isCheckingWhitelist ? `
               <div class="mb-4 p-4 bg-blue-100 rounded-xl border-2 border-blue-300">
                 <div class="animate-spin text-3xl mb-2">🌀</div>
-                <p class="text-sm font-bold text-blue-800">Checking whitelist & balance...</p>
+                <p class="text-sm font-bold text-blue-800">${state.walletStatus || 'Checking whitelist & balance...'}</p>
+                <p class="text-xs text-blue-600 mt-1">Unlock your wallet if prompted</p>
               </div>
             ` : ''}
 
@@ -965,7 +973,7 @@
               class="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-500 via-pink-500 to-purple-600 hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-5 rounded-2xl font-black text-xl transition-all shadow-lg transform hover:scale-105 border-2 border-purple-300"
               style="text-shadow: 1px 1px 2px rgba(0,0,0,0.3)"
             >
-              🔥 ${state.isCheckingWhitelist ? 'Checking...' : 'Connect Wallet'}
+              🔥 ${state.isCheckingWhitelist ? (state.walletStatus ? 'Waiting...' : 'Checking...') : 'Connect Wallet'}
             </button>
 
             <div class="mt-8 p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
