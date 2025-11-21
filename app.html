@@ -443,10 +443,53 @@
         }
 
         if (data.cast) {
+          const authorFid = data.cast.author?.fid;
+          const authorUsername = data.cast.author?.username || 'unknown';
+
+          // Check if the connected wallet owns this cast
+          // Get author's verified addresses from Neynar
+          let isOwnCast = false;
+          let authorAddresses = [];
+
+          if (authorFid && state.userAddress) {
+            try {
+              const verifyResponse = await fetch(`https://api.neynar.com/v2/farcaster/user/bulk?fids=${authorFid}`, {
+                headers: {
+                  'accept': 'application/json',
+                  'api_key': CONFIG.NEYNAR_API_KEY
+                }
+              });
+              const verifyData = await verifyResponse.json();
+
+              if (verifyData.users && verifyData.users[0]) {
+                // Get all verified addresses for this user
+                authorAddresses = verifyData.users[0].verified_addresses?.eth_addresses || [];
+                // Also check custody address
+                if (verifyData.users[0].custody_address) {
+                  authorAddresses.push(verifyData.users[0].custody_address);
+                }
+
+                // Check if connected wallet matches any of author's addresses
+                const connectedLower = state.userAddress.toLowerCase();
+                isOwnCast = authorAddresses.some(addr => addr.toLowerCase() === connectedLower);
+
+                console.log('Author addresses:', authorAddresses);
+                console.log('Connected wallet:', state.userAddress);
+                console.log('Is own cast:', isOwnCast);
+              }
+            } catch (e) {
+              console.error('Error checking cast ownership:', e);
+              // If we can't verify, allow it but warn
+            }
+          }
+
           return {
             valid: true,
             cast: data.cast,
-            author: data.cast.author?.username || 'unknown',
+            author: authorUsername,
+            authorFid: authorFid,
+            authorAddresses: authorAddresses,
+            isOwnCast: isOwnCast,
             text: data.cast.text?.substring(0, 100) || ''
           };
         }
@@ -1882,8 +1925,15 @@
             return;
           }
 
+          // Check if this is the user's own cast (required for leaderboard integrity)
+          const isDevWallet = state.userAddress.toLowerCase() === DEV_WALLET.toLowerCase();
+          if (!castValidation.isOwnCast && !isDevWallet) {
+            alert(`❌ Not Your Cast!\n\nYou can only create contests on your own Warpcast posts.\n\nCast author: @${castValidation.author}\nYour wallet: ${state.userAddress.slice(0, 6)}...${state.userAddress.slice(-4)}\n\nTo prevent leaderboard gaming, contests must be on casts you authored.`);
+            return;
+          }
+
           // Show cast preview
-          const confirmCast = confirm(`✅ Cast Found!\n\nAuthor: @${castValidation.author}\nText: "${castValidation.text}..."\n\nIs this the correct contest cast?`);
+          const confirmCast = confirm(`✅ Cast Found!\n\nAuthor: @${castValidation.author} ${castValidation.isOwnCast ? '(Your cast ✓)' : '(DEV MODE)'}\nText: "${castValidation.text}..."\n\nIs this the correct contest cast?`);
           if (!confirmCast) {
             return;
           }
