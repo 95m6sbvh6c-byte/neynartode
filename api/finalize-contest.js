@@ -38,6 +38,7 @@ const CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
   'function canFinalize(uint256 _contestId) external view returns (bool)',
   'function finalizeContest(uint256 _contestId, address[] calldata _qualifiedEntries) external returns (uint256 requestId)',
+  'function cancelContest(uint256 _contestId, string calldata _reason) external',
   'function nextContestId() external view returns (uint256)',
   'event ContestCreated(uint256 indexed contestId, address indexed host, address prizeToken, uint256 prizeAmount, uint256 endTime, string castId)'
 ];
@@ -347,13 +348,51 @@ async function checkAndFinalizeContest(contestId) {
   console.log(`   Repliers (4+ words): ${engagement.repliers.length}`);
   console.log(`   Likers: ${engagement.likers.length}`);
 
-  // Determine potential participants
-  // Must have: recasted AND replied with 4+ words
-  const recasterSet = new Set(engagement.recasters);
-  const replierAddresses = engagement.repliers.map(r => r.address);
+  // ═══════════════════════════════════════════════════════════════════
+  // SOCIAL REQUIREMENTS CONFIG
+  // TODO: In future, read these from on-chain or off-chain storage
+  // For now, defaults that can be overridden per-contest
+  // ═══════════════════════════════════════════════════════════════════
+  const socialRequirements = {
+    requireRecast: true,    // Must recast to qualify
+    requireReply: true,     // Must reply to qualify (if true, 4-word minimum applies)
+    requireLike: false,     // Must like to qualify
+  };
 
-  // Find addresses that both recasted AND replied
-  let potentialParticipants = replierAddresses.filter(addr => recasterSet.has(addr));
+  // Determine potential participants based on requirements
+  let potentialParticipants = [];
+
+  if (socialRequirements.requireRecast && socialRequirements.requireReply) {
+    // Both required: must recast AND reply with 4+ words
+    const recasterSet = new Set(engagement.recasters);
+    const replierAddresses = engagement.repliers.map(r => r.address);
+    potentialParticipants = replierAddresses.filter(addr => recasterSet.has(addr));
+    console.log(`   Filter: Recast + Reply (4+ words)`);
+  } else if (socialRequirements.requireRecast && !socialRequirements.requireReply) {
+    // Only recast required
+    potentialParticipants = [...engagement.recasters];
+    console.log(`   Filter: Recast only`);
+  } else if (!socialRequirements.requireRecast && socialRequirements.requireReply) {
+    // Only reply required (4+ words)
+    potentialParticipants = engagement.repliers.map(r => r.address);
+    console.log(`   Filter: Reply only (4+ words)`);
+  } else if (socialRequirements.requireLike) {
+    // Only like required
+    potentialParticipants = [...engagement.likers];
+    console.log(`   Filter: Like only`);
+  } else {
+    // No social requirements - everyone who engaged qualifies
+    const allEngagers = new Set([
+      ...engagement.recasters,
+      ...engagement.repliers.map(r => r.address),
+      ...engagement.likers
+    ]);
+    potentialParticipants = [...allEngagers];
+    console.log(`   Filter: Any engagement`);
+  }
+
+  // Deduplicate
+  potentialParticipants = [...new Set(potentialParticipants)];
 
   // Remove the host from participants
   if (engagement.castAuthor) {
@@ -365,13 +404,28 @@ async function checkAndFinalizeContest(contestId) {
   console.log(`\n✅ Potential participants (recasted + replied): ${potentialParticipants.length}`);
 
   if (potentialParticipants.length === 0) {
-    // No qualified participants - might need to cancel
-    return {
-      success: false,
-      error: 'No qualified participants found',
-      contestId,
-      suggestion: 'Consider cancelling the contest and refunding the host'
-    };
+    // No qualified participants - auto-cancel and refund host
+    console.log('\n❌ No qualified participants - cancelling contest and refunding host...');
+    try {
+      const tx = await contestEscrow.cancelContest(contestId, 'No qualified participants');
+      console.log(`   TX submitted: ${tx.hash}`);
+      const receipt = await tx.wait();
+      console.log(`   ✅ Contest cancelled, host refunded in block ${receipt.blockNumber}`);
+      return {
+        success: true,
+        contestId,
+        action: 'cancelled',
+        reason: 'No qualified participants (no one did recast + 4-word reply)',
+        txHash: receipt.hash
+      };
+    } catch (cancelError) {
+      console.error('   ❌ Cancel failed:', cancelError.message);
+      return {
+        success: false,
+        error: `Cancel failed: ${cancelError.message}`,
+        contestId
+      };
+    }
   }
 
   // Check trading volume if required
@@ -395,12 +449,28 @@ async function checkAndFinalizeContest(contestId) {
   }
 
   if (qualifiedAddresses.length === 0) {
-    return {
-      success: false,
-      error: 'No participants met volume requirement',
-      contestId,
-      suggestion: 'Consider cancelling the contest and refunding the host'
-    };
+    // No one met volume requirement - auto-cancel and refund host
+    console.log('\n❌ No participants met volume requirement - cancelling contest and refunding host...');
+    try {
+      const tx = await contestEscrow.cancelContest(contestId, 'No participants met volume requirement');
+      console.log(`   TX submitted: ${tx.hash}`);
+      const receipt = await tx.wait();
+      console.log(`   ✅ Contest cancelled, host refunded in block ${receipt.blockNumber}`);
+      return {
+        success: true,
+        contestId,
+        action: 'cancelled',
+        reason: 'No participants met volume requirement',
+        txHash: receipt.hash
+      };
+    } catch (cancelError) {
+      console.error('   ❌ Cancel failed:', cancelError.message);
+      return {
+        success: false,
+        error: `Cancel failed: ${cancelError.message}`,
+        contestId
+      };
+    }
   }
 
   // Finalize contest on-chain

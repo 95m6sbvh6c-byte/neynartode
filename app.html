@@ -1936,7 +1936,8 @@
       'function createContestERC20(address _prizeToken, uint256 _prizeAmount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
       'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
       'function customTokenFee() external view returns (uint256)',
-      'function defaultToken() external view returns (address)'
+      'function defaultToken() external view returns (address)',
+      'event ContestCreated(uint256 indexed contestId, address indexed host, address prizeToken, uint256 prizeAmount, uint256 endTime, string castId)'
     ];
 
     const ERC20_ABI = [
@@ -2117,10 +2118,47 @@
 
         const receipt = await tx.wait();
         console.log('✅ Transaction confirmed:', receipt.transactionHash);
+        console.log('📜 Receipt events:', receipt.events);
+        console.log('📜 Receipt logs:', receipt.logs);
 
         // Parse contest ID from event
+        let contestId = 'Unknown';
+
+        // Try method 1: Find parsed event (ethers Contract auto-parses if ABI has event)
         const contestCreatedEvent = receipt.events?.find(e => e.event === 'ContestCreated');
-        const contestId = contestCreatedEvent?.args?.contestId?.toString() || 'Unknown';
+        if (contestCreatedEvent?.args?.contestId) {
+          contestId = contestCreatedEvent.args.contestId.toString();
+          console.log('✅ Found contestId from parsed event:', contestId);
+        } else {
+          // Method 2: Parse from raw logs using contract interface
+          // ContestCreated(uint256 indexed contestId, address indexed host, ...)
+          const iface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
+          for (const log of receipt.logs || []) {
+            try {
+              const parsed = iface.parseLog(log);
+              if (parsed.name === 'ContestCreated') {
+                contestId = parsed.args.contestId.toString();
+                console.log('✅ Found contestId via interface.parseLog:', contestId);
+                break;
+              }
+            } catch (e) {
+              // Log doesn't match our event, skip
+            }
+          }
+
+          // Method 3: Direct topic parsing as last resort
+          if (contestId === 'Unknown' && receipt.logs?.length > 0) {
+            const contestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,address,uint256,uint256,string)');
+            const eventLog = receipt.logs.find(log => log.topics[0] === contestCreatedTopic);
+            if (eventLog && eventLog.topics[1]) {
+              contestId = ethers.BigNumber.from(eventLog.topics[1]).toString();
+              console.log('✅ Found contestId from raw topic:', contestId);
+            } else {
+              console.log('⚠️ Could not find ContestCreated event');
+              console.log('   Available logs:', receipt.logs.map(l => l.topics[0]));
+            }
+          }
+        }
 
         // Clear pending tx
         state.pendingTx = null;
