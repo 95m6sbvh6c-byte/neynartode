@@ -17,6 +17,10 @@
   "routes": [
     {
       "src": "/",
+      "dest": "/app.html"
+    },
+    {
+      "src": "/frog",
       "dest": "/index.html"
     },
     {

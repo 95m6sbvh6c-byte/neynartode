@@ -55,6 +55,11 @@
       // Season & Prize Pool
       currentSeason: 0,
       prizePoolETH: 0,
+      hostPoolETH: 0,  // On-chain host prize pool
+      voterPoolETH: 0, // On-chain voter prize pool
+      pendingClankerFees: '0', // Pending Clanker fees to collect
+      totalTokensBurned: '0', // All-time Neynartodes burned from voting
+      totalPrizesGiven: 0, // All-time prizes distributed (ETH)
 
       // Contest settings
       startMode: 'now', // 'now' or 'scheduled'
@@ -333,7 +338,51 @@
       if (badge === 'silver') return '🥈';
       if (badge === 'bronze') return '🥉';
       if (badge === 'purple') return '🟣';
+      if (badge === 'season0_beta') return '🦎';
       return '';
+    }
+
+    function getBadgeTitle(badge) {
+      if (badge === 'gold') return 'Gold Badge';
+      if (badge === 'silver') return 'Silver Badge';
+      if (badge === 'bronze') return 'Bronze Badge';
+      if (badge === 'purple') return 'Purple Badge';
+      if (badge === 'season0_beta') return 'Season 0 Beta Tester - Forever OG';
+      return badge;
+    }
+
+    // ===== SEASON 0 BETA BADGE TRACKING =====
+    function getSeasonTesterBadges() {
+      try {
+        const stored = localStorage.getItem('season0_beta_participants');
+        return stored ? JSON.parse(stored) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function awardSeasonBetaBadge(fid, username) {
+      if (state.currentSeason === 0 || state.currentSeason === 1) {
+        try {
+          const badges = getSeasonTesterBadges();
+          if (!badges[fid]) {
+            badges[fid] = {
+              username: username,
+              awardedAt: Date.now(),
+              season: state.currentSeason
+            };
+            localStorage.setItem('season0_beta_participants', JSON.stringify(badges));
+            console.log(`🦎 Season 0 Beta badge awarded to @${username} (FID: ${fid})`);
+          }
+        } catch (e) {
+          console.error('Failed to award Season 0 Beta badge:', e);
+        }
+      }
+    }
+
+    function hasSeasonBetaBadge(fid) {
+      const badges = getSeasonTesterBadges();
+      return !!badges[fid];
     }
 
     // ===== BLOCKCHAIN FUNCTIONS =====
@@ -450,7 +499,87 @@
       }
     }
 
+    async function loadPrizePools() {
+      try {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+
+        // Load current season and prize pools from PrizeNFT contract
+        const prizeNFTABI = [
+          'function nextSeasonId() external view returns (uint256)',
+          'function seasons(uint256) external view returns (string theme, uint256 startTime, uint256 endTime, uint256 devPool, uint256 hostPool, uint256 voterPool, bool distributed)'
+        ];
+
+        const prizeNFT = new ethers.Contract(
+          CONFIG.CONTRACTS.prizeNFT,
+          prizeNFTABI,
+          provider
+        );
+
+        // Get current season ID (latest season)
+        const nextSeasonId = await prizeNFT.nextSeasonId();
+        state.currentSeason = nextSeasonId.toNumber() - 1;
+
+        if (state.currentSeason > 0) {
+          // Get season data
+          const season = await prizeNFT.seasons(state.currentSeason);
+          state.hostPoolETH = parseFloat(ethers.utils.formatEther(season.hostPool));
+          state.voterPoolETH = parseFloat(ethers.utils.formatEther(season.voterPool));
+          state.prizePoolETH = state.hostPoolETH + state.voterPoolETH; // Total
+        }
+
+        // Load pending Clanker fees
+        const clankerFeeCollectorABI = [
+          'function getPendingFees() external view returns (uint256)'
+        ];
+
+        const clankerFeeCollector = new ethers.Contract(
+          CONFIG.CONTRACTS.clankerFeeCollector,
+          clankerFeeCollectorABI,
+          provider
+        );
+
+        const pendingFees = await clankerFeeCollector.getPendingFees();
+        state.pendingClankerFees = ethers.utils.formatEther(pendingFees);
+
+        // Load all-time stats from VotingManager
+        const votingManagerABI = [
+          'function totalTokensBurned() external view returns (uint256)',
+          'function totalVotes() external view returns (uint256)'
+        ];
+
+        const votingManager = new ethers.Contract(
+          CONFIG.CONTRACTS.votingManager,
+          votingManagerABI,
+          provider
+        );
+
+        const tokensBurned = await votingManager.totalTokensBurned();
+        state.totalTokensBurned = ethers.utils.formatEther(tokensBurned);
+
+        // For now, calculate prizes given from all seasons (you can add a totalPrizesDistributed to contract later)
+        // For beta, we'll use the current season's total as placeholder
+        if (state.currentSeason > 0) {
+          const season = await prizeNFT.seasons(state.currentSeason);
+          state.totalPrizesGiven = parseFloat(ethers.utils.formatEther(season.devPool.add(season.hostPool).add(season.voterPool)));
+        }
+
+        console.log('Prize pools loaded:', {
+          season: state.currentSeason,
+          hostPool: state.hostPoolETH,
+          voterPool: state.voterPoolETH,
+          pendingFees: state.pendingClankerFees,
+          tokensBurned: state.totalTokensBurned,
+          prizesGiven: state.totalPrizesGiven
+        });
+      } catch (error) {
+        console.error('Failed to load prize pools:', error);
+      }
+    }
+
     async function loadLeaderboard() {
+      // Load prize pools from contracts
+      await loadPrizePools();
+
       // In production, fetch from backend/contract
       // For now, use simulated data
       state.leaderboardData = [
@@ -458,6 +587,20 @@
         { rank: 2, fid: 88888, pfp: '🚀', username: 'moonboi', totalScore: 143200, voteScore: 18000, contests: 10, replies: 198, recasts: 156, likes: 432, volume: 98000, neynarScore: 0.88, badges: ['bronze'] },
         { rank: 3, fid: 77777, pfp: '💎', username: 'hodlmaster', totalScore: 128900, voteScore: 12000, contests: 9, replies: 176, recasts: 142, likes: 389, volume: 87000, neynarScore: 0.85, badges: ['purple'] }
       ];
+
+      // Award Season 0 Beta badges to all participants and add to their badge list
+      state.leaderboardData = state.leaderboardData.map(host => {
+        // Award the badge if they're on the leaderboard during Season 0/1
+        awardSeasonBetaBadge(host.fid, host.username);
+
+        // Add season0_beta badge to their current badges if they've earned it
+        const badges = [...host.badges];
+        if (hasSeasonBetaBadge(host.fid) && !badges.includes('season0_beta')) {
+          badges.push('season0_beta');
+        }
+
+        return { ...host, badges };
+      });
 
       // Add some sample upcoming contests
       const now = new Date();
@@ -755,7 +898,7 @@
 
             <div class="space-y-6">
               <!-- Season Info -->
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl shadow-2xl p-6 text-white border-4 border-purple-400 transform hover:scale-105 transition-transform">
                   <div class="text-sm font-bold mb-2 opacity-90">🌊 Current Season 🌊</div>
                   <div class="text-5xl font-black mb-2">#${state.currentSeason}</div>
@@ -763,9 +906,15 @@
                 </div>
 
                 <div class="bg-gradient-to-br from-green-400 to-emerald-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-green-300 transform hover:scale-105 transition-transform">
-                  <div class="text-sm font-bold mb-2 opacity-90">💰 Prize Pool 💰</div>
-                  <div class="text-5xl font-black mb-2">${state.prizePoolETH.toFixed(4)} ETH</div>
-                  <div class="text-xs opacity-90 font-semibold">Growing from votes</div>
+                  <div class="text-sm font-bold mb-2 opacity-90">🏆 Host Prize Pool 🏆</div>
+                  <div class="text-4xl font-black mb-2">${state.hostPoolETH.toFixed(4)} ETH</div>
+                  <div class="text-xs opacity-90 font-semibold">For Contest Creators</div>
+                </div>
+
+                <div class="bg-gradient-to-br from-blue-400 to-cyan-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-blue-300 transform hover:scale-105 transition-transform">
+                  <div class="text-sm font-bold mb-2 opacity-90">🗳️ Voter Prize Pool 🗳️</div>
+                  <div class="text-4xl font-black mb-2">${state.voterPoolETH.toFixed(4)} ETH</div>
+                  <div class="text-xs opacity-90 font-semibold">For Active Voters</div>
                 </div>
 
                 <div class="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-2xl p-6 text-white border-4 border-yellow-300 transform hover:scale-105 transition-transform">
@@ -778,6 +927,44 @@
                   </div>
                 </div>
               </div>
+
+              <!-- All-Time Stats -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-gradient-to-br from-red-400 to-orange-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-red-300">
+                  <div class="text-sm font-bold mb-2 opacity-90">🔥 ALL-TIME BURNED 🔥</div>
+                  <div class="text-4xl font-black mb-2">${parseFloat(state.totalTokensBurned).toLocaleString()} $NEYNARTODES</div>
+                  <div class="text-xs opacity-90 font-semibold">Permanently removed from supply</div>
+                </div>
+
+                <div class="bg-gradient-to-br from-emerald-400 to-green-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-emerald-300">
+                  <div class="text-sm font-bold mb-2 opacity-90">💎 ALL-TIME PRIZES 💎</div>
+                  <div class="text-4xl font-black mb-2">${state.totalPrizesGiven.toFixed(4)} ETH</div>
+                  <div class="text-xs opacity-90 font-semibold">Given to hosts & voters</div>
+                </div>
+              </div>
+
+              <!-- Feed the Neynartodes Button -->
+              ${parseFloat(state.pendingClankerFees) > 0 ? `
+                <div class="bg-gradient-to-r from-orange-100 to-red-100 rounded-2xl shadow-xl p-6 border-4 border-orange-300">
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                      <h3 class="text-2xl font-black text-orange-800 mb-2">🦎 Feed the Neynartodes! 🦎</h3>
+                      <p class="text-sm text-orange-700 font-semibold mb-2">
+                        ${parseFloat(state.pendingClankerFees).toFixed(2)} $NEYNARTODES available from Clanker fees!
+                      </p>
+                      <p class="text-xs text-orange-600">
+                        Click to collect fees and compound liquidity. 50% goes to treasury, 50% to recipient, then triggers Captain Hook!
+                      </p>
+                    </div>
+                    <button
+                      onclick="feedTheNeynartodes()"
+                      class="ml-4 px-8 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white rounded-2xl font-black text-xl transition-all shadow-lg transform hover:scale-105 border-2 border-orange-300"
+                    >
+                      🍖 FEED NOW
+                    </button>
+                  </div>
+                </div>
+              ` : ''}
 
               <!-- Voting Info -->
               <div class="bg-gradient-to-r from-pink-100 to-purple-100 rounded-2xl shadow-xl p-6 border-4 border-purple-300">
@@ -844,7 +1031,7 @@
                               <div>
                                 <div class="font-semibold text-gray-800 flex items-center gap-1">
                                   @${host.username}
-                                  ${host.badges.map(badge => `<span title="${badge}">${getBadgeEmoji(badge)}</span>`).join('')}
+                                  ${host.badges.map(badge => `<span title="${getBadgeTitle(badge)}">${getBadgeEmoji(badge)}</span>`).join('')}
                                 </div>
                               </div>
                             </div>
@@ -1618,6 +1805,57 @@
         }
       });
     }
+
+    // Feed the Neynartodes function - collects Clanker fees
+    window.feedTheNeynartodes = async () => {
+      try {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+
+        const clankerFeeCollectorABI = [
+          'function collectAndDistribute() external',
+          'function getPendingFees() external view returns (uint256)'
+        ];
+
+        const clankerFeeCollector = new ethers.Contract(
+          CONFIG.CONTRACTS.clankerFeeCollector,
+          clankerFeeCollectorABI,
+          signer
+        );
+
+        // Check pending fees
+        const pendingFees = await clankerFeeCollector.getPendingFees();
+        if (pendingFees.eq(0)) {
+          alert('No fees to collect! The Neynartodes are already well-fed. 🦎');
+          return;
+        }
+
+        const feesFormatted = ethers.utils.formatEther(pendingFees);
+
+        alert(`🦎 Feeding the Neynartodes!\n\nCollecting ${feesFormatted} $NEYNARTODES\n\nThis will:\n• Split 50/50 to treasury and recipient\n• Trigger Captain Hook to compound liquidity\n\nConfirm in MetaMask!`);
+
+        const tx = await clankerFeeCollector.collectAndDistribute();
+
+        alert('⏳ Transaction submitted!\n\nWaiting for confirmation...\n\nTx: ' + tx.hash);
+        const receipt = await tx.wait();
+
+        alert(`✅ Neynartodes Fed Successfully! 🦎\n\nCollected ${feesFormatted} $NEYNARTODES\n🔄 Captain Hook triggered for compounding!\n\nTx: ${receipt.transactionHash}`);
+
+        // Reload prize pools
+        await loadPrizePools();
+        render();
+      } catch (error) {
+        console.error('Feed error:', error);
+
+        if (error.code === 4001) {
+          alert('❌ Transaction rejected by user');
+        } else if (error.message && error.message.includes('No fees to collect')) {
+          alert('❌ No fees to collect!\n\nThe Neynartodes are already well-fed. 🦎');
+        } else {
+          alert('❌ Feed failed!\n\n' + (error.reason || error.message || 'Unknown error'));
+        }
+      }
+    };
 
     // Make functions globally accessible for inline onclick handlers
     window.voteForHost = voteForHost;
