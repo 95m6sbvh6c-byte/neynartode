@@ -1,0 +1,32 @@
+name: Finalize Contests
+
+on:
+  schedule:
+    # Run every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Finalize Contest API
+        env:
+          API_URL: ${{ secrets.VERCEL_APP_URL }}
+        run: |
+          # Call the finalize-contest endpoint
+          response=$(curl -s -X POST "${API_URL}/api/finalize-contest" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --max-time 120)
+
+          echo "Response: $response"
+
+          # Check if response contains error
+          if echo "$response" | grep -q '"error"'; then
+            echo "API returned an error"
+            # Don't fail the job - errors are expected when no contests need finalizing
+          fi
+
+          echo "Finalization check complete"

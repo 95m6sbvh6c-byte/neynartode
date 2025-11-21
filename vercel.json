@@ -32,12 +32,6 @@
       "dest": "/api/$1"
     }
   ],
-  "crons": [
-    {
-      "path": "/api/finalize-contest",
-      "schedule": "*/5 * * * *"
-    }
-  ],
   "env": {
     "NEYNAR_API_KEY": "AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D"
   }

@@ -109,9 +109,9 @@ async function getCastEngagement(castId) {
       const replies = repliesData.conversation?.cast?.direct_replies || [];
 
       for (const reply of replies) {
-        // Check reply has at least 5 words
+        // Check reply has at least 4 words
         const wordCount = (reply.text || '').trim().split(/\s+/).length;
-        if (wordCount >= 5) {
+        if (wordCount >= 4) {
           const addresses = reply.author?.verified_addresses?.eth_addresses || [];
           repliers.push(...addresses.map(addr => ({
             address: addr.toLowerCase(),
@@ -344,11 +344,11 @@ async function checkAndFinalizeContest(contestId) {
   }
 
   console.log(`   Recasters: ${engagement.recasters.length}`);
-  console.log(`   Repliers (5+ words): ${engagement.repliers.length}`);
+  console.log(`   Repliers (4+ words): ${engagement.repliers.length}`);
   console.log(`   Likers: ${engagement.likers.length}`);
 
   // Determine potential participants
-  // Must have: recasted AND replied with 5+ words
+  // Must have: recasted AND replied with 4+ words
   const recasterSet = new Set(engagement.recasters);
   const replierAddresses = engagement.repliers.map(r => r.address);
 

@@ -69,15 +69,13 @@
       durationMinutes: '0',
       lastLaunchDate: null, // Track last contest launch per wallet
       upcomingContests: [], // Array of scheduled contests
-      prizeType: 'token',
+      prizeType: 'token', // Always token now (NFT removed)
       prizeTokenAddress: '',
       prizeTokenAmount: '',
       prizeTokenTicker: '',
       prizeTokenImage: '',
       prizeTokenSearch: '',
       showPrizeTokenSuggestions: false,
-      prizeNftAddress: '',
-      prizeNftId: '',
 
       // Social Dynamics
       socialEnabled: true,
@@ -86,15 +84,14 @@
       minRecasts: '0',
       minReplies: '0',
 
-      // Tokenomics
+      // Tokenomics (always enabled - defaults to NEYNARTODES)
       tokenEnabled: true,
-      tokenAddress: '',
-      tokenTicker: '',
+      tokenAddress: '0x8de1622fe07f56cda2e2273e615a513f1d828b07', // Default to NEYNARTODES
+      tokenTicker: 'NEYNARTODES',
       tokenImage: '',
       tokenMcap: 0,
       tokenSearch: '',
       showTokenSuggestions: false,
-      minHoldings: '',
       minTradeVolume: '',
 
       // Winner announcement
@@ -1173,7 +1170,7 @@
               <div class="text-sm text-blue-800 space-y-1">
                 <p>• <strong>Whitelist Required:</strong> Only whitelisted addresses can participate</p>
                 <p>• <strong>Token Gate:</strong> Minimum 20,000 $NEYNARTODES required</p>
-                <p>• <strong>Reply Quality:</strong> Minimum 5 words per reply to prevent spam</p>
+                <p>• <strong>Reply Quality:</strong> Minimum 4 words per reply to prevent spam</p>
                 <p>• <strong>Trade Volume Cap:</strong> Max $500 to prevent whale manipulation</p>
               </div>
             </div>
@@ -1248,174 +1245,158 @@
 
                 <!-- Prize Settings -->
                 <div class="p-6 bg-green-50 rounded-xl border-2 border-green-200">
-                  <h3 class="text-xl font-bold text-green-800 mb-4">🎁 Prize</h3>
+                  <h3 class="text-xl font-bold text-green-800 mb-4">🎁 Prize (Token Only)</h3>
 
-                  <div class="mb-4">
-                    <div class="flex gap-3">
-                      <button id="prizeToken" class="flex-1 py-2 rounded-lg font-semibold transition-colors ${state.prizeType === 'token' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'}">
-                        Token
-                      </button>
-                      <button id="prizeNFT" class="flex-1 py-2 rounded-lg font-semibold transition-colors ${state.prizeType === 'nft' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'}">
-                        NFT
-                      </button>
-                    </div>
-                  </div>
-
-                  ${state.prizeType === 'token' ? `
-                    <div class="space-y-4">
-                      <div class="relative">
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Search Token</label>
-                        <input type="text" id="prizeTokenSearch" value="${state.prizeTokenSearch}" placeholder="USDC, ETH, NEYNARTODES..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                        ${state.showPrizeTokenSuggestions ? `
-                          <div class="absolute z-10 w-full mt-1 bg-white border-2 border-purple-300 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
-                            ${searchTokens(state.prizeTokenSearch).map((token, idx) => `
-                              <button onclick="selectPrizeToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-purple-50 border-b border-gray-100 transition-colors flex items-center gap-3">
-                                <img src="${token.image}" alt="${token.ticker}" class="w-10 h-10 rounded-full object-cover border-2 border-purple-200" onerror="this.src='https://via.placeholder.com/40/9333ea/ffffff?text=${token.ticker[0]}'" />
-                                <div class="flex-1">
-                                  <div class="font-semibold text-gray-800">${token.name} <span class="text-purple-600">(${token.ticker})</span></div>
-                                  <div class="text-xs text-gray-500 font-mono">${token.address.substring(0, 10)}...${token.address.substring(38)}</div>
-                                </div>
-                                <div class="text-right">
-                                  <div class="text-xs text-gray-600">Market Cap</div>
-                                  <div class="text-sm font-bold text-green-600">$${(token.mcap / 1000000).toFixed(1)}M</div>
-                                </div>
-                              </button>
-                            `).join('')}
-                          </div>
-                        ` : ''}
-                      </div>
-
-                      ${state.prizeTokenAddress ? `
-                        <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-lg border-2 border-purple-200 flex items-center gap-3">
-                          <img src="${state.prizeTokenImage}" alt="${state.prizeTokenTicker}" class="w-12 h-12 rounded-full object-cover border-2 border-purple-400 shadow-lg" onerror="this.src='https://via.placeholder.com/48/9333ea/ffffff?text=${state.prizeTokenTicker[0]}'" />
-                          <div class="flex-1">
-                            <div class="text-xs text-purple-600 font-semibold mb-1">✓ Selected Prize Token</div>
-                            <div class="font-bold text-purple-900 text-lg">${state.prizeTokenTicker}</div>
-                            <div class="text-xs text-gray-500 font-mono">${state.prizeTokenAddress.substring(0, 10)}...${state.prizeTokenAddress.substring(38)}</div>
-                          </div>
+                  <div class="space-y-4">
+                    <div class="relative">
+                      <label class="block text-sm font-semibold text-gray-700 mb-2">Search Token</label>
+                      <input type="text" id="prizeTokenSearch" value="${state.prizeTokenSearch}" placeholder="USDC, ETH, NEYNARTODES..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                      ${state.showPrizeTokenSuggestions ? `
+                        <div class="absolute z-10 w-full mt-1 bg-white border-2 border-purple-300 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
+                          ${searchTokens(state.prizeTokenSearch).map((token, idx) => `
+                            <button onclick="selectPrizeToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-purple-50 border-b border-gray-100 transition-colors flex items-center gap-3">
+                              <img src="${token.image}" alt="${token.ticker}" class="w-10 h-10 rounded-full object-cover border-2 border-purple-200" onerror="this.src='https://via.placeholder.com/40/9333ea/ffffff?text=${token.ticker[0]}'" />
+                              <div class="flex-1">
+                                <div class="font-semibold text-gray-800">${token.name} <span class="text-purple-600">(${token.ticker})</span></div>
+                                <div class="text-xs text-gray-500 font-mono">${token.address.substring(0, 10)}...${token.address.substring(38)}</div>
+                              </div>
+                              <div class="text-right">
+                                <div class="text-xs text-gray-600">Market Cap</div>
+                                <div class="text-sm font-bold text-green-600">$${(token.mcap / 1000000).toFixed(1)}M</div>
+                              </div>
+                            </button>
+                          `).join('')}
                         </div>
                       ` : ''}
+                    </div>
 
-                      <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Prize Amount</label>
-                        <input type="number" id="prizeTokenAmount" value="${state.prizeTokenAmount}" placeholder="1000" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                    ${state.prizeTokenAddress ? `
+                      <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-lg border-2 border-purple-200 flex items-center gap-3">
+                        <img src="${state.prizeTokenImage}" alt="${state.prizeTokenTicker}" class="w-12 h-12 rounded-full object-cover border-2 border-purple-400 shadow-lg" onerror="this.src='https://via.placeholder.com/48/9333ea/ffffff?text=${state.prizeTokenTicker[0]}'" />
+                        <div class="flex-1">
+                          <div class="text-xs text-purple-600 font-semibold mb-1">✓ Selected Prize Token</div>
+                          <div class="font-bold text-purple-900 text-lg">${state.prizeTokenTicker}</div>
+                          <div class="text-xs text-gray-500 font-mono">${state.prizeTokenAddress.substring(0, 10)}...${state.prizeTokenAddress.substring(38)}</div>
+                        </div>
                       </div>
+                    ` : ''}
+
+                    <div>
+                      <label class="block text-sm font-semibold text-gray-700 mb-2">Prize Amount</label>
+                      <input type="number" id="prizeTokenAmount" value="${state.prizeTokenAmount}" placeholder="1000" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
                     </div>
-                  ` : `
-                    <div class="space-y-4">
-                      <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">NFT Contract Address</label>
-                        <input type="text" id="prizeNftAddress" value="${state.prizeNftAddress}" placeholder="0x..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                      </div>
-                      <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Token ID</label>
-                        <input type="text" id="prizeNftId" value="${state.prizeNftId}" placeholder="123" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                      </div>
-                    </div>
-                  `}
+                  </div>
                 </div>
 
-                <!-- Social Dynamics -->
+                <!-- Social Dynamics (Always ON) -->
                 <div class="p-6 bg-pink-50 rounded-xl border-2 border-pink-200">
                   <div class="flex items-center justify-between mb-4">
                     <h3 class="text-xl font-bold text-pink-800">👥 Social Dynamics</h3>
-                    <button id="toggleSocial" class="px-4 py-2 rounded-lg font-semibold transition-colors ${state.socialEnabled ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'}">
-                      ${state.socialEnabled ? 'ON' : 'OFF'}
-                    </button>
+                    <span class="px-4 py-2 rounded-lg font-semibold bg-purple-600 text-white">REQUIRED</span>
                   </div>
 
-                  ${state.socialEnabled ? `
-                    <div class="space-y-4">
-                      ${state.startMode === 'scheduled' ? `
-                        <div>
-                          <label class="block text-sm font-semibold text-gray-700 mb-2">Cast Hash</label>
-                          <input type="text" id="castHash" value="${state.castHash}" placeholder="0x1234abcd..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                        </div>
-                      ` : ''}
+                  <div class="space-y-4">
+                    ${state.startMode === 'scheduled' ? `
+                      <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Cast Hash</label>
+                        <input type="text" id="castHash" value="${state.castHash}" placeholder="0x1234abcd..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                      </div>
+                    ` : ''}
 
-                      <div class="grid grid-cols-3 gap-3">
-                        <div>
-                          <label class="block text-xs font-semibold text-gray-700 mb-2">Min Likes</label>
-                          <input type="number" id="minLikes" value="${state.minLikes}" min="0" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                        </div>
-                        <div>
-                          <label class="block text-xs font-semibold text-gray-700 mb-2">Min Recasts</label>
-                          <input type="number" id="minRecasts" value="${state.minRecasts}" min="0" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                        </div>
-                        <div>
-                          <label class="block text-xs font-semibold text-gray-700 mb-2">Min Replies</label>
-                          <input type="number" id="minReplies" value="${state.minReplies}" min="0" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                    <div class="grid grid-cols-3 gap-3">
+                      <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-2">Min Likes (0-1)</label>
+                        <input type="number" id="minLikes" value="${state.minLikes}" min="0" max="1" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-2">Min Recasts (0-1)</label>
+                        <input type="number" id="minRecasts" value="${state.minRecasts}" min="0" max="1" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-2">Min Replies</label>
+                        <input type="number" id="minReplies" value="${state.minReplies}" min="0" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                      </div>
+                    </div>
+                    <p class="text-xs text-pink-700 font-semibold">📝 Replies must have at least 4 words to count</p>
+                  </div>
+                </div>
+
+                <!-- Tokenomics (Always ON - Trading Volume) -->
+                <div class="p-6 bg-green-50 rounded-xl border-2 border-green-200">
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-green-800">💰 Trading Volume Requirement</h3>
+                    <span class="px-4 py-2 rounded-lg font-semibold bg-purple-600 text-white">REQUIRED</span>
+                  </div>
+
+                  <div class="space-y-4">
+                    <!-- Default Token Info -->
+                    <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-200">
+                      <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-full bg-purple-600 flex items-center justify-center text-white text-xl font-bold border-2 border-green-400 shadow-lg">🦎</div>
+                        <div class="flex-1">
+                          <div class="text-xs text-green-600 font-semibold mb-1">Default Token (FREE)</div>
+                          <div class="font-bold text-green-900 text-lg">NEYNARTODES</div>
+                          <div class="text-xs text-gray-500 font-mono">${CONFIG.CONTRACTS.neynartodes.substring(0, 10)}...${CONFIG.CONTRACTS.neynartodes.substring(38)}</div>
                         </div>
                       </div>
                     </div>
-                  ` : ''}
-                </div>
 
-                <!-- Tokenomics -->
-                <div class="p-6 bg-green-50 rounded-xl border-2 border-green-200">
-                  <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-bold text-green-800">💰 Tokenomics</h3>
-                    <button id="toggleToken" class="px-4 py-2 rounded-lg font-semibold transition-colors ${state.tokenEnabled ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'}">
-                      ${state.tokenEnabled ? 'ON' : 'OFF'}
-                    </button>
-                  </div>
+                    <!-- Custom Token Option -->
+                    <div class="border-2 border-dashed border-green-300 rounded-lg p-4">
+                      <div class="flex items-center gap-2 mb-3">
+                        <input type="checkbox" id="useCustomToken" ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? 'checked' : ''} class="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                        <label for="useCustomToken" class="text-sm font-semibold text-gray-700">Use Custom Token (+0.005 ETH fee)</label>
+                      </div>
 
-                  ${state.tokenEnabled ? `
-                    <div class="space-y-4">
-                      <div class="relative">
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Select Token (for requirements)</label>
-                        <input type="text" id="tokenSearch" value="${state.tokenSearch}" placeholder="Search: USDC, ETH, NEYNARTODES..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                        ${state.showTokenSuggestions ? `
-                          <div class="absolute z-10 w-full mt-1 bg-white border-2 border-green-300 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
-                            ${searchTokens(state.tokenSearch).map((token, idx) => `
-                              <button onclick="selectToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-green-50 border-b border-gray-100 transition-colors flex items-center gap-3">
-                                <img src="${token.image}" alt="${token.ticker}" class="w-10 h-10 rounded-full object-cover border-2 border-green-200" onerror="this.src='https://via.placeholder.com/40/22c55e/ffffff?text=${token.ticker[0]}'" />
-                                <div class="flex-1">
-                                  <div class="font-semibold text-gray-800">${token.name} <span class="text-green-600">(${token.ticker})</span></div>
-                                  <div class="text-xs text-gray-500 font-mono">${token.address.substring(0, 10)}...${token.address.substring(38)}</div>
-                                </div>
-                                <div class="text-right">
-                                  <div class="text-xs text-gray-600">Market Cap</div>
-                                  <div class="text-sm font-bold text-green-600">$${(token.mcap / 1000000).toFixed(1)}M</div>
-                                </div>
-                              </button>
-                            `).join('')}
+                      <div id="customTokenSection" class="${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? '' : 'hidden'}">
+                        <div class="relative mb-3">
+                          <label class="block text-sm font-semibold text-gray-700 mb-2">Search Token</label>
+                          <input type="text" id="tokenSearch" value="${state.tokenSearch}" placeholder="Search: USDC, ETH, BRETT..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                          ${state.showTokenSuggestions ? `
+                            <div class="absolute z-10 w-full mt-1 bg-white border-2 border-green-300 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
+                              ${searchTokens(state.tokenSearch).map((token, idx) => `
+                                <button onclick="selectToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-green-50 border-b border-gray-100 transition-colors flex items-center gap-3">
+                                  <img src="${token.image}" alt="${token.ticker}" class="w-10 h-10 rounded-full object-cover border-2 border-green-200" onerror="this.src='https://via.placeholder.com/40/22c55e/ffffff?text=${token.ticker[0]}'" />
+                                  <div class="flex-1">
+                                    <div class="font-semibold text-gray-800">${token.name} <span class="text-green-600">(${token.ticker})</span></div>
+                                    <div class="text-xs text-gray-500 font-mono">${token.address.substring(0, 10)}...${token.address.substring(38)}</div>
+                                  </div>
+                                  <div class="text-right">
+                                    <div class="text-xs text-gray-600">Market Cap</div>
+                                    <div class="text-sm font-bold text-green-600">$${(token.mcap / 1000000).toFixed(1)}M</div>
+                                  </div>
+                                </button>
+                              `).join('')}
+                            </div>
+                          ` : ''}
+                        </div>
+
+                        ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
+                          <div class="bg-gradient-to-r from-orange-50 to-yellow-50 p-4 rounded-lg border-2 border-orange-200 flex items-center gap-3">
+                            <img src="${state.tokenImage}" alt="${state.tokenTicker}" class="w-12 h-12 rounded-full object-cover border-2 border-orange-400 shadow-lg" onerror="this.src='https://via.placeholder.com/48/22c55e/ffffff?text=${state.tokenTicker[0]}'" />
+                            <div class="flex-1">
+                              <div class="text-xs text-orange-600 font-semibold mb-1">✓ Custom Token (+0.005 ETH)</div>
+                              <div class="font-bold text-orange-900 text-lg">${state.tokenTicker}</div>
+                              <div class="text-xs text-gray-500 font-mono">${state.tokenAddress.substring(0, 10)}...${state.tokenAddress.substring(38)}</div>
+                            </div>
                           </div>
                         ` : ''}
                       </div>
-
-                      ${state.tokenAddress ? `
-                        <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-200 flex items-center gap-3">
-                          <img src="${state.tokenImage}" alt="${state.tokenTicker}" class="w-12 h-12 rounded-full object-cover border-2 border-green-400 shadow-lg" onerror="this.src='https://via.placeholder.com/48/22c55e/ffffff?text=${state.tokenTicker[0]}'" />
-                          <div class="flex-1">
-                            <div class="text-xs text-green-600 font-semibold mb-1">✓ Selected Requirement Token</div>
-                            <div class="font-bold text-green-900 text-lg">${state.tokenTicker}</div>
-                            <div class="text-xs text-gray-500 font-mono">${state.tokenAddress.substring(0, 10)}...${state.tokenAddress.substring(38)}</div>
-                          </div>
-                        </div>
-                      ` : ''}
-
-                      <div class="grid grid-cols-2 gap-4">
-                        <div>
-                          <label class="block text-sm font-semibold text-gray-700 mb-2">Min Holdings</label>
-                          <input type="number" id="minHoldings" value="${state.minHoldings}" placeholder="100" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                          <p class="text-xs text-gray-600 mt-1">Minimum token balance required</p>
-                        </div>
-
-                        <div>
-                          <label class="block text-sm font-semibold text-gray-700 mb-2">Min Trade Volume ($)</label>
-                          <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="500" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                          <p class="text-xs text-gray-600 mt-1">Minimum USD volume traded (max $500)</p>
-                        </div>
-                      </div>
-
-                      <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-                        <p class="text-xs text-blue-800 font-semibold">
-                          💡 <strong>Safeguard:</strong> Trade volume is capped at $500 to prevent whale manipulation. Holdings caps are based on token market cap.
-                        </p>
-                      </div>
                     </div>
-                  ` : ''}
+
+                    <!-- Trade Volume Input -->
+                    <div>
+                      <label class="block text-sm font-semibold text-gray-700 mb-2">Min Trade Volume ($)</label>
+                      <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                      <p class="text-xs text-gray-600 mt-1">Minimum USD volume traded during contest (max $500, 0 = no requirement)</p>
+                    </div>
+
+                    <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+                      <p class="text-xs text-blue-800 font-semibold">
+                        💡 <strong>Volume is capped at $500</strong> to prevent whale manipulation. Using NEYNARTODES is free, custom tokens cost 0.005 ETH.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Winner Announcement -->
@@ -1569,16 +1550,23 @@
       if (startNow) startNow.onclick = () => { state.startMode = 'now'; render(); };
       if (startScheduled) startScheduled.onclick = () => { state.startMode = 'scheduled'; render(); };
 
-      const prizeToken = document.getElementById('prizeToken');
-      const prizeNFT = document.getElementById('prizeNFT');
-      if (prizeToken) prizeToken.onclick = () => { state.prizeType = 'token'; render(); };
-      if (prizeNFT) prizeNFT.onclick = () => { state.prizeType = 'nft'; render(); };
-
-      const toggleSocial = document.getElementById('toggleSocial');
-      if (toggleSocial) toggleSocial.onclick = () => { state.socialEnabled = !state.socialEnabled; render(); };
-
-      const toggleToken = document.getElementById('toggleToken');
-      if (toggleToken) toggleToken.onclick = () => { state.tokenEnabled = !state.tokenEnabled; render(); };
+      // Custom token checkbox handler
+      const useCustomToken = document.getElementById('useCustomToken');
+      if (useCustomToken) {
+        useCustomToken.onchange = (e) => {
+          const customSection = document.getElementById('customTokenSection');
+          if (e.target.checked) {
+            customSection?.classList.remove('hidden');
+          } else {
+            customSection?.classList.add('hidden');
+            // Reset to default NEYNARTODES
+            state.tokenAddress = CONFIG.CONTRACTS.neynartodes;
+            state.tokenTicker = 'NEYNARTODES';
+            state.tokenImage = '';
+            state.tokenSearch = '';
+          }
+        };
+      }
 
       const prizeTokenSearch = document.getElementById('prizeTokenSearch');
       if (prizeTokenSearch) {
@@ -1623,9 +1611,6 @@
       const minReplies = document.getElementById('minReplies');
       const customMessage = document.getElementById('customMessage');
       const prizeTokenAmount = document.getElementById('prizeTokenAmount');
-      const prizeNftAddress = document.getElementById('prizeNftAddress');
-      const prizeNftId = document.getElementById('prizeNftId');
-      const minHoldings = document.getElementById('minHoldings');
       const minTradeVolume = document.getElementById('minTradeVolume');
 
       if (startDate) startDate.onchange = (e) => { state.startDate = e.target.value; render(); };
@@ -1656,9 +1641,6 @@
       if (minReplies) minReplies.oninput = (e) => { state.minReplies = e.target.value; };
       if (customMessage) customMessage.oninput = (e) => { state.customMessage = e.target.value; };
       if (prizeTokenAmount) prizeTokenAmount.oninput = (e) => { state.prizeTokenAmount = e.target.value; };
-      if (prizeNftAddress) prizeNftAddress.oninput = (e) => { state.prizeNftAddress = e.target.value; };
-      if (prizeNftId) prizeNftId.oninput = (e) => { state.prizeNftId = e.target.value; };
-      if (minHoldings) minHoldings.oninput = (e) => { state.minHoldings = e.target.value; };
       if (minTradeVolume) minTradeVolume.oninput = (e) => { state.minTradeVolume = e.target.value; };
 
       const launchButton = document.getElementById('launchButton');
@@ -1699,25 +1681,23 @@
             return;
           }
 
-          if (state.prizeType === 'token' && (!state.prizeTokenAddress || !state.prizeTokenAmount)) {
+          if (!state.prizeTokenAddress || !state.prizeTokenAmount) {
             alert('Please select a prize token and enter the amount!');
             return;
           }
-          if (state.prizeType === 'nft' && (!state.prizeNftAddress || !state.prizeNftId)) {
-            alert('Please complete prize NFT details!');
+          if (state.startMode === 'scheduled' && !state.castHash) {
+            alert('Please enter cast hash for scheduled contests!');
             return;
           }
-          if (state.startMode === 'scheduled' && state.socialEnabled && !state.castHash) {
-            alert('Please enter cast hash or disable Social Dynamics!');
-            return;
-          }
-          if (state.tokenEnabled && !state.tokenAddress) {
-            alert('Please select a token for tokenomics or disable Tokenomics!');
-            return;
-          }
-          if (state.tokenEnabled && state.minTradeVolume && parseFloat(state.minTradeVolume) > 500) {
+          if (state.minTradeVolume && parseFloat(state.minTradeVolume) > 500) {
             alert('Trade volume requirement cannot exceed $500!\n\nThis safeguard prevents whale manipulation.');
             return;
+          }
+
+          // Ensure token address defaults to NEYNARTODES if not set
+          if (!state.tokenAddress) {
+            state.tokenAddress = CONFIG.CONTRACTS.neynartodes;
+            state.tokenTicker = 'NEYNARTODES';
           }
 
           // Calculate end time
@@ -1758,8 +1738,6 @@
           state.prizeTokenTicker = '';
           state.prizeTokenImage = '';
           state.prizeTokenSearch = '';
-          state.prizeNftAddress = '';
-          state.prizeNftId = '';
           state.tokenAddress = '';
           state.tokenTicker = '';
           state.tokenImage = '';
@@ -1769,7 +1747,6 @@
           state.minLikes = '0';
           state.minRecasts = '0';
           state.minReplies = '0';
-          state.minHoldings = '';
           state.minTradeVolume = '';
 
           render();
