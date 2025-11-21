@@ -1998,9 +1998,16 @@
         console.log('   Volume requirement:', ethers.utils.formatEther(volumeRequirement));
 
         // Cast ID - validated cast hash from user input (REQUIRED)
-        const castId = state.castHash;
-        console.log('   Cast ID to send:', castId);
-        if (!castId || !castId.startsWith('0x')) {
+        // Encode social requirements into castId: "castHash|R1L0P1" format
+        // R = recast required (1 if minRecasts > 0), L = like required, P = reply required
+        const reqRecast = parseInt(state.minRecasts) > 0 ? '1' : '0';
+        const reqLike = parseInt(state.minLikes) > 0 ? '1' : '0';
+        const reqReply = parseInt(state.minReplies) > 0 ? '1' : '0';
+        const requirementsCode = `R${reqRecast}L${reqLike}P${reqReply}`;
+        const castId = `${state.castHash}|${requirementsCode}`;
+        console.log('   Cast ID to send (with requirements):', castId);
+        console.log('   Requirements encoded: Recast=' + reqRecast + ', Like=' + reqLike + ', Reply=' + reqReply);
+        if (!state.castHash || !state.castHash.startsWith('0x')) {
           console.error('❌ Invalid cast hash - empty or doesnt start with 0x');
           alert('❌ Invalid cast hash. Please start over and enter a valid cast URL/hash.');
           return;

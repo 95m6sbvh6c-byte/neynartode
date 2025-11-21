@@ -326,13 +326,18 @@ async function checkAndFinalizeContest(contestId) {
   }
 
   console.log(`\n📋 Processing Contest #${contestId}`);
-  console.log(`   Cast ID: ${castId}`);
+  console.log(`   Cast ID (raw): ${castId}`);
   console.log(`   Token Requirement: ${tokenRequirement}`);
   console.log(`   Volume Requirement: ${ethers.formatEther(volumeRequirement)} tokens`);
 
+  // Extract actual cast hash (strip requirements if encoded)
+  // Format: "0xcasthash|R1L0P1" -> "0xcasthash"
+  const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+  console.log(`   Actual Cast Hash: ${actualCastHash}`);
+
   // Get social engagement
   console.log('\n🔍 Fetching social engagement from Neynar...');
-  const engagement = await getCastEngagement(castId);
+  const engagement = await getCastEngagement(actualCastHash);
 
   if (engagement.error) {
     console.log(`   ⚠️ Could not fetch cast: ${engagement.error}`);
@@ -349,59 +354,89 @@ async function checkAndFinalizeContest(contestId) {
   console.log(`   Likers: ${engagement.likers.length}`);
 
   // ═══════════════════════════════════════════════════════════════════
-  // SOCIAL REQUIREMENTS CONFIG
-  // TODO: In future, read these from on-chain or off-chain storage
-  // For now, defaults that can be overridden per-contest
+  // SOCIAL REQUIREMENTS - Parse from castId
+  // Format: "castHash|R1L0P1" where R=recast, L=like, P=reply (1=required, 0=not)
+  // If no pipe delimiter, use defaults (recast + reply required)
   // ═══════════════════════════════════════════════════════════════════
-  const socialRequirements = {
-    requireRecast: true,    // Must recast to qualify
-    requireReply: true,     // Must reply to qualify (if true, 4-word minimum applies)
-    requireLike: false,     // Must like to qualify
+  let socialRequirements = {
+    requireRecast: true,    // Default: must recast
+    requireReply: true,     // Default: must reply (4-word minimum)
+    requireLike: false,     // Default: like not required
   };
 
+  // Parse requirements from castId if encoded
+  if (castId.includes('|')) {
+    const [, reqCode] = castId.split('|');
+    if (reqCode) {
+      // Parse R1L0P1 format
+      const recastMatch = reqCode.match(/R(\d)/);
+      const likeMatch = reqCode.match(/L(\d)/);
+      const replyMatch = reqCode.match(/P(\d)/);
+
+      if (recastMatch) socialRequirements.requireRecast = recastMatch[1] !== '0';
+      if (likeMatch) socialRequirements.requireLike = likeMatch[1] !== '0';
+      if (replyMatch) socialRequirements.requireReply = replyMatch[1] !== '0';
+
+      console.log(`   Parsed requirements from castId: R=${socialRequirements.requireRecast ? 1 : 0} L=${socialRequirements.requireLike ? 1 : 0} P=${socialRequirements.requireReply ? 1 : 0}`);
+    }
+  }
+
+  console.log(`   Requirements: Recast=${socialRequirements.requireRecast}, Like=${socialRequirements.requireLike}, Reply=${socialRequirements.requireReply}`);
+
   // Determine potential participants based on requirements
+  // Build a set of qualifying addresses based on which requirements are enabled
   let potentialParticipants = [];
 
-  if (socialRequirements.requireRecast && socialRequirements.requireReply) {
-    // Both required: must recast AND reply with 4+ words
-    const recasterSet = new Set(engagement.recasters);
-    const replierAddresses = engagement.repliers.map(r => r.address);
-    potentialParticipants = replierAddresses.filter(addr => recasterSet.has(addr));
-    console.log(`   Filter: Recast + Reply (4+ words)`);
-  } else if (socialRequirements.requireRecast && !socialRequirements.requireReply) {
-    // Only recast required
-    potentialParticipants = [...engagement.recasters];
-    console.log(`   Filter: Recast only`);
-  } else if (!socialRequirements.requireRecast && socialRequirements.requireReply) {
-    // Only reply required (4+ words)
-    potentialParticipants = engagement.repliers.map(r => r.address);
-    console.log(`   Filter: Reply only (4+ words)`);
-  } else if (socialRequirements.requireLike) {
-    // Only like required
-    potentialParticipants = [...engagement.likers];
-    console.log(`   Filter: Like only`);
-  } else {
-    // No social requirements - everyone who engaged qualifies
-    const allEngagers = new Set([
-      ...engagement.recasters,
-      ...engagement.repliers.map(r => r.address),
-      ...engagement.likers
-    ]);
+  // Get all unique addresses that meet ANY enabled requirement first
+  const recastSet = new Set(engagement.recasters);
+  const likeSet = new Set(engagement.likers);
+  const replySet = new Set(engagement.repliers.map(r => r.address));
+
+  // If ALL requirements are disabled, use everyone who engaged
+  if (!socialRequirements.requireRecast && !socialRequirements.requireLike && !socialRequirements.requireReply) {
+    const allEngagers = new Set([...recastSet, ...likeSet, ...replySet]);
     potentialParticipants = [...allEngagers];
-    console.log(`   Filter: Any engagement`);
+    console.log(`   Filter: Any engagement (no requirements set)`);
+  } else {
+    // Start with all addresses from the first enabled requirement
+    let candidateSets = [];
+
+    if (socialRequirements.requireRecast) {
+      candidateSets.push({ name: 'Recast', set: recastSet });
+    }
+    if (socialRequirements.requireLike) {
+      candidateSets.push({ name: 'Like', set: likeSet });
+    }
+    if (socialRequirements.requireReply) {
+      candidateSets.push({ name: 'Reply (4+ words)', set: replySet });
+    }
+
+    if (candidateSets.length === 1) {
+      // Only one requirement - use that set
+      potentialParticipants = [...candidateSets[0].set];
+      console.log(`   Filter: ${candidateSets[0].name} only`);
+    } else {
+      // Multiple requirements - find intersection (must meet ALL)
+      let intersection = new Set(candidateSets[0].set);
+      for (let i = 1; i < candidateSets.length; i++) {
+        intersection = new Set([...intersection].filter(addr => candidateSets[i].set.has(addr)));
+      }
+      potentialParticipants = [...intersection];
+      console.log(`   Filter: ${candidateSets.map(s => s.name).join(' + ')}`);
+    }
   }
 
   // Deduplicate
   potentialParticipants = [...new Set(potentialParticipants)];
 
-  // Remove the host from participants
+  // Remove the host from participants (contest creator shouldn't win their own contest)
   if (engagement.castAuthor) {
     potentialParticipants = potentialParticipants.filter(
       addr => addr !== engagement.castAuthor
     );
   }
 
-  console.log(`\n✅ Potential participants (recasted + replied): ${potentialParticipants.length}`);
+  console.log(`\n✅ Qualified participants: ${potentialParticipants.length}`);
 
   if (potentialParticipants.length === 0) {
     // No qualified participants - auto-cancel and refund host
