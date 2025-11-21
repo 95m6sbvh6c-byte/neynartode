@@ -1670,6 +1670,7 @@
                 <button id="launchButton" class="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-8 py-6 rounded-2xl font-bold text-2xl transition-all shadow-2xl transform hover:scale-105 ${state.pendingTx ? 'opacity-50 cursor-not-allowed' : ''}" ${state.pendingTx ? 'disabled' : ''}>
                   ${state.pendingTx ? '⏳ LAUNCHING...' : '▶️ LAUNCH CONTEST'}
                 </button>
+                <p id="launchStatus" class="text-center text-sm text-blue-600 font-bold mt-2"></p>
                 <p class="text-center text-sm text-gray-600">
                   ⚠️ Prize will be locked in escrow smart contract
                 </p>
@@ -1909,6 +1910,10 @@
           try {
             console.log('🔘 Launch button clicked');
 
+            // Show status in UI since alerts don't work in Warpcast
+            const statusDiv = document.getElementById('launchStatus');
+            if (statusDiv) statusDiv.textContent = 'Step 1: Launch clicked...';
+
             // Check if dev wallet (unlimited contest launches)
             const isDev = isDevWallet(state.userAddress);
 
@@ -1963,23 +1968,20 @@
           }
 
           // Validate cast exists
+          if (statusDiv) statusDiv.textContent = 'Step 2: Validating cast...';
           const castValidation = await validateCast(extractedHash);
           if (!castValidation.valid) {
-            alert(`❌ Cast Validation Failed!\n\n${castValidation.error}\n\nMake sure you\'ve posted the cast and the URL/hash is correct.`);
+            if (statusDiv) statusDiv.textContent = '❌ Cast validation failed: ' + castValidation.error;
             return;
           }
 
           // Check if this is the user's own cast (required for leaderboard integrity)
           if (!castValidation.isOwnCast && !isDev) {
-            alert(`❌ Not Your Cast!\n\nYou can only create contests on your own Warpcast posts.\n\nCast author: @${castValidation.author}\nYour wallet: ${state.userAddress.slice(0, 6)}...${state.userAddress.slice(-4)}\n\nTo prevent leaderboard gaming, contests must be on casts you authored.`);
+            if (statusDiv) statusDiv.textContent = '❌ Not your cast! Must be your own post.';
             return;
           }
 
-          // Show cast preview
-          const confirmCast = confirm(`✅ Cast Found!\n\nAuthor: @${castValidation.author} ${castValidation.isOwnCast ? '(Your cast ✓)' : '(DEV MODE)'}\nText: "${castValidation.text}..."\n\nIs this the correct contest cast?`);
-          if (!confirmCast) {
-            return;
-          }
+          if (statusDiv) statusDiv.textContent = 'Step 3: Cast verified ✓ Preparing transaction...';
 
           // Store the validated hash
           state.castHash = extractedHash;
@@ -2037,11 +2039,13 @@
 
           // Launch contest on ContestEscrow contract
           // Contest is only added to state AFTER successful on-chain tx (inside launchContestOnChain)
+          if (statusDiv) statusDiv.textContent = 'Step 4: Calling contract...';
           await launchContestOnChain(newContest, totalMinutes * 60);
 
           } catch (error) {
             console.error('❌ Launch button error:', error);
-            alert('❌ Error launching contest:\n\n' + (error.message || error));
+            const statusDiv = document.getElementById('launchStatus');
+            if (statusDiv) statusDiv.textContent = '❌ Error: ' + (error.message || error);
           }
         };
       }
@@ -2084,20 +2088,23 @@
 
     // Launch contest on ContestEscrow contract
     async function launchContestOnChain(contest, durationSeconds) {
+      const statusDiv = document.getElementById('launchStatus');
       try {
         console.log('🚀 launchContestOnChain() called');
+        if (statusDiv) statusDiv.textContent = 'Step 5: Getting wallet provider...';
 
         // Use the stored provider (Farcaster or MetaMask)
         const ethProvider = window.activeEthProvider || window.ethereum;
         if (!ethProvider) {
-          state.walletStatus = 'ERROR: No wallet provider found!';
-          render();
+          if (statusDiv) statusDiv.textContent = '❌ No wallet provider found!';
           return;
         }
 
+        if (statusDiv) statusDiv.textContent = 'Step 6: Creating signer...';
         const provider = new ethers.providers.Web3Provider(ethProvider);
         const signer = provider.getSigner();
         const signerAddress = await signer.getAddress();
+        if (statusDiv) statusDiv.textContent = 'Step 7: Signer: ' + signerAddress.slice(0,10) + '...';
 
         const contestEscrow = new ethers.Contract(
           CONFIG.CONTRACTS.contestEscrow,
@@ -2179,9 +2186,9 @@
             console.log('   _volumeRequirement:', volumeRequirement.toString());
             console.log('   value (ETH):', ethers.utils.formatEther(totalValue));
 
-            alert(`🔒 Launching Contest!\n\nPrize: ${state.prizeTokenAmount} ETH\nDuration: ${Math.floor(durationSeconds / 60)} minutes\n${isCustomToken ? `Custom Token Fee: ${ethers.utils.formatEther(customTokenFee)} ETH\n` : ''}\nConfirm in MetaMask to lock your prize!`);
+            if (statusDiv) statusDiv.textContent = 'Step 8: Sending ETH transaction... Check wallet!';
 
-            console.log('⏳ Waiting for MetaMask confirmation...');
+            console.log('⏳ Waiting for wallet confirmation...');
             tx = await contestEscrow.createContestETH(
               durationSeconds,
               castId,
