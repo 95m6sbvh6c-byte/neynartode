@@ -48,8 +48,13 @@
       SEASON_0_MIN_TOKENS: ethers.utils.parseEther('20000') // 20K tokens
     };
 
-    // Dev wallet with unlimited privileges (no contest launch limit, no voting limit)
-    const DEV_WALLET = '0x78EeAA6F014667A339fCF8b4eCd74743366603fb';
+    // Dev wallets with unlimited privileges (no contest launch limit, no voting limit)
+    const DEV_WALLETS = [
+      '0x78EeAA6F014667A339fCF8b4eCd74743366603fb', // MetaMask
+      '0xAB4F21321A7A16eb57171994C7D7D1C808506E5d'  // Farcaster
+    ];
+    const DEV_WALLET = DEV_WALLETS[0]; // Keep for backwards compat
+    const isDevWallet = (addr) => DEV_WALLETS.some(w => w.toLowerCase() === addr?.toLowerCase());
 
     // ===== STATE =====
     const state = {
@@ -827,9 +832,9 @@
 
     async function voteForHost(hostFid, isUpvote) {
       // Check if dev wallet (unlimited voting)
-      const isDevWallet = state.userAddress.toLowerCase() === DEV_WALLET.toLowerCase();
+      const isDev = isDevWallet(state.userAddress);
 
-      if (!isDevWallet && state.votesRemaining <= 0) {
+      if (!isDev && state.votesRemaining <= 0) {
         alert('You have used all 10 votes for today! Come back tomorrow.');
         return;
       }
@@ -1887,10 +1892,10 @@
             console.log('🔘 Launch button clicked');
 
             // Check if dev wallet (unlimited contest launches)
-            const isDevWallet = state.userAddress.toLowerCase() === DEV_WALLET.toLowerCase();
+            const isDev = isDevWallet(state.userAddress);
 
           // Check if user already launched a contest today (skip for dev wallet)
-          if (!isDevWallet) {
+          if (!isDev) {
             const now = new Date();
             const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -1947,8 +1952,7 @@
           }
 
           // Check if this is the user's own cast (required for leaderboard integrity)
-          // isDevWallet already defined above
-          if (!castValidation.isOwnCast && !isDevWallet) {
+          if (!castValidation.isOwnCast && !isDev) {
             alert(`❌ Not Your Cast!\n\nYou can only create contests on your own Warpcast posts.\n\nCast author: @${castValidation.author}\nYour wallet: ${state.userAddress.slice(0, 6)}...${state.userAddress.slice(-4)}\n\nTo prevent leaderboard gaming, contests must be on casts you authored.`);
             return;
           }
