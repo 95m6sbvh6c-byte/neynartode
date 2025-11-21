@@ -2100,11 +2100,23 @@
           return;
         }
 
-        if (statusDiv) statusDiv.textContent = 'Step 6: Creating signer...';
+        if (statusDiv) statusDiv.textContent = 'Step 6: Getting account from provider...';
+
+        // For smart wallets, get address directly from provider first
+        let signerAddress;
+        try {
+          const accounts = await ethProvider.request({ method: 'eth_accounts' });
+          signerAddress = accounts[0];
+          if (statusDiv) statusDiv.textContent = 'Step 6b: Got address: ' + signerAddress.slice(0,10) + '...';
+        } catch (e) {
+          if (statusDiv) statusDiv.textContent = 'Step 6b ERROR: ' + e.message;
+          throw e;
+        }
+
+        if (statusDiv) statusDiv.textContent = 'Step 7: Creating ethers provider/signer...';
         const provider = new ethers.providers.Web3Provider(ethProvider);
-        const signer = provider.getSigner();
-        const signerAddress = await signer.getAddress();
-        if (statusDiv) statusDiv.textContent = 'Step 7: Signer: ' + signerAddress.slice(0,10) + '...';
+        const signer = provider.getSigner(signerAddress);
+        if (statusDiv) statusDiv.textContent = 'Step 7b: Signer ready for ' + signerAddress.slice(0,10) + '...';
 
         const contestEscrow = new ethers.Contract(
           CONFIG.CONTRACTS.contestEscrow,
