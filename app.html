@@ -1087,6 +1087,7 @@
                 ${state.userBadges.length > 0 ? `<span class="ml-2">${state.userBadges.map(b => getBadgeEmoji(b)).join('')}</span>` : ''}
               </p>
               <p class="text-xs text-white font-bold mt-1 bg-purple-600 bg-opacity-50 inline-block px-3 py-1 rounded-full">
+                Provider: ${window.activeEthProvider ? '✅' : '❌'} |
                 🦎 ${parseFloat(state.userBalance).toLocaleString()} $NEYNARTODES
               </p>
             </div>
