@@ -14,11 +14,17 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Farcaster Frame SDK for Mini App wallet connection -->
+  <!-- Farcaster Frame SDK for Mini App wallet connection (optional, loads async) -->
   <script type="module">
-    import { sdk } from 'https://esm.sh/@farcaster/frame-sdk@0.1.12';
-    window.FarcasterFrameSDK = sdk;
-    window.dispatchEvent(new Event('farcaster-sdk-loaded'));
+    try {
+      const { sdk } = await import('https://cdn.skypack.dev/@farcaster/frame-sdk@0.1.12');
+      window.FarcasterFrameSDK = sdk;
+      window.dispatchEvent(new Event('farcaster-sdk-loaded'));
+      console.log('✅ Farcaster Frame SDK loaded');
+    } catch (e) {
+      console.warn('⚠️ Frame SDK not available:', e.message);
+      // App still works without it - just use standard wallet connection
+    }
   </script>
   <style>
     @keyframes bubble {
