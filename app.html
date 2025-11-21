@@ -2292,9 +2292,14 @@
       state.showPrizeTokenSuggestions = false;
       updatePrizeTokenDropdown();
 
-      const address = prompt('Enter the token contract address:\n\n(e.g., 0x532f27101965dd16442E59d40670FaF5eBB142E4)');
-      if (!address || !address.startsWith('0x')) {
-        if (address) alert('Invalid address format. Must start with 0x');
+      let address = prompt('Enter the token contract address:\n\n(e.g., 0x532f27101965dd16442E59d40670FaF5eBB142E4)');
+      if (!address) return;
+
+      // Trim whitespace and normalize
+      address = address.trim();
+
+      if (!address.startsWith('0x') || address.length !== 42) {
+        alert(`Invalid address format.\n\nMust start with 0x and be 42 characters.\nYou entered: "${address}" (${address.length} chars)`);
         return;
       }
 
@@ -2330,9 +2335,14 @@
       state.showTokenSuggestions = false;
       updateTokenDropdown();
 
-      const address = prompt('Enter the token contract address:\n\n(e.g., 0x532f27101965dd16442E59d40670FaF5eBB142E4)');
-      if (!address || !address.startsWith('0x')) {
-        if (address) alert('Invalid address format. Must start with 0x');
+      let address = prompt('Enter the token contract address:\n\n(e.g., 0x532f27101965dd16442E59d40670FaF5eBB142E4)');
+      if (!address) return;
+
+      // Trim whitespace and normalize
+      address = address.trim();
+
+      if (!address.startsWith('0x') || address.length !== 42) {
+        alert(`Invalid address format.\n\nMust start with 0x and be 42 characters.\nYou entered: "${address}" (${address.length} chars)`);
         return;
       }
 
