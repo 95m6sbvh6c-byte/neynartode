@@ -14,7 +14,19 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Frame SDK removed - was causing loading issues. Standard wallet connection works fine. -->
+  <!-- Farcaster Frame SDK v0.1.12 - loads async, app works without it -->
+  <script type="module">
+    (async () => {
+      try {
+        const { sdk } = await import('https://cdn.skypack.dev/@farcaster/frame-sdk@0.1.12');
+        window.FarcasterFrameSDK = sdk;
+        window.dispatchEvent(new Event('farcaster-sdk-loaded'));
+        console.log('Farcaster Frame SDK loaded');
+      } catch (e) {
+        console.warn('Frame SDK not available:', e.message);
+      }
+    })();
+  </script>
   <style>
     @keyframes bubble {
       0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; }
@@ -2471,8 +2483,51 @@
     // Load token list from Base on startup
     fetchBaseTokens().catch(err => console.warn('Token list fetch failed:', err));
 
+    // Frame SDK initialization (for Warpcast Mini App context)
+    async function initFrameContext() {
+      if (!window.FarcasterFrameSDK) return;
+
+      try {
+        const sdk = window.FarcasterFrameSDK;
+        console.log('Initializing Frame SDK context...');
+
+        // Signal we're ready
+        if (sdk.actions?.ready) {
+          await sdk.actions.ready();
+        }
+
+        // Get user context if available
+        if (sdk.context) {
+          const context = await sdk.context;
+          if (context?.user?.fid) {
+            state.userFid = context.user.fid;
+            state.userName = context.user.username || `fid:${context.user.fid}`;
+            console.log('Frame context user:', state.userName);
+          }
+        }
+
+        // Auto-connect if wallet available
+        if (sdk.wallet?.ethProvider) {
+          const accounts = await sdk.wallet.ethProvider.request({ method: 'eth_accounts' });
+          if (accounts?.length > 0) {
+            console.log('Auto-connecting from Frame SDK...');
+            await connectWallet();
+          }
+        }
+      } catch (e) {
+        console.log('Frame SDK init:', e.message);
+      }
+    }
+
     // Initial render
     render();
+
+    // Try Frame SDK init (async, non-blocking)
+    if (window.FarcasterFrameSDK) {
+      initFrameContext();
+    } else {
+      window.addEventListener('farcaster-sdk-loaded', initFrameContext);
+    }
   </script>
 </body>
 </html>
