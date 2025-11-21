@@ -725,7 +725,11 @@
 
     async function loadPrizePools() {
       try {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        // Use stored provider or fallback to JsonRpcProvider for read-only calls
+        const ethProvider = window.activeEthProvider || window.ethereum;
+        const provider = ethProvider
+          ? new ethers.providers.Web3Provider(ethProvider)
+          : new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
 
         // Load current season and prize pools from PrizeNFT contract
         const prizeNFTABI = [
@@ -831,8 +835,13 @@
       }
 
       try {
-        // Create provider and signer
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        // Create provider and signer using stored provider
+        const ethProvider = window.activeEthProvider || window.ethereum;
+        if (!ethProvider) {
+          alert('Wallet not connected! Please reconnect.');
+          return;
+        }
+        const provider = new ethers.providers.Web3Provider(ethProvider);
         const signer = provider.getSigner();
 
         // Contract ABIs
@@ -2061,7 +2070,13 @@
         console.log('   state.prizeTokenAddress:', state.prizeTokenAddress);
         console.log('   state.prizeTokenAmount:', state.prizeTokenAmount);
 
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        // Use the stored provider (Farcaster or MetaMask)
+        const ethProvider = window.activeEthProvider || window.ethereum;
+        if (!ethProvider) {
+          alert('Wallet not connected! Please reconnect.');
+          return;
+        }
+        const provider = new ethers.providers.Web3Provider(ethProvider);
         const signer = provider.getSigner();
         const signerAddress = await signer.getAddress();
         console.log('   Signer address:', signerAddress);
