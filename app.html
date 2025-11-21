@@ -14,18 +14,7 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Farcaster Frame SDK for Mini App wallet connection (optional, loads async) -->
-  <script type="module">
-    try {
-      const { sdk } = await import('https://cdn.skypack.dev/@farcaster/frame-sdk@0.1.12');
-      window.FarcasterFrameSDK = sdk;
-      window.dispatchEvent(new Event('farcaster-sdk-loaded'));
-      console.log('✅ Farcaster Frame SDK loaded');
-    } catch (e) {
-      console.warn('⚠️ Frame SDK not available:', e.message);
-      // App still works without it - just use standard wallet connection
-    }
-  </script>
+  <!-- Frame SDK removed - was causing loading issues. Standard wallet connection works fine. -->
   <style>
     @keyframes bubble {
       0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; }
@@ -2482,71 +2471,8 @@
     // Load token list from Base on startup
     fetchBaseTokens().catch(err => console.warn('Token list fetch failed:', err));
 
-    // Auto-init for Warpcast Mini App
-    async function initFrameContext() {
-      // Check if we're in a Farcaster Frame context
-      if (window.FarcasterFrameSDK || window.sdk) {
-        try {
-          const sdk = window.FarcasterFrameSDK || window.sdk;
-          console.log('🎭 Farcaster Frame SDK detected, auto-initializing...');
-
-          // Signal we're ready
-          if (sdk.actions && sdk.actions.ready) {
-            await sdk.actions.ready();
-            console.log('✅ Frame SDK ready signal sent');
-          }
-
-          // Try to get user context
-          if (sdk.context) {
-            const context = await sdk.context;
-            console.log('📱 Frame context:', context);
-
-            // If we have user info from Warpcast, try auto-connect
-            if (context?.user?.fid) {
-              console.log('👤 User FID from context:', context.user.fid);
-              state.userFid = context.user.fid;
-              state.userName = context.user.username || `fid:${context.user.fid}`;
-            }
-          }
-
-          // If we have wallet provider, try to get accounts
-          if (sdk.wallet && sdk.wallet.ethProvider) {
-            try {
-              const accounts = await sdk.wallet.ethProvider.request({ method: 'eth_accounts' });
-              if (accounts && accounts.length > 0) {
-                console.log('💳 Auto-detected wallet from Frame SDK:', accounts[0]);
-                // Auto-connect
-                await connectWallet();
-              }
-            } catch (e) {
-              console.log('Could not auto-get accounts:', e.message);
-            }
-          }
-        } catch (e) {
-          console.log('Frame SDK init error:', e);
-        }
-      }
-    }
-
-    // Initial render, then try Frame context
+    // Initial render
     render();
-
-    // Wait for SDK to load (ESM modules load async)
-    if (window.FarcasterFrameSDK) {
-      initFrameContext();
-    } else {
-      window.addEventListener('farcaster-sdk-loaded', () => {
-        console.log('🔔 Farcaster SDK loaded event received');
-        initFrameContext();
-      });
-      // Also try after a short delay as fallback
-      setTimeout(() => {
-        if (window.FarcasterFrameSDK && !state.isLoggedIn) {
-          console.log('🔔 Farcaster SDK detected via timeout');
-          initFrameContext();
-        }
-      }, 1000);
-    }
   </script>
 </body>
 </html>
