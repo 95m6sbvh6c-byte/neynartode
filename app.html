@@ -14,14 +14,20 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Farcaster Frame SDK v0.1.12 - loads async, app works without it -->
+  <!-- Farcaster Frame SDK v0.1.12 - MUST call ready() for Warpcast to show content -->
   <script type="module">
     (async () => {
       try {
         const { sdk } = await import('https://cdn.skypack.dev/@farcaster/frame-sdk@0.1.12');
         window.FarcasterFrameSDK = sdk;
+
+        // CRITICAL: Must call ready() for Warpcast to display the Mini App
+        if (sdk.actions?.ready) {
+          await sdk.actions.ready();
+          console.log('Frame SDK ready() called - Warpcast should show content now');
+        }
+
         window.dispatchEvent(new Event('farcaster-sdk-loaded'));
-        console.log('Farcaster Frame SDK loaded');
       } catch (e) {
         console.warn('Frame SDK not available:', e.message);
       }
@@ -2484,17 +2490,13 @@
     fetchBaseTokens().catch(err => console.warn('Token list fetch failed:', err));
 
     // Frame SDK initialization (for Warpcast Mini App context)
+    // Note: ready() is called in head script, this just gets user context
     async function initFrameContext() {
       if (!window.FarcasterFrameSDK) return;
 
       try {
         const sdk = window.FarcasterFrameSDK;
-        console.log('Initializing Frame SDK context...');
-
-        // Signal we're ready
-        if (sdk.actions?.ready) {
-          await sdk.actions.ready();
-        }
+        console.log('Getting Frame SDK context...');
 
         // Get user context if available
         if (sdk.context) {
