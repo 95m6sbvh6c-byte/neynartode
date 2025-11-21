@@ -531,16 +531,26 @@
         if (window.FarcasterSDK) {
           try {
             const sdk = window.FarcasterSDK;
-            console.log('Farcaster SDK found, wallet methods:', Object.keys(sdk.wallet || {}));
+            console.log('Farcaster SDK found');
+            console.log('SDK wallet object:', sdk.wallet);
+            console.log('SDK wallet methods:', sdk.wallet ? Object.keys(sdk.wallet) : 'no wallet');
 
-            // Get the provider using new method
-            if (sdk.wallet?.getEthereumProvider) {
-              ethProvider = await sdk.wallet.getEthereumProvider();
+            // Get the provider - try different methods
+            if (typeof sdk.wallet?.getEthereumProvider === 'function') {
+              console.log('Calling getEthereumProvider()...');
+              ethProvider = sdk.wallet.getEthereumProvider();
+              // Check if it returns a promise
+              if (ethProvider && typeof ethProvider.then === 'function') {
+                ethProvider = await ethProvider;
+              }
               providerSource = 'farcaster';
               console.log('Got Farcaster provider:', ethProvider);
+              console.log('Provider methods:', ethProvider ? Object.keys(ethProvider) : 'null');
+            } else {
+              console.log('getEthereumProvider not found on sdk.wallet');
             }
           } catch (sdkError) {
-            console.log('Farcaster SDK wallet error:', sdkError);
+            console.log('Farcaster SDK wallet error:', sdkError.message);
           }
         }
 
@@ -1044,7 +1054,7 @@
             </button>
 
             <p class="mt-2 text-xs text-gray-500">
-              SDK: ${window.FarcasterSDK ? '✅' : '❌'} | ETH: ${window.ethereum ? '✅' : '❌'}
+              SDK: ${window.FarcasterSDK ? '✅' : '❌'} | Wallet: ${window.FarcasterSDK?.wallet ? '✅' : '❌'} | ETH: ${window.ethereum ? '✅' : '❌'}
             </p>
 
             <div class="mt-8 p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
