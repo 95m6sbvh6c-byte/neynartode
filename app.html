@@ -34,9 +34,6 @@
   <div id="app"></div>
 
   <script>
-    // DEBUG: Very first line
-    alert('SCRIPT START');
-
     // ===== CONFIGURATION =====
     const CONFIG = {
       NEYNAR_API_KEY: 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
@@ -516,9 +513,6 @@
 
     // ===== BLOCKCHAIN FUNCTIONS =====
     async function connectWallet() {
-      // DEBUG: First thing when connect is clicked
-      alert('DEBUG connectWallet called!\n\nFarcasterSDK: ' + (window.FarcasterSDK ? 'YES' : 'NO') + '\nwindow.ethereum: ' + (window.ethereum ? 'YES' : 'NO'));
-
       try {
         // Helper for timeout (no longer used for wallet connection - we wait indefinitely)
         const withTimeout = (promise, ms, errorMsg) => Promise.race([
@@ -1045,6 +1039,10 @@
             >
               🔥 ${state.isCheckingWhitelist ? (state.walletStatus ? 'Waiting...' : 'Checking...') : 'Connect Wallet'}
             </button>
+
+            <p class="mt-2 text-xs text-gray-500">
+              SDK: ${window.FarcasterSDK ? '✅' : '❌'} | ETH: ${window.ethereum ? '✅' : '❌'}
+            </p>
 
             <div class="mt-8 p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
               <p class="text-sm text-purple-800 mb-2 font-semibold">🌊 Powered by the Colony 🌊</p>
@@ -2075,23 +2073,17 @@
       try {
         console.log('🚀 launchContestOnChain() called');
 
-        // DEBUG: Show what provider we have
-        alert('DEBUG: Starting launch...\n\nactiveEthProvider: ' + (window.activeEthProvider ? 'YES' : 'NO') + '\nwindow.ethereum: ' + (window.ethereum ? 'YES' : 'NO'));
-
         // Use the stored provider (Farcaster or MetaMask)
         const ethProvider = window.activeEthProvider || window.ethereum;
         if (!ethProvider) {
-          alert('Wallet not connected! Please reconnect.');
+          state.walletStatus = 'ERROR: No wallet provider found!';
+          render();
           return;
         }
-
-        alert('DEBUG: Got provider, creating Web3Provider...');
 
         const provider = new ethers.providers.Web3Provider(ethProvider);
         const signer = provider.getSigner();
         const signerAddress = await signer.getAddress();
-
-        alert('DEBUG: Signer address: ' + signerAddress);
 
         const contestEscrow = new ethers.Contract(
           CONFIG.CONTRACTS.contestEscrow,
@@ -2508,9 +2500,6 @@
     };
 
     // ===== INIT =====
-    // DEBUG: Alert on page load
-    alert('PAGE LOADED!\n\nJS is running.\nFarcasterSDK: ' + (window.FarcasterSDK ? 'YES' : 'NO'));
-
     // Load token list from Base on startup
     fetchBaseTokens().catch(err => console.warn('Token list fetch failed:', err));
 
