@@ -516,31 +516,39 @@
         ]);
 
         // Try to get Farcaster Mini App SDK provider first (for Warpcast)
-        let ethProvider = window.ethereum;
+        let ethProvider = null;
+        let providerSource = 'none';
 
+        // Check for Farcaster SDK first
         if (window.FarcasterSDK) {
           try {
             const sdk = window.FarcasterSDK;
-            console.log('Farcaster Mini App SDK detected');
+            console.log('Farcaster SDK found, wallet methods:', Object.keys(sdk.wallet || {}));
 
-            // Get the provider using new method (getEthereumProvider replaced ethProvider)
+            // Get the provider using new method
             if (sdk.wallet?.getEthereumProvider) {
               ethProvider = await sdk.wallet.getEthereumProvider();
-              console.log('Using Farcaster wallet provider');
-            } else if (sdk.wallet?.ethProvider) {
-              // Fallback for older SDK versions
-              ethProvider = sdk.wallet.ethProvider;
-              console.log('Using Farcaster wallet ethProvider (legacy)');
+              providerSource = 'farcaster';
+              console.log('Got Farcaster provider:', ethProvider);
             }
           } catch (sdkError) {
-            console.log('Farcaster SDK wallet error (falling back to window.ethereum):', sdkError);
+            console.log('Farcaster SDK wallet error:', sdkError);
           }
         }
 
+        // Fallback to window.ethereum (MetaMask, etc)
+        if (!ethProvider && window.ethereum) {
+          ethProvider = window.ethereum;
+          providerSource = 'metamask';
+          console.log('Using window.ethereum (MetaMask)');
+        }
+
         if (!ethProvider) {
-          alert('No wallet found. Please use Warpcast or install MetaMask!');
+          alert('No wallet found!\n\nFarcaster SDK: ' + (window.FarcasterSDK ? 'loaded' : 'not loaded') + '\nwindow.ethereum: ' + (window.ethereum ? 'yes' : 'no'));
           return false;
         }
+
+        console.log('Using provider from:', providerSource);
 
         // Show "waiting for wallet" state - NO timeout, wait for user to unlock
         state.isCheckingWhitelist = true;
