@@ -738,13 +738,9 @@
       // Load prize pools from contracts
       await loadPrizePools();
 
-      // In production, fetch from backend/contract
-      // For now, use simulated data
-      state.leaderboardData = [
-        { rank: 1, fid: 99999, pfp: '🦄', username: 'cryptoqueen', totalScore: 156500, voteScore: 25000, contests: 12, replies: 245, recasts: 189, likes: 567, volume: 125000, neynarScore: 0.92, badges: ['gold', 'silver'] },
-        { rank: 2, fid: 88888, pfp: '🚀', username: 'moonboi', totalScore: 143200, voteScore: 18000, contests: 10, replies: 198, recasts: 156, likes: 432, volume: 98000, neynarScore: 0.88, badges: ['bronze'] },
-        { rank: 3, fid: 77777, pfp: '💎', username: 'hodlmaster', totalScore: 128900, voteScore: 12000, contests: 9, replies: 176, recasts: 142, likes: 389, volume: 87000, neynarScore: 0.85, badges: ['purple'] }
-      ];
+      // Start with empty leaderboard - will be populated from on-chain contest data
+      // TODO: Fetch actual host stats from ContestEscrow events
+      state.leaderboardData = [];
 
       // Award Season 0 Beta badges to all participants and add to their badge list
       state.leaderboardData = state.leaderboardData.map(host => {
@@ -760,32 +756,14 @@
         return { ...host, badges };
       });
 
-      // Add some sample upcoming contests
-      const now = new Date();
-      state.upcomingContests = [
-        {
-          id: 1,
-          host: '0x1234...5678',
-          hostFull: '0x1234567890abcdef1234567890abcdef12345678',
-          prize: '100 USDC',
-          startTime: new Date(now.getTime() + 2 * 60 * 60 * 1000), // 2 hours from now
-          endTime: new Date(now.getTime() + 26 * 60 * 60 * 1000), // 26 hours from now
-          duration: '24h 0m',
-          socialEnabled: true,
-          tokenEnabled: true
-        },
-        {
-          id: 2,
-          host: '0xabcd...ef01',
-          hostFull: '0xabcdef0123456789abcdef0123456789abcdef01',
-          prize: '0.5 ETH',
-          startTime: new Date(now.getTime() + 6 * 60 * 60 * 1000), // 6 hours from now
-          endTime: new Date(now.getTime() + 30 * 60 * 60 * 1000), // 30 hours from now
-          duration: '1h 0m',
-          socialEnabled: true,
-          tokenEnabled: false
-        }
-      ];
+      // Limit to top 10 hosts (or all if less than 10)
+      state.leaderboardData = state.leaderboardData
+        .sort((a, b) => b.totalScore - a.totalScore)
+        .slice(0, 10)
+        .map((host, idx) => ({ ...host, rank: idx + 1 }));
+
+      // Clear sample upcoming contests - will be populated from on-chain data
+      state.upcomingContests = [];
     }
 
     async function voteForHost(hostFid, isUpvote) {
@@ -1160,6 +1138,14 @@
                 </div>
 
                 <div class="overflow-x-auto">
+                  ${state.leaderboardData.length === 0 ? `
+                    <div class="text-center py-12">
+                      <div class="text-6xl mb-4">🦎</div>
+                      <h3 class="text-2xl font-black text-purple-800 mb-2">No Hosts Yet!</h3>
+                      <p class="text-purple-600 font-semibold">Be the first to launch a contest and claim the top spot!</p>
+                      <p class="text-sm text-purple-500 mt-2">Top 10 hosts will be displayed here</p>
+                    </div>
+                  ` : `
                   <table class="w-full">
                     <thead>
                       <tr class="border-b-2 border-gray-200">
@@ -1230,6 +1216,7 @@
                       `).join('')}
                     </tbody>
                   </table>
+                  `}
                 </div>
 
                 <div class="mt-6 p-6 bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl border-4 border-purple-300">
