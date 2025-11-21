@@ -1,0 +1,247 @@
+/**
+ * Trade Monitor Page
+ *
+ * Serves a real-time dashboard showing trades as they come in via Neynar webhooks.
+ *
+ * Usage: https://your-app.vercel.app/api/monitor
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+module.exports = async (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+
+  // Inline the HTML for Vercel (can't read files at runtime)
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEYNARtodes Trade Monitor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse-green {
+      0%, 100% { background-color: rgba(34, 197, 94, 0.2); }
+      50% { background-color: rgba(34, 197, 94, 0.4); }
+    }
+    .new-trade {
+      animation: pulse-green 1s ease-in-out 3;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+  <div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold text-green-400">NEYNARtodes Trade Monitor</h1>
+        <p class="text-gray-400">Real-time trade tracking via Neynar webhooks</p>
+      </div>
+      <div id="status" class="flex items-center gap-2">
+        <div id="statusDot" class="w-3 h-3 rounded-full bg-yellow-500"></div>
+        <span id="statusText" class="text-gray-400">Connecting...</span>
+      </div>
+    </div>
+
+    <!-- Token Filter -->
+    <div class="mb-6 bg-gray-800 rounded-lg p-4">
+      <label class="block text-sm text-gray-400 mb-2">Filter by Token Address</label>
+      <div class="flex gap-4">
+        <input
+          type="text"
+          id="tokenFilter"
+          placeholder="0x8de1622fe07f56cda2e2273e615a513f1d828b07 (NEYNARtodes)"
+          class="flex-1 bg-gray-700 rounded px-4 py-2 text-white placeholder-gray-500"
+          value="0x8de1622fe07f56cda2e2273e615a513f1d828b07"
+        >
+        <button
+          onclick="setToken()"
+          class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded font-medium"
+        >
+          Set Token
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-gray-800 rounded-lg p-4">
+        <p class="text-gray-400 text-sm">Storage</p>
+        <p id="storage" class="text-2xl font-bold text-blue-400">--</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <p class="text-gray-400 text-sm">Tokens Tracked</p>
+        <p id="tokensTracked" class="text-2xl font-bold text-green-400">--</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <p class="text-gray-400 text-sm">Total Traders</p>
+        <p id="totalTraders" class="text-2xl font-bold text-purple-400">--</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <p class="text-gray-400 text-sm">Last Update</p>
+        <p id="lastUpdate" class="text-2xl font-bold text-yellow-400">--</p>
+      </div>
+    </div>
+
+    <!-- Traders Table -->
+    <div class="bg-gray-800 rounded-lg overflow-hidden">
+      <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+        <h2 class="text-xl font-bold">Traders</h2>
+        <span id="traderCount" class="text-gray-400">0 traders</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-700">
+            <tr>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-300">Rank</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-300">Wallet</th>
+              <th class="px-4 py-3 text-right text-sm font-medium text-gray-300">Volume</th>
+              <th class="px-4 py-3 text-right text-sm font-medium text-gray-300">Trades</th>
+            </tr>
+          </thead>
+          <tbody id="tradersTable">
+            <tr>
+              <td colspan="4" class="px-4 py-8 text-center text-gray-500">
+                No trades yet. Start trading to see data appear!
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Live Feed -->
+    <div class="mt-8 bg-gray-800 rounded-lg overflow-hidden">
+      <div class="p-4 border-b border-gray-700">
+        <h2 class="text-xl font-bold">Live Feed</h2>
+        <p class="text-gray-400 text-sm">Updates every 3 seconds</p>
+      </div>
+      <div id="liveFeed" class="p-4 max-h-96 overflow-y-auto font-mono text-sm">
+        <p class="text-gray-500">Waiting for trades...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+    let currentToken = '0x8de1622fe07f56cda2e2273e615a513f1d828b07';
+    let previousTraders = new Map();
+    let pollInterval;
+
+    function setToken() {
+      const input = document.getElementById('tokenFilter');
+      currentToken = input.value.trim().toLowerCase();
+      previousTraders.clear();
+      document.getElementById('tradersTable').innerHTML = \`
+        <tr>
+          <td colspan="4" class="px-4 py-8 text-center text-gray-500">
+            Loading...
+          </td>
+        </tr>
+      \`;
+      fetchData();
+    }
+
+    async function fetchData() {
+      try {
+        // Fetch general stats
+        const statsRes = await fetch(\`\${API_BASE}/api/trade-webhook\`);
+        const stats = await statsRes.json();
+
+        document.getElementById('storage').textContent = stats.storage || 'memory';
+        document.getElementById('tokensTracked').textContent = stats.tokensTracked || 0;
+        document.getElementById('statusDot').className = 'w-3 h-3 rounded-full bg-green-500';
+        document.getElementById('statusText').textContent = 'Connected';
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+        // Fetch traders for specific token
+        if (currentToken) {
+          const tradersRes = await fetch(\`\${API_BASE}/api/trade-webhook?token=\${currentToken}\`);
+          const tradersData = await tradersRes.json();
+
+          const traders = tradersData.traders || [];
+          document.getElementById('totalTraders').textContent = traders.length;
+          document.getElementById('traderCount').textContent = \`\${traders.length} traders\`;
+
+          updateTradersTable(traders);
+        }
+      } catch (error) {
+        console.error('Fetch error:', error);
+        document.getElementById('statusDot').className = 'w-3 h-3 rounded-full bg-red-500';
+        document.getElementById('statusText').textContent = 'Error';
+      }
+    }
+
+    function updateTradersTable(traders) {
+      const tbody = document.getElementById('tradersTable');
+      const feed = document.getElementById('liveFeed');
+
+      if (traders.length === 0) {
+        tbody.innerHTML = \`
+          <tr>
+            <td colspan="4" class="px-4 py-8 text-center text-gray-500">
+              No trades yet. Start trading to see data appear!
+            </td>
+          </tr>
+        \`;
+        return;
+      }
+
+      let html = '';
+      traders.forEach((trader, index) => {
+        const prevVolume = previousTraders.get(trader.address) || 0;
+        const isNew = trader.volume > prevVolume;
+        const volumeDiff = trader.volume - prevVolume;
+
+        if (isNew && prevVolume > 0) {
+          // Add to live feed
+          const timestamp = new Date().toLocaleTimeString();
+          const feedEntry = document.createElement('p');
+          feedEntry.className = 'text-green-400 mb-1';
+          feedEntry.textContent = \`[\${timestamp}] \${trader.address.slice(0,10)}... +\${volumeDiff.toLocaleString(undefined, {maximumFractionDigits: 2})} tokens\`;
+          feed.insertBefore(feedEntry, feed.firstChild);
+
+          // Keep only last 50 entries
+          while (feed.children.length > 50) {
+            feed.removeChild(feed.lastChild);
+          }
+        }
+
+        previousTraders.set(trader.address, trader.volume);
+
+        html += \`
+          <tr class="\${isNew ? 'new-trade' : ''} border-b border-gray-700 hover:bg-gray-750">
+            <td class="px-4 py-3 text-gray-400">#\${index + 1}</td>
+            <td class="px-4 py-3">
+              <a href="https://basescan.org/address/\${trader.address}" target="_blank" class="text-blue-400 hover:underline">
+                \${trader.address.slice(0, 6)}...\${trader.address.slice(-4)}
+              </a>
+            </td>
+            <td class="px-4 py-3 text-right font-mono \${isNew ? 'text-green-400' : 'text-white'}">
+              \${trader.volume.toLocaleString(undefined, {maximumFractionDigits: 2})}
+            </td>
+            <td class="px-4 py-3 text-right text-gray-400">\${trader.tradeCount}</td>
+          </tr>
+        \`;
+      });
+
+      tbody.innerHTML = html;
+    }
+
+    // Initial fetch
+    fetchData();
+
+    // Poll every 3 seconds
+    pollInterval = setInterval(fetchData, 3000);
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      clearInterval(pollInterval);
+    });
+  </script>
+</body>
+</html>`;
+
+  res.status(200).send(html);
+};
