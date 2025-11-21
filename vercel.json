@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "public": true,
   "builds": [
     {
       "src": "index.html",
@@ -10,11 +11,19 @@
       "use": "@vercel/static"
     },
     {
+      "src": ".well-known/farcaster.json",
+      "use": "@vercel/static"
+    },
+    {
       "src": "api/**/*.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/.well-known/farcaster.json",
+      "dest": "/.well-known/farcaster.json"
+    },
     {
       "src": "/",
       "dest": "/app.html"
@@ -29,7 +38,7 @@
     },
     {
       "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "dest": "/api/$1.js"
     }
   ],
   "env": {

@@ -1,0 +1,16 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjEyMzQ1LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4Li4uIn0",
+    "payload": "eyJkb21haW4iOiJmcmFtZS1vcGFsLWVpZ2h0LnZlcmNlbC5hcHAifQ",
+    "signature": "placeholder_signature"
+  },
+  "frame": {
+    "version": "1",
+    "name": "NEYNARtodes",
+    "iconUrl": "https://frame-opal-eight.vercel.app/api/image",
+    "homeUrl": "https://frame-opal-eight.vercel.app/app",
+    "splashImageUrl": "https://frame-opal-eight.vercel.app/api/image",
+    "splashBackgroundColor": "#667eea",
+    "webhookUrl": "https://frame-opal-eight.vercel.app/api/webhook"
+  }
+}
