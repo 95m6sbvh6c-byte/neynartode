@@ -2214,14 +2214,21 @@
             if (statusDiv) statusDiv.textContent = 'Step 8: Sending ETH transaction... Check wallet!';
 
             console.log('⏳ Waiting for wallet confirmation...');
-            tx = await contestEscrow.createContestETH(
-              durationSeconds,
-              castId,
-              tokenRequirement,
-              volumeRequirement,
-              { value: totalValue }
-            );
-            console.log('✅ MetaMask confirmed! TX:', tx.hash);
+            try {
+              tx = await contestEscrow.createContestETH(
+                durationSeconds,
+                castId,
+                tokenRequirement,
+                volumeRequirement,
+                { value: totalValue }
+              );
+              if (statusDiv) statusDiv.textContent = 'Step 9: TX sent! Hash: ' + (tx.hash ? tx.hash.slice(0,15) + '...' : 'no hash');
+              console.log('✅ Wallet confirmed! TX:', tx.hash);
+            } catch (txError) {
+              if (statusDiv) statusDiv.textContent = '❌ TX Error: ' + (txError.message || txError).slice(0, 50);
+              console.error('TX Error:', txError);
+              throw txError;
+            }
           } else {
             // ERC20 prize - need to approve then call createContestERC20
             const prizeToken = new ethers.Contract(state.prizeTokenAddress, ERC20_ABI, signer);
