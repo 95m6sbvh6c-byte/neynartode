@@ -2213,7 +2213,6 @@
 
             if (statusDiv) statusDiv.textContent = 'Step 8: Building transaction...';
 
-            // For smart wallets, we need to use eth_sendTransaction directly
             // Encode the function call
             const iface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
             const txData = iface.encodeFunctionData('createContestETH', [
@@ -2223,9 +2222,10 @@
               volumeRequirement
             ]);
 
-            if (statusDiv) statusDiv.textContent = 'Step 8b: Sending via eth_sendTransaction...';
-
+            if (statusDiv) statusDiv.textContent = 'Step 8b: Sending transaction...';
             console.log('⏳ Waiting for wallet confirmation...');
+
+            // Try eth_sendTransaction first (smart wallets), fall back to ethers signer (EOA)
             try {
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
@@ -2238,42 +2238,108 @@
               });
               tx = { hash: txHash };
               if (statusDiv) statusDiv.textContent = 'Step 9: TX sent! Hash: ' + txHash.slice(0,15) + '...';
-              console.log('✅ Wallet confirmed! TX:', txHash);
+              console.log('✅ Wallet confirmed (smart wallet)! TX:', txHash);
             } catch (txError) {
-              if (statusDiv) statusDiv.textContent = '❌ TX Error: ' + (txError.message || txError).slice(0, 50);
-              console.error('TX Error:', txError);
-              throw txError;
+              // If eth_sendTransaction fails, try ethers.js signer (EOA wallets)
+              if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
+                console.log('Smart wallet method failed, trying EOA signer...');
+                if (statusDiv) statusDiv.textContent = 'Step 8c: Trying EOA signer...';
+                try {
+                  tx = await contestEscrow.createContestETH(
+                    durationSeconds,
+                    castId,
+                    tokenRequirement,
+                    volumeRequirement,
+                    { value: totalValue }
+                  );
+                  if (statusDiv) statusDiv.textContent = 'Step 9: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
+                  console.log('✅ Wallet confirmed (EOA)! TX:', tx.hash);
+                } catch (eoaError) {
+                  if (statusDiv) statusDiv.textContent = '❌ TX Error: ' + (eoaError.message || eoaError).slice(0, 50);
+                  console.error('EOA TX Error:', eoaError);
+                  throw eoaError;
+                }
+              } else {
+                if (statusDiv) statusDiv.textContent = '❌ TX Error: ' + (txError.message || txError).slice(0, 50);
+                console.error('TX Error:', txError);
+                throw txError;
+              }
             }
           } else {
             // ERC20 prize - need to approve then call createContestERC20
-            const prizeToken = new ethers.Contract(state.prizeTokenAddress, ERC20_ABI, signer);
+            if (statusDiv) statusDiv.textContent = 'Step 8: Preparing ERC20 prize...';
 
-            // Get decimals and parse amount
+            // Get decimals using read-only provider
+            const prizeTokenRead = new ethers.Contract(state.prizeTokenAddress, ERC20_ABI, readProvider);
             let decimals;
             try {
-              decimals = await prizeToken.decimals();
+              decimals = await prizeTokenRead.decimals();
             } catch {
               decimals = 18; // Default to 18 decimals
             }
+
             // Sanitize prize amount - limit to token's decimal places
             const cleanPrize = parseFloat(state.prizeTokenAmount).toFixed(decimals).replace(/\.?0+$/, '');
             if (!cleanPrize || isNaN(parseFloat(cleanPrize))) {
-              alert('❌ Invalid prize amount. Please enter a valid number.');
+              if (statusDiv) statusDiv.textContent = '❌ Invalid prize amount';
               return;
             }
             const prizeAmount = ethers.utils.parseUnits(cleanPrize, decimals);
 
-            // Check allowance
-            const userAddress = await signer.getAddress();
-            const allowance = await prizeToken.allowance(userAddress, CONFIG.CONTRACTS.contestEscrow);
+            // Check allowance using read-only provider
+            if (statusDiv) statusDiv.textContent = 'Step 8b: Checking allowance...';
+            const allowance = await prizeTokenRead.allowance(signerAddress, CONFIG.CONTRACTS.contestEscrow);
 
             if (allowance.lt(prizeAmount)) {
-              alert(`📝 Approval Required!\n\nFirst, approve ${state.prizeTokenAmount} ${state.prizeTokenTicker} for the contest.\n\nConfirm in MetaMask...`);
+              if (statusDiv) statusDiv.textContent = 'Step 8c: Approval needed - check wallet!';
 
-              const approveTx = await prizeToken.approve(CONFIG.CONTRACTS.contestEscrow, prizeAmount);
-              await approveTx.wait();
+              // Encode approve function call
+              const approveIface = new ethers.utils.Interface(ERC20_ABI);
+              const approveData = approveIface.encodeFunctionData('approve', [
+                CONFIG.CONTRACTS.contestEscrow,
+                prizeAmount
+              ]);
 
-              alert('✅ Approval confirmed! Now creating contest...');
+              // Try eth_sendTransaction first (smart wallets), fall back to ethers signer (EOA)
+              try {
+                await ethProvider.request({
+                  method: 'eth_sendTransaction',
+                  params: [{
+                    from: signerAddress,
+                    to: state.prizeTokenAddress,
+                    data: approveData
+                  }]
+                });
+              } catch (approveError) {
+                // If eth_sendTransaction fails, try ethers.js signer (EOA wallets)
+                if (approveError.message?.includes('unsupported') || approveError.message?.includes('not supported')) {
+                  console.log('Smart wallet approve failed, trying EOA signer...');
+                  const prizeToken = new ethers.Contract(state.prizeTokenAddress, ERC20_ABI, signer);
+                  const approveTx = await prizeToken.approve(CONFIG.CONTRACTS.contestEscrow, prizeAmount);
+                  await approveTx.wait();
+                } else {
+                  if (statusDiv) statusDiv.textContent = '❌ Approve Error: ' + (approveError.message || approveError).slice(0, 50);
+                  throw approveError;
+                }
+              }
+
+              if (statusDiv) statusDiv.textContent = 'Step 8d: Waiting for approval confirmation...';
+
+              // Wait for approval tx to be mined
+              let approved = false;
+              for (let i = 0; i < 60; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                const newAllowance = await prizeTokenRead.allowance(signerAddress, CONFIG.CONTRACTS.contestEscrow);
+                if (newAllowance.gte(prizeAmount)) {
+                  approved = true;
+                  break;
+                }
+              }
+              if (!approved) {
+                if (statusDiv) statusDiv.textContent = '❌ Approval not confirmed after 2 minutes';
+                return;
+              }
+              if (statusDiv) statusDiv.textContent = 'Step 8e: Approval confirmed!';
             }
 
             const ethValue = isCustomToken ? customTokenFee : ethers.BigNumber.from(0);
@@ -2287,19 +2353,56 @@
             console.log('   _volumeRequirement:', volumeRequirement.toString());
             console.log('   value (ETH for fee):', ethers.utils.formatEther(ethValue));
 
-            alert(`🔒 Launching Contest!\n\nPrize: ${state.prizeTokenAmount} ${state.prizeTokenTicker}\nDuration: ${Math.floor(durationSeconds / 60)} minutes\n${isCustomToken ? `Custom Token Fee: ${ethers.utils.formatEther(customTokenFee)} ETH\n` : ''}\nConfirm in MetaMask to lock your prize!`);
+            if (statusDiv) statusDiv.textContent = 'Step 9: Sending ERC20 contest tx... Check wallet!';
 
-            console.log('⏳ Waiting for MetaMask confirmation...');
-            tx = await contestEscrow.createContestERC20(
+            // Encode createContestERC20 function call
+            const createIface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
+            const createData = createIface.encodeFunctionData('createContestERC20', [
               state.prizeTokenAddress,
               prizeAmount,
               durationSeconds,
               castId,
               tokenRequirement,
-              volumeRequirement,
-              { value: ethValue }
-            );
-            console.log('✅ MetaMask confirmed! TX:', tx.hash);
+              volumeRequirement
+            ]);
+
+            // Try eth_sendTransaction first (smart wallets), fall back to ethers signer (EOA)
+            try {
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: signerAddress,
+                  to: CONFIG.CONTRACTS.contestEscrow,
+                  value: ethValue.gt(0) ? '0x' + ethValue.toBigInt().toString(16) : '0x0',
+                  data: createData
+                }]
+              });
+              tx = { hash: txHash };
+              if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + txHash.slice(0,15) + '...';
+              console.log('✅ Wallet confirmed! TX:', txHash);
+            } catch (txError) {
+              // If eth_sendTransaction fails with "unsupported", try ethers.js signer (EOA wallets)
+              if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
+                console.log('Smart wallet createContestERC20 failed, trying EOA signer...');
+                if (statusDiv) statusDiv.textContent = 'Step 9b: Trying EOA signer...';
+                const contestEscrowSigner = new ethers.Contract(CONFIG.CONTRACTS.contestEscrow, CONTEST_ESCROW_ABI, signer);
+                tx = await contestEscrowSigner.createContestERC20(
+                  state.prizeTokenAddress,
+                  prizeAmount,
+                  durationSeconds,
+                  castId,
+                  tokenRequirement,
+                  volumeRequirement,
+                  { value: ethValue }
+                );
+                if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
+                console.log('✅ EOA wallet confirmed! TX:', tx.hash);
+              } else {
+                if (statusDiv) statusDiv.textContent = '❌ TX Error: ' + (txError.message || txError).slice(0, 50);
+                console.error('TX Error:', txError);
+                throw txError;
+              }
+            }
           }
         } else {
           // NFT prize - not supported in current contract
@@ -2312,28 +2415,33 @@
         // Show persistent notification while waiting
         const txUrl = `https://basescan.org/tx/${tx.hash}`;
         state.pendingTx = tx.hash;
-        render();
+        if (statusDiv) statusDiv.textContent = 'Waiting for confirmation...';
 
-        const receipt = await tx.wait();
-        console.log('✅ Transaction confirmed:', receipt.transactionHash);
-        console.log('📜 Receipt events:', receipt.events);
-        console.log('📜 Receipt logs:', receipt.logs);
+        // Wait for transaction receipt using read provider (since tx.wait() doesn't work with raw hashes)
+        let receipt = null;
+        for (let i = 0; i < 60; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          receipt = await readProvider.getTransactionReceipt(tx.hash);
+          if (receipt) break;
+        }
+
+        if (!receipt) {
+          if (statusDiv) statusDiv.textContent = '⏳ TX submitted but not confirmed yet. Check Basescan.';
+          console.log('⏳ TX not confirmed after 2 min, but was submitted');
+        } else {
+          console.log('✅ Transaction confirmed:', receipt.transactionHash);
+          console.log('📜 Receipt logs:', receipt.logs);
+        }
 
         // Parse contest ID from event
         let contestId = 'Unknown';
 
-        // Try method 1: Find parsed event (ethers Contract auto-parses if ABI has event)
-        const contestCreatedEvent = receipt.events?.find(e => e.event === 'ContestCreated');
-        if (contestCreatedEvent?.args?.contestId) {
-          contestId = contestCreatedEvent.args.contestId.toString();
-          console.log('✅ Found contestId from parsed event:', contestId);
-        } else {
-          // Method 2: Parse from raw logs using contract interface
-          // ContestCreated(uint256 indexed contestId, address indexed host, ...)
-          const iface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
-          for (const log of receipt.logs || []) {
+        if (receipt?.logs) {
+          // Parse from raw logs using contract interface
+          const parseIface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
+          for (const log of receipt.logs) {
             try {
-              const parsed = iface.parseLog(log);
+              const parsed = parseIface.parseLog(log);
               if (parsed.name === 'ContestCreated') {
                 contestId = parsed.args.contestId.toString();
                 console.log('✅ Found contestId via interface.parseLog:', contestId);
@@ -2344,8 +2452,8 @@
             }
           }
 
-          // Method 3: Direct topic parsing as last resort
-          if (contestId === 'Unknown' && receipt.logs?.length > 0) {
+          // Method 2: Direct topic parsing as last resort
+          if (contestId === 'Unknown' && receipt.logs.length > 0) {
             const contestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,address,uint256,uint256,string)');
             const eventLog = receipt.logs.find(log => log.topics[0] === contestCreatedTopic);
             if (eventLog && eventLog.topics[1]) {
