@@ -2505,6 +2505,9 @@
     };
 
     // ===== INIT =====
+    // DEBUG: Alert on page load
+    alert('PAGE LOADED!\n\nJS is running.\nFarcasterSDK: ' + (window.FarcasterSDK ? 'YES' : 'NO'));
+
     // Load token list from Base on startup
     fetchBaseTokens().catch(err => console.warn('Token list fetch failed:', err));
 
