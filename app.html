@@ -14,12 +14,15 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Farcaster Mini App SDK - official esm.sh CDN per docs -->
+  <!-- Farcaster Mini App SDK - loads and signals when ready -->
   <script type="module">
     import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
-    console.log('Farcaster Mini App ready');
+    // Signal that SDK is ready - main script will listen for this
+    window.FarcasterSDKReady = true;
+    window.dispatchEvent(new Event('farcaster-ready'));
+    console.log('Farcaster Mini App SDK ready');
   </script>
   <style>
     @keyframes bubble {
@@ -2505,6 +2508,12 @@
 
     // Initial render
     render();
+
+    // Re-render when Farcaster SDK loads (it's async)
+    window.addEventListener('farcaster-ready', () => {
+      console.log('Farcaster SDK ready event received, re-rendering...');
+      render();
+    });
   </script>
 </body>
 </html>
