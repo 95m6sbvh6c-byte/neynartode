@@ -515,26 +515,25 @@
           new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg || 'Request timed out')), ms))
         ]);
 
-        // Try to get Farcaster Frame SDK provider first (for Warpcast Mini App)
+        // Try to get Farcaster Mini App SDK provider first (for Warpcast)
         let ethProvider = window.ethereum;
 
-        if (window.FarcasterFrameSDK || window.sdk) {
+        if (window.FarcasterSDK) {
           try {
-            const sdk = window.FarcasterFrameSDK || window.sdk;
-            console.log('Farcaster Frame SDK detected, initializing...');
+            const sdk = window.FarcasterSDK;
+            console.log('Farcaster Mini App SDK detected');
 
-            // Get the provider from Frame SDK
-            if (sdk.wallet && sdk.wallet.ethProvider) {
+            // Get the provider using new method (getEthereumProvider replaced ethProvider)
+            if (sdk.wallet?.getEthereumProvider) {
+              ethProvider = await sdk.wallet.getEthereumProvider();
+              console.log('Using Farcaster wallet provider');
+            } else if (sdk.wallet?.ethProvider) {
+              // Fallback for older SDK versions
               ethProvider = sdk.wallet.ethProvider;
-              console.log('Using Frame SDK ethProvider');
-            }
-
-            // Signal that we're ready
-            if (sdk.actions && sdk.actions.ready) {
-              await sdk.actions.ready();
+              console.log('Using Farcaster wallet ethProvider (legacy)');
             }
           } catch (sdkError) {
-            console.log('Frame SDK init error (falling back to window.ethereum):', sdkError);
+            console.log('Farcaster SDK wallet error (falling back to window.ethereum):', sdkError);
           }
         }
 
