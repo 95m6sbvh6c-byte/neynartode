@@ -14,22 +14,25 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Farcaster Frame SDK v0.1.12 - MUST call ready() for Warpcast to show content -->
+  <!-- Farcaster Mini App SDK - MUST call ready() for Warpcast to show content -->
   <script type="module">
     (async () => {
       try {
-        const { sdk } = await import('https://cdn.skypack.dev/@farcaster/frame-sdk@0.1.12');
+        const module = await import('https://cdn.skypack.dev/@farcaster/miniapp-sdk@0.2.1');
+        const sdk = module.sdk || module.default || module;
         window.FarcasterFrameSDK = sdk;
 
+        console.log('MiniApp SDK loaded:', Object.keys(sdk || {}));
+
         // CRITICAL: Must call ready() for Warpcast to display the Mini App
-        if (sdk.actions?.ready) {
+        if (sdk?.actions?.ready) {
           await sdk.actions.ready();
-          console.log('Frame SDK ready() called - Warpcast should show content now');
+          console.log('SDK ready() called - Warpcast should show content now');
         }
 
         window.dispatchEvent(new Event('farcaster-sdk-loaded'));
       } catch (e) {
-        console.warn('Frame SDK not available:', e.message);
+        console.warn('MiniApp SDK not available:', e.message);
       }
     })();
   </script>
