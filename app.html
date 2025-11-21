@@ -513,6 +513,9 @@
 
     // ===== BLOCKCHAIN FUNCTIONS =====
     async function connectWallet() {
+      // DEBUG: First thing when connect is clicked
+      alert('DEBUG connectWallet called!\n\nFarcasterSDK: ' + (window.FarcasterSDK ? 'YES' : 'NO') + '\nwindow.ethereum: ' + (window.ethereum ? 'YES' : 'NO'));
+
       try {
         // Helper for timeout (no longer used for wallet connection - we wait indefinitely)
         const withTimeout = (promise, ms, errorMsg) => Promise.race([
