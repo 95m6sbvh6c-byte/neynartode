@@ -2211,19 +2211,34 @@
             console.log('   _volumeRequirement:', volumeRequirement.toString());
             console.log('   value (ETH):', ethers.utils.formatEther(totalValue));
 
-            if (statusDiv) statusDiv.textContent = 'Step 8: Sending ETH transaction... Check wallet!';
+            if (statusDiv) statusDiv.textContent = 'Step 8: Building transaction...';
+
+            // For smart wallets, we need to use eth_sendTransaction directly
+            // Encode the function call
+            const iface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
+            const txData = iface.encodeFunctionData('createContestETH', [
+              durationSeconds,
+              castId,
+              tokenRequirement,
+              volumeRequirement
+            ]);
+
+            if (statusDiv) statusDiv.textContent = 'Step 8b: Sending via eth_sendTransaction...';
 
             console.log('⏳ Waiting for wallet confirmation...');
             try {
-              tx = await contestEscrow.createContestETH(
-                durationSeconds,
-                castId,
-                tokenRequirement,
-                volumeRequirement,
-                { value: totalValue }
-              );
-              if (statusDiv) statusDiv.textContent = 'Step 9: TX sent! Hash: ' + (tx.hash ? tx.hash.slice(0,15) + '...' : 'no hash');
-              console.log('✅ Wallet confirmed! TX:', tx.hash);
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: signerAddress,
+                  to: CONFIG.CONTRACTS.contestEscrow,
+                  value: '0x' + totalValue.toBigInt().toString(16),
+                  data: txData
+                }]
+              });
+              tx = { hash: txHash };
+              if (statusDiv) statusDiv.textContent = 'Step 9: TX sent! Hash: ' + txHash.slice(0,15) + '...';
+              console.log('✅ Wallet confirmed! TX:', txHash);
             } catch (txError) {
               if (statusDiv) statusDiv.textContent = '❌ TX Error: ' + (txError.message || txError).slice(0, 50);
               console.error('TX Error:', txError);
