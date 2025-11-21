@@ -2064,11 +2064,9 @@
     async function launchContestOnChain(contest, durationSeconds) {
       try {
         console.log('🚀 launchContestOnChain() called');
-        console.log('   Duration:', durationSeconds, 'seconds');
-        console.log('   state.castHash:', state.castHash);
-        console.log('   state.prizeType:', state.prizeType);
-        console.log('   state.prizeTokenAddress:', state.prizeTokenAddress);
-        console.log('   state.prizeTokenAmount:', state.prizeTokenAmount);
+
+        // DEBUG: Show what provider we have
+        alert('DEBUG: Starting launch...\n\nactiveEthProvider: ' + (window.activeEthProvider ? 'YES' : 'NO') + '\nwindow.ethereum: ' + (window.ethereum ? 'YES' : 'NO'));
 
         // Use the stored provider (Farcaster or MetaMask)
         const ethProvider = window.activeEthProvider || window.ethereum;
@@ -2076,10 +2074,14 @@
           alert('Wallet not connected! Please reconnect.');
           return;
         }
+
+        alert('DEBUG: Got provider, creating Web3Provider...');
+
         const provider = new ethers.providers.Web3Provider(ethProvider);
         const signer = provider.getSigner();
         const signerAddress = await signer.getAddress();
-        console.log('   Signer address:', signerAddress);
+
+        alert('DEBUG: Signer address: ' + signerAddress);
 
         const contestEscrow = new ethers.Contract(
           CONFIG.CONTRACTS.contestEscrow,
