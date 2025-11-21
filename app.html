@@ -2542,6 +2542,23 @@
 
         console.log('🎉 Contest created:', successInfo);
 
+        // Store custom message for winner announcement (if provided)
+        if (state.customMessage && contestId !== 'Unknown') {
+          try {
+            await fetch('/api/store-message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contestId: contestId,
+                message: state.customMessage
+              })
+            });
+            console.log('✅ Custom message stored for winner announcement');
+          } catch (e) {
+            console.log('⚠️ Could not store custom message:', e.message);
+          }
+        }
+
         // Add contest to state ONLY after successful on-chain tx
         contest.onChainId = contestId;
         state.upcomingContests.push(contest);

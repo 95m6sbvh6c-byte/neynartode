@@ -21,7 +21,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             --max-time 120)
 
-          echo "Response: $response"
+          echo "Finalize Response: $response"
 
           # Check if response contains error
           if echo "$response" | grep -q '"error"'; then
@@ -30,3 +30,18 @@ jobs:
           fi
 
           echo "Finalization check complete"
+
+      - name: Announce Winners
+        env:
+          API_URL: ${{ secrets.VERCEL_APP_URL }}
+        run: |
+          # Wait a bit for VRF callbacks to complete
+          sleep 30
+
+          # Call the announce-winner endpoint
+          response=$(curl -s -X POST "${API_URL}/api/announce-winner" \
+            -H "Content-Type: application/json" \
+            --max-time 60)
+
+          echo "Announce Response: $response"
+          echo "Winner announcement check complete"
