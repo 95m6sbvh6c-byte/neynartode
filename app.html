@@ -2118,6 +2118,17 @@
         const signer = provider.getSigner(signerAddress);
         if (statusDiv) statusDiv.textContent = 'Step 7b: Signer ready for ' + signerAddress.slice(0,10) + '...';
 
+        if (statusDiv) statusDiv.textContent = 'Step 7c: Creating contract...';
+
+        // Use read-only provider for reading contract data (avoids smart wallet issues)
+        const readProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        const contestEscrowRead = new ethers.Contract(
+          CONFIG.CONTRACTS.contestEscrow,
+          CONTEST_ESCROW_ABI,
+          readProvider
+        );
+
+        // Contract with signer for transactions
         const contestEscrow = new ethers.Contract(
           CONFIG.CONTRACTS.contestEscrow,
           CONTEST_ESCROW_ABI,
@@ -2125,9 +2136,11 @@
         );
         console.log('   ContestEscrow contract:', CONFIG.CONTRACTS.contestEscrow);
 
-        // Get custom token fee and default token
-        const customTokenFee = await contestEscrow.customTokenFee();
-        const defaultToken = await contestEscrow.defaultToken();
+        if (statusDiv) statusDiv.textContent = 'Step 7d: Reading contract config...';
+
+        // Get custom token fee and default token (use read-only provider)
+        const customTokenFee = await contestEscrowRead.customTokenFee();
+        const defaultToken = await contestEscrowRead.defaultToken();
         console.log('   Custom token fee:', ethers.utils.formatEther(customTokenFee), 'ETH');
         console.log('   Default token:', defaultToken);
 
