@@ -26,8 +26,8 @@
       CONTRACTS: {
         prizeNFT: '0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81',
         votingManager: '0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99',
-        captainHook: '0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B',
-        clankerFeeCollector: '0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280',
+        contestEscrow: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+        treasury: '0xB5A1a3AAD5962dBF2B8DF3C5712d137c1640A176',
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
       },
       SEASON_0_MIN_TOKENS: ethers.utils.parseEther('20000') // 20K tokens
@@ -527,19 +527,8 @@
           state.prizePoolETH = state.hostPoolETH + state.voterPoolETH; // Total
         }
 
-        // Load pending Clanker fees
-        const clankerFeeCollectorABI = [
-          'function getPendingFees() external view returns (uint256)'
-        ];
-
-        const clankerFeeCollector = new ethers.Contract(
-          CONFIG.CONTRACTS.clankerFeeCollector,
-          clankerFeeCollectorABI,
-          provider
-        );
-
-        const pendingFees = await clankerFeeCollector.getPendingFees();
-        state.pendingClankerFees = ethers.utils.formatEther(pendingFees);
+        // Clanker fees now go direct to Treasury - no pending fees to track
+        state.pendingClankerFees = '0';
 
         // Load all-time stats from VotingManager
         const votingManagerABI = [
@@ -1760,7 +1749,8 @@
           state.upcomingContests.push(newContest);
           state.upcomingContests.sort((a, b) => a.startTime - b.startTime);
 
-          alert(`🔒 Contest launching!\n\nDuration: ${hours}h ${minutes}m (${totalMinutes} minutes)\nEnds: ${endTime.toLocaleString()}\n\nDeploying escrow contract...\nYour prize will be locked until the winner is selected!`);
+          // Launch contest on ContestEscrow contract
+          launchContestOnChain(newContest, totalMinutes * 60);
 
           // Reset form
           state.prizeTokenAddress = '';
@@ -1806,55 +1796,148 @@
       });
     }
 
-    // Feed the Neynartodes function - collects Clanker fees
-    window.feedTheNeynartodes = async () => {
+    // ContestEscrow ABI for creating contests
+    const CONTEST_ESCROW_ABI = [
+      'function createContestETH(uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+      'function createContestERC20(address _prizeToken, uint256 _prizeAmount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+      'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+      'function customTokenFee() external view returns (uint256)',
+      'function defaultToken() external view returns (address)'
+    ];
+
+    const ERC20_ABI = [
+      'function approve(address spender, uint256 amount) external returns (bool)',
+      'function allowance(address owner, address spender) external view returns (uint256)',
+      'function balanceOf(address account) external view returns (uint256)',
+      'function decimals() external view returns (uint8)'
+    ];
+
+    // Launch contest on ContestEscrow contract
+    async function launchContestOnChain(contest, durationSeconds) {
       try {
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         const signer = provider.getSigner();
 
-        const clankerFeeCollectorABI = [
-          'function collectAndDistribute() external',
-          'function getPendingFees() external view returns (uint256)'
-        ];
-
-        const clankerFeeCollector = new ethers.Contract(
-          CONFIG.CONTRACTS.clankerFeeCollector,
-          clankerFeeCollectorABI,
+        const contestEscrow = new ethers.Contract(
+          CONFIG.CONTRACTS.contestEscrow,
+          CONTEST_ESCROW_ABI,
           signer
         );
 
-        // Check pending fees
-        const pendingFees = await clankerFeeCollector.getPendingFees();
-        if (pendingFees.eq(0)) {
-          alert('No fees to collect! The Neynartodes are already well-fed. 🦎');
+        // Get custom token fee and default token
+        const customTokenFee = await contestEscrow.customTokenFee();
+        const defaultToken = await contestEscrow.defaultToken();
+
+        // Determine if we need to pay custom token fee
+        const tokenRequirement = state.tokenEnabled ? state.tokenAddress : defaultToken;
+        const isCustomToken = tokenRequirement.toLowerCase() !== defaultToken.toLowerCase();
+        const volumeRequirement = state.tokenEnabled && state.minTradeVolume ?
+          ethers.utils.parseEther(state.minTradeVolume) : ethers.BigNumber.from(0);
+
+        // Cast ID (use cast hash or generate placeholder)
+        const castId = state.castHash || `contest-${Date.now()}`;
+
+        let tx;
+
+        if (state.prizeType === 'token') {
+          // Check if prize is ETH (address(0) or WETH)
+          const isETHPrize = state.prizeTokenAddress.toLowerCase() === '0x0000000000000000000000000000000000000000' ||
+                            state.prizeTokenAddress.toLowerCase() === '0x4200000000000000000000000000000000000006'; // WETH on Base
+
+          if (isETHPrize || state.prizeTokenTicker === 'ETH') {
+            // ETH prize - call createContestETH
+            const prizeAmount = ethers.utils.parseEther(state.prizeTokenAmount);
+            const totalValue = isCustomToken ? prizeAmount.add(customTokenFee) : prizeAmount;
+
+            alert(`🔒 Launching Contest!\n\nPrize: ${state.prizeTokenAmount} ETH\nDuration: ${Math.floor(durationSeconds / 60)} minutes\n${isCustomToken ? `Custom Token Fee: ${ethers.utils.formatEther(customTokenFee)} ETH\n` : ''}\nConfirm in MetaMask to lock your prize!`);
+
+            tx = await contestEscrow.createContestETH(
+              durationSeconds,
+              castId,
+              tokenRequirement,
+              volumeRequirement,
+              { value: totalValue }
+            );
+          } else {
+            // ERC20 prize - need to approve then call createContestERC20
+            const prizeToken = new ethers.Contract(state.prizeTokenAddress, ERC20_ABI, signer);
+
+            // Get decimals and parse amount
+            let decimals;
+            try {
+              decimals = await prizeToken.decimals();
+            } catch {
+              decimals = 18; // Default to 18 decimals
+            }
+            const prizeAmount = ethers.utils.parseUnits(state.prizeTokenAmount, decimals);
+
+            // Check allowance
+            const userAddress = await signer.getAddress();
+            const allowance = await prizeToken.allowance(userAddress, CONFIG.CONTRACTS.contestEscrow);
+
+            if (allowance.lt(prizeAmount)) {
+              alert(`📝 Approval Required!\n\nFirst, approve ${state.prizeTokenAmount} ${state.prizeTokenTicker} for the contest.\n\nConfirm in MetaMask...`);
+
+              const approveTx = await prizeToken.approve(CONFIG.CONTRACTS.contestEscrow, prizeAmount);
+              await approveTx.wait();
+
+              alert('✅ Approval confirmed! Now creating contest...');
+            }
+
+            const ethValue = isCustomToken ? customTokenFee : ethers.BigNumber.from(0);
+
+            alert(`🔒 Launching Contest!\n\nPrize: ${state.prizeTokenAmount} ${state.prizeTokenTicker}\nDuration: ${Math.floor(durationSeconds / 60)} minutes\n${isCustomToken ? `Custom Token Fee: ${ethers.utils.formatEther(customTokenFee)} ETH\n` : ''}\nConfirm in MetaMask to lock your prize!`);
+
+            tx = await contestEscrow.createContestERC20(
+              state.prizeTokenAddress,
+              prizeAmount,
+              durationSeconds,
+              castId,
+              tokenRequirement,
+              volumeRequirement,
+              { value: ethValue }
+            );
+          }
+        } else {
+          // NFT prize - not supported in current contract
+          alert('❌ NFT prizes are not yet supported.\n\nPlease use token prizes for now.');
           return;
         }
 
-        const feesFormatted = ethers.utils.formatEther(pendingFees);
+        alert(`⏳ Transaction submitted!\n\nWaiting for confirmation...\n\nTx: ${tx.hash}`);
 
-        alert(`🦎 Feeding the Neynartodes!\n\nCollecting ${feesFormatted} $NEYNARTODES\n\nThis will:\n• Split 50/50 to treasury and recipient\n• Trigger Captain Hook to compound liquidity\n\nConfirm in MetaMask!`);
-
-        const tx = await clankerFeeCollector.collectAndDistribute();
-
-        alert('⏳ Transaction submitted!\n\nWaiting for confirmation...\n\nTx: ' + tx.hash);
         const receipt = await tx.wait();
 
-        alert(`✅ Neynartodes Fed Successfully! 🦎\n\nCollected ${feesFormatted} $NEYNARTODES\n🔄 Captain Hook triggered for compounding!\n\nTx: ${receipt.transactionHash}`);
+        // Parse contest ID from event
+        const contestCreatedEvent = receipt.events?.find(e => e.event === 'ContestCreated');
+        const contestId = contestCreatedEvent?.args?.contestId?.toString() || 'Unknown';
 
-        // Reload prize pools
-        await loadPrizePools();
+        alert(`🎉 Contest Created Successfully!\n\nContest ID: ${contestId}\nPrize locked in escrow!\n\nYour contest is now live.\nWinner will be selected randomly via Chainlink VRF when it ends.\n\nTx: ${receipt.transactionHash}`);
+
+        // Update last launch date
+        state.lastLaunchDate = new Date();
+
         render();
       } catch (error) {
-        console.error('Feed error:', error);
+        console.error('Contest launch error:', error);
 
         if (error.code === 4001) {
           alert('❌ Transaction rejected by user');
-        } else if (error.message && error.message.includes('No fees to collect')) {
-          alert('❌ No fees to collect!\n\nThe Neynartodes are already well-fed. 🦎');
+        } else if (error.message?.includes('Prize required')) {
+          alert('❌ Prize amount required!\n\nPlease enter a prize amount greater than 0.');
+        } else if (error.message?.includes('Include custom token fee')) {
+          alert('❌ Custom token fee required!\n\nUsing a custom token requirement costs 0.005 ETH.\nMake sure you have enough ETH for the fee.');
+        } else if (error.message?.includes('Invalid duration')) {
+          alert('❌ Invalid duration!\n\nContest duration must be greater than 0.');
         } else {
-          alert('❌ Feed failed!\n\n' + (error.reason || error.message || 'Unknown error'));
+          alert('❌ Contest launch failed!\n\n' + (error.reason || error.message || 'Unknown error'));
         }
       }
+    }
+
+    // Feed the Neynartodes function - DEPRECATED (Clanker fees now go direct to Treasury)
+    window.feedTheNeynartodes = async () => {
+      alert('🦎 This feature has been retired!\n\nClanker fees now flow directly to the Treasury.\n\nNo manual collection needed anymore.');
     };
 
     // Make functions globally accessible for inline onclick handlers
