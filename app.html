@@ -14,6 +14,8 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Farcaster Frame SDK for Mini App wallet connection -->
+  <script src="https://unpkg.com/@farcaster/frame-sdk@0.0.26/dist/index.umd.js"></script>
   <style>
     @keyframes bubble {
       0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; }
@@ -457,11 +459,6 @@
 
     // ===== BLOCKCHAIN FUNCTIONS =====
     async function connectWallet() {
-      if (!window.ethereum) {
-        alert('Please install MetaMask to use this app!');
-        return false;
-      }
-
       try {
         state.isCheckingWhitelist = true;
         render();
@@ -472,13 +469,43 @@
           new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg || 'Request timed out')), ms))
         ]);
 
+        // Try to get Farcaster Frame SDK provider first (for Warpcast Mini App)
+        let ethProvider = window.ethereum;
+
+        if (window.FarcasterFrameSDK || window.sdk) {
+          try {
+            const sdk = window.FarcasterFrameSDK || window.sdk;
+            console.log('Farcaster Frame SDK detected, initializing...');
+
+            // Get the provider from Frame SDK
+            if (sdk.wallet && sdk.wallet.ethProvider) {
+              ethProvider = sdk.wallet.ethProvider;
+              console.log('Using Frame SDK ethProvider');
+            }
+
+            // Signal that we're ready
+            if (sdk.actions && sdk.actions.ready) {
+              await sdk.actions.ready();
+            }
+          } catch (sdkError) {
+            console.log('Frame SDK init error (falling back to window.ethereum):', sdkError);
+          }
+        }
+
+        if (!ethProvider) {
+          alert('No wallet found. Please use Warpcast or install MetaMask!');
+          state.isCheckingWhitelist = false;
+          render();
+          return false;
+        }
+
         // Connect to wallet with timeout (60s for unlock)
         let accounts;
         try {
           accounts = await withTimeout(
-            window.ethereum.request({ method: 'eth_requestAccounts' }),
+            ethProvider.request({ method: 'eth_requestAccounts' }),
             60000,
-            'Wallet connection timed out. Please unlock MetaMask and try again.'
+            'Wallet connection timed out. Please unlock your wallet and try again.'
           );
         } catch (e) {
           state.isCheckingWhitelist = false;
@@ -486,6 +513,9 @@
           alert(e.message || 'Failed to connect wallet. Please try again.');
           return false;
         }
+
+        // Store the provider for later use
+        window.activeEthProvider = ethProvider;
 
         if (!accounts || accounts.length === 0) {
           state.isCheckingWhitelist = false;
@@ -497,17 +527,17 @@
         const address = accounts[0];
         state.userAddress = address;
 
-        // Check network
-        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+        // Check network (use the active provider)
+        const chainId = await ethProvider.request({ method: 'eth_chainId' });
         if (chainId !== '0x2105') { // Base mainnet
           try {
-            await window.ethereum.request({
+            await ethProvider.request({
               method: 'wallet_switchEthereumChain',
               params: [{ chainId: '0x2105' }]
             });
           } catch (switchError) {
             if (switchError.code === 4902) {
-              await window.ethereum.request({
+              await ethProvider.request({
                 method: 'wallet_addEthereumChain',
                 params: [{
                   chainId: '0x2105',
