@@ -14,7 +14,26 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SDK temporarily removed for debugging - basic app should work without it -->
+  <!-- Farcaster Mini App ready signal - required for Warpcast to show content -->
+  <script>
+    // Signal to Warpcast that the Mini App is ready
+    // This uses the postMessage API that Warpcast listens for
+    (function() {
+      try {
+        // Method 1: postMessage to parent (Warpcast webview)
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'fc:ready' }, '*');
+          window.parent.postMessage({ method: 'ready' }, '*');
+        }
+        // Method 2: postMessage to self (some implementations)
+        window.postMessage({ type: 'fc:ready' }, '*');
+        window.postMessage({ method: 'ready' }, '*');
+        console.log('Farcaster ready signal sent');
+      } catch (e) {
+        console.log('Ready signal error:', e);
+      }
+    })();
+  </script>
   <style>
     @keyframes bubble {
       0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; }
