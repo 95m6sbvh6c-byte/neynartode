@@ -1925,7 +1925,7 @@
           }
 
           // Check if this is the user's own cast (required for leaderboard integrity)
-          const isDevWallet = state.userAddress.toLowerCase() === DEV_WALLET.toLowerCase();
+          // isDevWallet already defined above
           if (!castValidation.isOwnCast && !isDevWallet) {
             alert(`❌ Not Your Cast!\n\nYou can only create contests on your own Warpcast posts.\n\nCast author: @${castValidation.author}\nYour wallet: ${state.userAddress.slice(0, 6)}...${state.userAddress.slice(-4)}\n\nTo prevent leaderboard gaming, contests must be on casts you authored.`);
             return;
