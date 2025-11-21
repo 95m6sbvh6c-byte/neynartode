@@ -136,12 +136,15 @@ async function getCastEngagement(castId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// COVALENT API - Get Trading Volume (FREE TIER: 300K credits/month)
+// TRADING VOLUME CHECK - Uses Neynar webhook data or fallback
 // ═══════════════════════════════════════════════════════════════════
 
 /**
  * Get trading volume for addresses on a specific token
- * Uses Covalent's GoldRush API (free tier available)
+ * Priority:
+ * 1. Neynar webhook data (real-time, free)
+ * 2. Covalent API (if configured)
+ * 3. Fallback to token balance check
  *
  * @param {string} tokenAddress - Token contract address
  * @param {string[]} addresses - Array of wallet addresses to check
@@ -156,78 +159,113 @@ async function getTraderVolumes(tokenAddress, addresses, minVolume, startTime, e
       return addresses.map(addr => ({ address: addr, volume: 0, passed: true }));
     }
 
-    const COVALENT_API_KEY = process.env.COVALENT_API_KEY;
+    // Try Neynar webhook data first (via our trade-webhook API)
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000';
 
-    if (!COVALENT_API_KEY) {
-      console.log('⚠️ COVALENT_API_KEY not set - using fallback (token balance check)');
-      return await fallbackVolumeCheck(tokenAddress, addresses, minVolume);
-    }
+      console.log('📊 Checking trade volumes via Neynar webhook data...');
 
-    // Base chain ID for Covalent
-    const CHAIN_ID = 'base-mainnet';
-
-    const results = [];
-
-    for (const address of addresses) {
-      try {
-        // Get ERC20 token transfers for this wallet
-        // This endpoint returns all token transfers to/from the wallet
+      const results = [];
+      for (const address of addresses) {
         const response = await fetch(
-          `https://api.covalenthq.com/v1/${CHAIN_ID}/address/${address}/transfers_v2/?contract-address=${tokenAddress}&starting-block=${await timestampToBlock(startTime)}&ending-block=${await timestampToBlock(endTime)}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${COVALENT_API_KEY}`
-            }
-          }
+          `${baseUrl}/api/trade-webhook?token=${tokenAddress}&wallet=${address}`
         );
 
-        if (!response.ok) {
-          console.log(`   Covalent API error for ${address}: ${response.status}`);
+        if (response.ok) {
+          const data = await response.json();
+          const volume = data.volume || 0;
+
+          console.log(`   ${address.slice(0, 8)}... volume: ${volume.toFixed(2)} tokens`);
+
+          results.push({
+            address,
+            volume,
+            passed: volume >= minVolume
+          });
+        } else {
           results.push({ address, volume: 0, passed: false });
-          continue;
         }
-
-        const data = await response.json();
-        const transfers = data.data?.items || [];
-
-        // Calculate total volume (sum of all transfers in/out)
-        let totalVolume = 0n;
-
-        for (const transfer of transfers) {
-          for (const item of transfer.transfers || []) {
-            if (item.contract_address?.toLowerCase() === tokenAddress.toLowerCase()) {
-              // Add the delta (absolute value of transfer)
-              const delta = BigInt(item.delta || '0');
-              totalVolume += delta > 0n ? delta : -delta;
-            }
-          }
-        }
-
-        // Convert to token units (assuming 18 decimals, adjust if needed)
-        const volumeInTokens = Number(totalVolume) / 1e18;
-
-        console.log(`   ${address.slice(0, 8)}... volume: ${volumeInTokens.toFixed(2)} tokens`);
-
-        results.push({
-          address,
-          volume: volumeInTokens,
-          passed: volumeInTokens >= minVolume
-        });
-
-      } catch (e) {
-        console.log(`   Error checking ${address}: ${e.message}`);
-        results.push({ address, volume: 0, passed: false });
       }
 
-      // Rate limiting - Covalent allows 50 req/sec, but let's be safe
-      await new Promise(r => setTimeout(r, 50));
+      // If we got results from webhook, use them
+      if (results.length > 0 && results.some(r => r.volume > 0)) {
+        return results;
+      }
+
+      console.log('   No webhook data found, trying fallback...');
+    } catch (e) {
+      console.log('   Webhook check failed:', e.message);
     }
 
-    return results;
+    // Fallback to Covalent if configured
+    const COVALENT_API_KEY = process.env.COVALENT_API_KEY;
+
+    if (COVALENT_API_KEY) {
+      console.log('💰 Checking volumes via Covalent API...');
+      // Base chain ID for Covalent
+      const CHAIN_ID = 'base-mainnet';
+
+      const results = [];
+
+      for (const address of addresses) {
+        try {
+          const response = await fetch(
+            `https://api.covalenthq.com/v1/${CHAIN_ID}/address/${address}/transfers_v2/?contract-address=${tokenAddress}&starting-block=${await timestampToBlock(startTime)}&ending-block=${await timestampToBlock(endTime)}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${COVALENT_API_KEY}`
+              }
+            }
+          );
+
+          if (!response.ok) {
+            console.log(`   Covalent API error for ${address}: ${response.status}`);
+            results.push({ address, volume: 0, passed: false });
+            continue;
+          }
+
+          const data = await response.json();
+          const transfers = data.data?.items || [];
+
+          let totalVolume = 0n;
+
+          for (const transfer of transfers) {
+            for (const item of transfer.transfers || []) {
+              if (item.contract_address?.toLowerCase() === tokenAddress.toLowerCase()) {
+                const delta = BigInt(item.delta || '0');
+                totalVolume += delta > 0n ? delta : -delta;
+              }
+            }
+          }
+
+          const volumeInTokens = Number(totalVolume) / 1e18;
+          console.log(`   ${address.slice(0, 8)}... volume: ${volumeInTokens.toFixed(2)} tokens`);
+
+          results.push({
+            address,
+            volume: volumeInTokens,
+            passed: volumeInTokens >= minVolume
+          });
+
+        } catch (e) {
+          console.log(`   Error checking ${address}: ${e.message}`);
+          results.push({ address, volume: 0, passed: false });
+        }
+
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      return results;
+    }
+
+    // Final fallback - token balance check
+    console.log('⚠️ No volume data source available - using token balance fallback');
+    return await fallbackVolumeCheck(tokenAddress, addresses, minVolume);
 
   } catch (error) {
     console.error('Error fetching trader volumes:', error);
-    // On error, use fallback
     return await fallbackVolumeCheck(tokenAddress, addresses, minVolume);
   }
 }
