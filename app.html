@@ -14,28 +14,7 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Farcaster Mini App SDK - MUST call ready() for Warpcast to show content -->
-  <script type="module">
-    (async () => {
-      try {
-        const module = await import('https://cdn.skypack.dev/@farcaster/miniapp-sdk@0.2.1');
-        const sdk = module.sdk || module.default || module;
-        window.FarcasterFrameSDK = sdk;
-
-        console.log('MiniApp SDK loaded:', Object.keys(sdk || {}));
-
-        // CRITICAL: Must call ready() for Warpcast to display the Mini App
-        if (sdk?.actions?.ready) {
-          await sdk.actions.ready();
-          console.log('SDK ready() called - Warpcast should show content now');
-        }
-
-        window.dispatchEvent(new Event('farcaster-sdk-loaded'));
-      } catch (e) {
-        console.warn('MiniApp SDK not available:', e.message);
-      }
-    })();
-  </script>
+  <!-- SDK temporarily removed for debugging - basic app should work without it -->
   <style>
     @keyframes bubble {
       0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; }
@@ -2492,47 +2471,8 @@
     // Load token list from Base on startup
     fetchBaseTokens().catch(err => console.warn('Token list fetch failed:', err));
 
-    // Frame SDK initialization (for Warpcast Mini App context)
-    // Note: ready() is called in head script, this just gets user context
-    async function initFrameContext() {
-      if (!window.FarcasterFrameSDK) return;
-
-      try {
-        const sdk = window.FarcasterFrameSDK;
-        console.log('Getting Frame SDK context...');
-
-        // Get user context if available
-        if (sdk.context) {
-          const context = await sdk.context;
-          if (context?.user?.fid) {
-            state.userFid = context.user.fid;
-            state.userName = context.user.username || `fid:${context.user.fid}`;
-            console.log('Frame context user:', state.userName);
-          }
-        }
-
-        // Auto-connect if wallet available
-        if (sdk.wallet?.ethProvider) {
-          const accounts = await sdk.wallet.ethProvider.request({ method: 'eth_accounts' });
-          if (accounts?.length > 0) {
-            console.log('Auto-connecting from Frame SDK...');
-            await connectWallet();
-          }
-        }
-      } catch (e) {
-        console.log('Frame SDK init:', e.message);
-      }
-    }
-
     // Initial render
     render();
-
-    // Try Frame SDK init (async, non-blocking)
-    if (window.FarcasterFrameSDK) {
-      initFrameContext();
-    } else {
-      window.addEventListener('farcaster-sdk-loaded', initFrameContext);
-    }
   </script>
 </body>
 </html>
