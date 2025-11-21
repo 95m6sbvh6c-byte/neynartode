@@ -19,9 +19,108 @@
 
 const crypto = require('crypto');
 
-// In-memory storage for trades (use Redis/DB in production)
-// Structure: { [tokenAddress]: { [walletAddress]: { volume: number, trades: [] } } }
-const tradeStore = new Map();
+// ═══════════════════════════════════════════════════════════════════
+// STORAGE - Uses Vercel KV if available, falls back to in-memory
+// ═══════════════════════════════════════════════════════════════════
+
+// In-memory fallback
+const tradeStoreMemory = new Map();
+
+// Check if Vercel KV is available
+const hasKV = !!process.env.KV_REST_API_URL;
+
+/**
+ * Get trade data from storage
+ */
+async function getTradeData(tokenAddress, walletAddress) {
+  const key = `trade_${tokenAddress.toLowerCase()}_${walletAddress.toLowerCase()}`;
+
+  if (hasKV) {
+    try {
+      const { kv } = require('@vercel/kv');
+      const data = await kv.get(key);
+      return data || { volume: 0, trades: [] };
+    } catch (e) {
+      console.log('KV get failed, using memory:', e.message);
+    }
+  }
+
+  // Memory fallback
+  const tokenTrades = tradeStoreMemory.get(tokenAddress.toLowerCase());
+  if (!tokenTrades) return { volume: 0, trades: [] };
+  return tokenTrades.get(walletAddress.toLowerCase()) || { volume: 0, trades: [] };
+}
+
+/**
+ * Save trade data to storage
+ */
+async function saveTradeData(tokenAddress, walletAddress, data) {
+  const key = `trade_${tokenAddress.toLowerCase()}_${walletAddress.toLowerCase()}`;
+
+  if (hasKV) {
+    try {
+      const { kv } = require('@vercel/kv');
+      // Store with 30 day expiry (trades older than that aren't relevant)
+      await kv.set(key, data, { ex: 60 * 60 * 24 * 30 });
+
+      // Also track which tokens/wallets we have data for
+      await kv.sadd(`trade_tokens`, tokenAddress.toLowerCase());
+      await kv.sadd(`trade_wallets_${tokenAddress.toLowerCase()}`, walletAddress.toLowerCase());
+      return;
+    } catch (e) {
+      console.log('KV save failed, using memory:', e.message);
+    }
+  }
+
+  // Memory fallback
+  if (!tradeStoreMemory.has(tokenAddress.toLowerCase())) {
+    tradeStoreMemory.set(tokenAddress.toLowerCase(), new Map());
+  }
+  tradeStoreMemory.get(tokenAddress.toLowerCase()).set(walletAddress.toLowerCase(), data);
+}
+
+/**
+ * Get all traders for a token
+ */
+async function getAllTraders(tokenAddress) {
+  if (hasKV) {
+    try {
+      const { kv } = require('@vercel/kv');
+      const wallets = await kv.smembers(`trade_wallets_${tokenAddress.toLowerCase()}`);
+
+      const traders = [];
+      for (const wallet of wallets || []) {
+        const data = await getTradeData(tokenAddress, wallet);
+        if (data.volume > 0) {
+          traders.push({
+            address: wallet,
+            volume: data.volume,
+            tradeCount: data.trades?.length || 0
+          });
+        }
+      }
+      return traders.sort((a, b) => b.volume - a.volume);
+    } catch (e) {
+      console.log('KV getAllTraders failed:', e.message);
+    }
+  }
+
+  // Memory fallback
+  const tokenTrades = tradeStoreMemory.get(tokenAddress.toLowerCase());
+  if (!tokenTrades) return [];
+
+  const traders = [];
+  for (const [wallet, data] of tokenTrades) {
+    if (data.volume > 0) {
+      traders.push({
+        address: wallet,
+        volume: data.volume,
+        tradeCount: data.trades?.length || 0
+      });
+    }
+  }
+  return traders.sort((a, b) => b.volume - a.volume);
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // WEBHOOK SIGNATURE VERIFICATION
@@ -47,13 +146,13 @@ function verifySignature(body, signature, secret) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TRADE STORAGE
+// TRADE PROCESSING
 // ═══════════════════════════════════════════════════════════════════
 
 /**
  * Store a trade event
  */
-function storeTrade(trade) {
+async function storeTrade(trade) {
   const tokenAddress = trade.token_address?.toLowerCase();
   const walletAddress = trade.trader_wallet?.toLowerCase();
 
@@ -62,23 +161,15 @@ function storeTrade(trade) {
     return;
   }
 
-  // Get or create token entry
-  if (!tradeStore.has(tokenAddress)) {
-    tradeStore.set(tokenAddress, new Map());
-  }
-  const tokenTrades = tradeStore.get(tokenAddress);
-
-  // Get or create wallet entry
-  if (!tokenTrades.has(walletAddress)) {
-    tokenTrades.set(walletAddress, { volume: 0, trades: [] });
-  }
-  const walletData = tokenTrades.get(walletAddress);
+  // Get existing data
+  const walletData = await getTradeData(tokenAddress, walletAddress);
 
   // Calculate trade volume (absolute value of amount)
   const tradeVolume = Math.abs(parseFloat(trade.token_amount || 0));
 
   // Update totals
-  walletData.volume += tradeVolume;
+  walletData.volume = (walletData.volume || 0) + tradeVolume;
+  walletData.trades = walletData.trades || [];
   walletData.trades.push({
     timestamp: trade.timestamp || Date.now(),
     amount: tradeVolume,
@@ -92,7 +183,10 @@ function storeTrade(trade) {
     walletData.trades = walletData.trades.slice(-100);
   }
 
-  console.log(`📊 Trade stored: ${walletAddress.slice(0,8)}... traded ${tradeVolume.toLocaleString()} of ${tokenAddress.slice(0,8)}...`);
+  // Save updated data
+  await saveTradeData(tokenAddress, walletAddress, walletData);
+
+  console.log(`📊 Trade stored: ${walletAddress.slice(0,8)}... traded ${tradeVolume.toLocaleString()} of ${tokenAddress.slice(0,8)}... (${hasKV ? 'KV' : 'memory'})`);
 }
 
 /**
@@ -102,12 +196,9 @@ function storeTrade(trade) {
  * @param {number} startTime - Optional: Only count trades after this timestamp
  * @param {number} endTime - Optional: Only count trades before this timestamp
  */
-function getVolume(tokenAddress, walletAddress, startTime = 0, endTime = Infinity) {
-  const tokenTrades = tradeStore.get(tokenAddress?.toLowerCase());
-  if (!tokenTrades) return 0;
-
-  const walletData = tokenTrades.get(walletAddress?.toLowerCase());
-  if (!walletData) return 0;
+async function getVolume(tokenAddress, walletAddress, startTime = 0, endTime = Infinity) {
+  const walletData = await getTradeData(tokenAddress, walletAddress);
+  if (!walletData || !walletData.trades) return 0;
 
   // Filter by time range if specified
   if (startTime > 0 || endTime < Infinity) {
@@ -116,43 +207,32 @@ function getVolume(tokenAddress, walletAddress, startTime = 0, endTime = Infinit
       .reduce((sum, t) => sum + t.amount, 0);
   }
 
-  return walletData.volume;
+  return walletData.volume || 0;
 }
 
 /**
  * Get all wallets that traded a token with their volumes
  */
-function getTradersByToken(tokenAddress, minVolume = 0) {
-  const tokenTrades = tradeStore.get(tokenAddress?.toLowerCase());
-  if (!tokenTrades) return [];
-
-  const traders = [];
-  for (const [wallet, data] of tokenTrades) {
-    if (data.volume >= minVolume) {
-      traders.push({
-        address: wallet,
-        volume: data.volume,
-        tradeCount: data.trades.length
-      });
-    }
-  }
-
-  return traders.sort((a, b) => b.volume - a.volume);
+async function getTradersByToken(tokenAddress, minVolume = 0) {
+  const traders = await getAllTraders(tokenAddress);
+  return traders.filter(t => t.volume >= minVolume);
 }
 
 /**
  * Check multiple addresses against volume requirement
  * Returns which addresses pass
  */
-function checkVolumes(tokenAddress, addresses, minVolume, startTime = 0, endTime = Infinity) {
-  return addresses.map(addr => {
-    const volume = getVolume(tokenAddress, addr, startTime, endTime);
-    return {
+async function checkVolumes(tokenAddress, addresses, minVolume, startTime = 0, endTime = Infinity) {
+  const results = [];
+  for (const addr of addresses) {
+    const volume = await getVolume(tokenAddress, addr, startTime, endTime);
+    results.push({
       address: addr,
       volume,
       passed: volume >= minVolume
-    };
-  });
+    });
+  }
+  return results;
 }
 
 // Export for use in finalize-contest.js
@@ -174,33 +254,77 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  // GET: Query stored trade data
+  // GET: Query stored trade data or simulate test trade
   if (req.method === 'GET') {
-    const { token, wallet, minVolume } = req.query;
+    const { token, wallet, minVolume, test, amount } = req.query;
+
+    // Test mode: simulate a trade (for development/demo)
+    if (test === 'true' && token && wallet) {
+      const tradeAmount = parseFloat(amount) || 10000;
+      await storeTrade({
+        fid: 1188162,
+        trader_wallet: wallet,
+        token_address: token,
+        token_amount: tradeAmount.toString(),
+        usd_value: tradeAmount * 0.0001,
+        tx_hash: `0xtest_${Date.now()}`,
+        timestamp: Date.now()
+      });
+      return res.status(200).json({
+        success: true,
+        message: `Test trade stored: ${wallet.slice(0,10)}... traded ${tradeAmount} tokens`,
+        storage: hasKV ? 'kv' : 'memory'
+      });
+    }
 
     if (token && wallet) {
       // Get volume for specific wallet
-      const volume = getVolume(token, wallet);
+      const volume = await getVolume(token, wallet);
       return res.status(200).json({ token, wallet, volume });
     }
 
     if (token) {
       // Get all traders for token
-      const traders = getTradersByToken(token, parseFloat(minVolume || 0));
+      const traders = await getTradersByToken(token, parseFloat(minVolume || 0));
       return res.status(200).json({ token, traders, count: traders.length });
     }
 
     // Return stats
     const stats = {
-      tokensTracked: tradeStore.size,
-      tokens: []
+      tokensTracked: 0,
+      tokens: [],
+      storage: hasKV ? 'kv' : 'memory'
     };
-    for (const [token, traders] of tradeStore) {
-      stats.tokens.push({
-        address: token,
-        traderCount: traders.size
-      });
+
+    if (hasKV) {
+      try {
+        const { kv } = require('@vercel/kv');
+        const trackedTokens = await kv.smembers('trade_tokens');
+        stats.tokensTracked = trackedTokens?.length || 0;
+
+        for (const tokenAddr of trackedTokens || []) {
+          const wallets = await kv.smembers(`trade_wallets_${tokenAddr}`);
+          stats.tokens.push({
+            address: tokenAddr,
+            traderCount: wallets?.length || 0
+          });
+        }
+      } catch (e) {
+        console.log('KV stats failed, falling back to memory:', e.message);
+      }
     }
+
+    // If KV didn't work or not available, use memory
+    if (stats.tokensTracked === 0) {
+      stats.tokensTracked = tradeStoreMemory.size;
+      for (const [tokenAddr, traders] of tradeStoreMemory) {
+        stats.tokens.push({
+          address: tokenAddr,
+          traderCount: traders.size
+        });
+      }
+    }
+
     return res.status(200).json(stats);
   }
 
@@ -244,11 +368,12 @@ module.exports = async (req, res) => {
       console.log(`   Amount: ${data.token_amount}`);
       console.log(`   USD: $${data.usd_value}`);
 
-      storeTrade(data);
+      await storeTrade(data);
 
       return res.status(200).json({
         received: true,
-        processed: true
+        processed: true,
+        storage: hasKV ? 'kv' : 'memory'
       });
 
     } catch (error) {
