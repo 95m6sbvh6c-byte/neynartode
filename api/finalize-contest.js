@@ -90,13 +90,16 @@ async function getCastEngagement(castId) {
 
       const reactionsData = await reactionsResponse.json();
 
-      // Extract unique addresses from reactions
+      // Extract ONE address per user (first verified address only)
       for (const reaction of reactionsData.reactions || []) {
         const addresses = reaction.user?.verified_addresses?.eth_addresses || [];
-        if (reaction.reaction_type === 'like') {
-          likers.push(...addresses);
-        } else if (reaction.reaction_type === 'recast') {
-          recasters.push(...addresses);
+        if (addresses.length > 0) {
+          const primaryAddress = addresses[0]; // Use first/primary wallet only
+          if (reaction.reaction_type === 'like') {
+            likers.push(primaryAddress);
+          } else if (reaction.reaction_type === 'recast') {
+            recasters.push(primaryAddress);
+          }
         }
       }
 
@@ -134,10 +137,13 @@ async function getCastEngagement(castId) {
         const wordCount = (reply.text || '').trim().split(/\s+/).length;
         if (wordCount >= 4) {
           const addresses = reply.author?.verified_addresses?.eth_addresses || [];
-          repliers.push(...addresses.map(addr => ({
-            address: addr.toLowerCase(),
-            wordCount
-          })));
+          if (addresses.length > 0) {
+            // Use first/primary wallet only - one entry per user
+            repliers.push({
+              address: addresses[0].toLowerCase(),
+              wordCount
+            });
+          }
         }
       }
 
