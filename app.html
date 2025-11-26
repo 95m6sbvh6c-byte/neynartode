@@ -17,8 +17,9 @@
 
   <!-- Vercel Analytics -->
   <script type="module">
-    import { inject } from 'https://esm.sh/@vercel/analytics';
+    import { inject, track } from 'https://esm.sh/@vercel/analytics';
     inject();
+    window.analytics = { track };
   </script>
 
   <!-- Farcaster Mini App SDK - loads and signals when ready -->
@@ -736,6 +737,16 @@
         // Load leaderboard data
         await loadLeaderboard();
 
+        // Track wallet connection
+        if (window.analytics?.track) {
+          window.analytics.track('Wallet Connected', {
+            address,
+            fid: state.userFid,
+            balance: state.userBalance,
+            provider: providerSource
+          });
+        }
+
         render();
         return true;
       } catch (error) {
@@ -936,6 +947,16 @@
         alert('🗳️ Submitting your vote on-chain...\n\nThis will:\n• Burn 500 NEYNARTODES (50%)\n• Send 500 to treasury (50%)\n\nConfirm in MetaMask!');
 
         const voteTx = await votingManager.vote(contestId);
+
+        // Track vote event
+        if (window.analytics?.track) {
+          window.analytics.track('Vote Cast', {
+            contestId,
+            hostFid,
+            isUpvote,
+            txHash: voteTx.hash
+          });
+        }
 
         alert('⏳ Vote transaction submitted!\n\nWaiting for confirmation...\n\nTx: ' + voteTx.hash);
         const receipt = await voteTx.wait();
@@ -1866,9 +1887,21 @@
       const viewHistory = document.getElementById('viewHistory');
       const viewLeaderboard = document.getElementById('viewLeaderboard');
 
-      if (viewCreate) viewCreate.onclick = () => { state.currentView = 'create'; render(); };
-      if (viewHistory) viewHistory.onclick = () => { state.currentView = 'history'; render(); };
-      if (viewLeaderboard) viewLeaderboard.onclick = () => { state.currentView = 'leaderboard'; render(); };
+      if (viewCreate) viewCreate.onclick = () => {
+        state.currentView = 'create';
+        if (window.analytics?.track) window.analytics.track('View Changed', { view: 'create' });
+        render();
+      };
+      if (viewHistory) viewHistory.onclick = () => {
+        state.currentView = 'history';
+        if (window.analytics?.track) window.analytics.track('View Changed', { view: 'history' });
+        render();
+      };
+      if (viewLeaderboard) viewLeaderboard.onclick = () => {
+        state.currentView = 'leaderboard';
+        if (window.analytics?.track) window.analytics.track('View Changed', { view: 'leaderboard' });
+        render();
+      };
 
       // Create contest form
       const startNow = document.getElementById('startNow');
@@ -2549,6 +2582,18 @@
 
         console.log('🎉 Contest created:', successInfo);
 
+        // Track contest creation
+        if (window.analytics?.track) {
+          window.analytics.track('Contest Created', {
+            contestId,
+            prizeType: state.prizeType,
+            token: state.tokenAddress,
+            tokenTicker: state.tokenTicker,
+            duration: state.durationHours,
+            txHash: receipt?.transactionHash
+          });
+        }
+
         // Store custom message for winner announcement (if provided)
         if (state.customMessage && contestId !== 'Unknown') {
           try {
@@ -2744,6 +2789,16 @@
         state.tokenMcap = token.mcap;
         state.tokenSearch = token.name;
         state.showTokenSuggestions = false;
+
+        // Track token selection
+        if (window.analytics?.track) {
+          window.analytics.track('Token Selected', {
+            token: token.address,
+            ticker: token.ticker,
+            mcap: token.mcap
+          });
+        }
+
         render();
 
         // Show info about caps
