@@ -575,9 +575,9 @@ async function checkAndFinalizeContest(contestId) {
   }
 
   // Finalize contest on-chain
-  // Limit entries to avoid "oversized data" transaction error
-  // Each address is 32 bytes in calldata, limit ~3000 to stay under 131KB
-  const MAX_ENTRIES = 3000;
+  // Limit entries to avoid gas limit errors
+  // Each address uses ~2100 gas for storage, limit to 1000 to stay under 30M gas limit
+  const MAX_ENTRIES = 1000;
   let finalEntries = qualifiedAddresses;
 
   if (qualifiedAddresses.length > MAX_ENTRIES) {
