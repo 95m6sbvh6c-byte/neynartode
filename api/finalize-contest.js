@@ -91,9 +91,15 @@ async function getCastEngagement(castId) {
       const reactionsData = await reactionsResponse.json();
 
       // Extract ONE address per user (first verified address only)
+      // Filter by Neynar score >= 0.35 to reduce bots
+      const MIN_NEYNAR_SCORE = 0.35;
+
       for (const reaction of reactionsData.reactions || []) {
-        const addresses = reaction.user?.verified_addresses?.eth_addresses || [];
-        if (addresses.length > 0) {
+        const user = reaction.user;
+        const addresses = user?.verified_addresses?.eth_addresses || [];
+        const neynarScore = user?.experimental?.neynar_user_score || 0;
+
+        if (addresses.length > 0 && neynarScore >= MIN_NEYNAR_SCORE) {
           const primaryAddress = addresses[0]; // Use first/primary wallet only
           if (reaction.reaction_type === 'like') {
             likers.push(primaryAddress);
@@ -132,12 +138,18 @@ async function getCastEngagement(castId) {
       const repliesData = await repliesResponse.json();
       const replies = repliesData.conversation?.cast?.direct_replies || [];
 
+      // Filter replies by Neynar score >= 0.35 to reduce bots
+      const MIN_REPLY_SCORE = 0.35;
+
       for (const reply of replies) {
         // Check reply has at least 4 words
         const wordCount = (reply.text || '').trim().split(/\s+/).length;
         if (wordCount >= 4) {
-          const addresses = reply.author?.verified_addresses?.eth_addresses || [];
-          if (addresses.length > 0) {
+          const author = reply.author;
+          const addresses = author?.verified_addresses?.eth_addresses || [];
+          const neynarScore = author?.experimental?.neynar_user_score || 0;
+
+          if (addresses.length > 0 && neynarScore >= MIN_REPLY_SCORE) {
             // Use first/primary wallet only - one entry per user
             repliers.push({
               address: addresses[0].toLowerCase(),
