@@ -14,6 +14,13 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/api/image" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Vercel Analytics -->
+  <script type="module">
+    import { inject } from 'https://esm.sh/@vercel/analytics';
+    inject();
+  </script>
+
   <!-- Farcaster Mini App SDK - loads and signals when ready -->
   <script type="module">
     import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';

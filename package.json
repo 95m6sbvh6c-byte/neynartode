@@ -8,10 +8,11 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
+    "@vercel/analytics": "^1.5.0",
     "@vercel/kv": "^3.0.0",
     "ethers": "^6.15.0"
   },
   "devDependencies": {
-    "sharp": "^0.33.0"
+    "sharp": "^0.34.5"
   }
 }
