@@ -1164,31 +1164,29 @@
     function renderHeader() {
       return `
         <div class="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-500 rounded-2xl shadow-2xl p-5 mb-6 border-4 border-purple-300">
-          <div class="flex items-center justify-between">
-            <div>
-              <h1 class="text-3xl font-black text-white flex items-center gap-2 drop-shadow-lg" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.3)">
-                🦎 Danng Neynartodes!! 🌊
-              </h1>
-              <p class="text-sm text-purple-100 font-semibold">
-                Season 0 Beta • ${state.userAddress.substring(0, 6)}...${state.userAddress.substring(38)}
-                ${state.userBadges.length > 0 ? `<span class="ml-2">${state.userBadges.map(b => getBadgeEmoji(b)).join('')}</span>` : ''}
-              </p>
-              <p class="text-xs text-white font-bold mt-1 bg-purple-600 bg-opacity-50 inline-block px-3 py-1 rounded-full">
-                Provider: ${window.activeEthProvider ? '✅' : '❌'} |
-                🦎 ${parseFloat(state.userBalance).toLocaleString()} $NEYNARTODES
-              </p>
-            </div>
-            <div class="flex gap-2">
-              <button id="viewCreate" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'create' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
-                Create
-              </button>
-              <button id="viewHistory" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'history' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
-                📜 History
-              </button>
-              <button id="viewLeaderboard" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'leaderboard' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
-                🏆 Leaderboard
-              </button>
-            </div>
+          <div class="text-center mb-4">
+            <h1 class="text-3xl font-black text-white flex items-center justify-center gap-2 drop-shadow-lg" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.3)">
+              🦎 Danng Neynartodes!! 🌊
+            </h1>
+            <p class="text-sm text-purple-100 font-semibold">
+              Season 0 Beta • ${state.userAddress.substring(0, 6)}...${state.userAddress.substring(38)}
+              ${state.userBadges.length > 0 ? `<span class="ml-2">${state.userBadges.map(b => getBadgeEmoji(b)).join('')}</span>` : ''}
+            </p>
+            <p class="text-xs text-white font-bold mt-1 bg-purple-600 bg-opacity-50 inline-block px-3 py-1 rounded-full">
+              Provider: ${window.activeEthProvider ? '✅' : '❌'} |
+              🦎 ${parseFloat(state.userBalance).toLocaleString()} $NEYNARTODES
+            </p>
+          </div>
+          <div class="flex justify-center gap-2">
+            <button id="viewCreate" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'create' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
+              ✨ Create
+            </button>
+            <button id="viewHistory" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'history' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
+              📜 History
+            </button>
+            <button id="viewLeaderboard" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'leaderboard' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
+              🏆 Leaderboard
+            </button>
           </div>
         </div>
       `;
