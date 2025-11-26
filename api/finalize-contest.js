@@ -575,10 +575,22 @@ async function checkAndFinalizeContest(contestId) {
   }
 
   // Finalize contest on-chain
-  console.log(`\n🎲 Finalizing contest with ${qualifiedAddresses.length} qualified entries...`);
+  // Limit entries to avoid "oversized data" transaction error
+  // Each address is 32 bytes in calldata, limit ~3000 to stay under 131KB
+  const MAX_ENTRIES = 3000;
+  let finalEntries = qualifiedAddresses;
+
+  if (qualifiedAddresses.length > MAX_ENTRIES) {
+    console.log(`\n⚠️ Too many entries (${qualifiedAddresses.length}), randomly sampling ${MAX_ENTRIES}...`);
+    // Shuffle and take first MAX_ENTRIES (fair random selection)
+    const shuffled = [...qualifiedAddresses].sort(() => Math.random() - 0.5);
+    finalEntries = shuffled.slice(0, MAX_ENTRIES);
+  }
+
+  console.log(`\n🎲 Finalizing contest with ${finalEntries.length} qualified entries...`);
 
   try {
-    const tx = await contestEscrow.finalizeContest(contestId, qualifiedAddresses);
+    const tx = await contestEscrow.finalizeContest(contestId, finalEntries);
     console.log(`   TX submitted: ${tx.hash}`);
 
     const receipt = await tx.wait();
