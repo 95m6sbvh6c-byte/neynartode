@@ -87,7 +87,8 @@ async function main() {
     return;
   }
 
-  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+  const privateKey = process.env.PRIVATE_KEY.trim().replace(/\\n/g, '');
+  const wallet = new ethers.Wallet(privateKey, provider);
   const owner = await contract.owner();
 
   if (wallet.address.toLowerCase() !== owner.toLowerCase()) {

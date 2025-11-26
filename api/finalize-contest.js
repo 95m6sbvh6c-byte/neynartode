@@ -556,12 +556,72 @@ async function checkAndFinalizeContest(contestId) {
     const receipt = await tx.wait();
     console.log(`   ✅ Confirmed in block ${receipt.blockNumber}`);
 
+    // Poll for winner (VRF callback usually takes 1-3 blocks on Base)
+    console.log('\n⏳ Waiting for Chainlink VRF to select winner...');
+    let winner = '0x0000000000000000000000000000000000000000';
+    let attempts = 0;
+    const maxAttempts = 30; // ~60 seconds max wait
+
+    while (winner === '0x0000000000000000000000000000000000000000' && attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 2000)); // Wait 2 seconds
+      attempts++;
+
+      try {
+        const updatedContest = await contestEscrow.getContest(contestId);
+        winner = updatedContest[9]; // winner is index 9
+        const status = updatedContest[8];
+
+        if (status === 2n && winner !== '0x0000000000000000000000000000000000000000') {
+          console.log(`   ✅ Winner selected: ${winner}`);
+          break;
+        }
+        console.log(`   Attempt ${attempts}/${maxAttempts} - waiting for VRF...`);
+      } catch (e) {
+        console.log(`   Attempt ${attempts} error: ${e.message}`);
+      }
+    }
+
+    // Auto-announce winner if found
+    if (winner !== '0x0000000000000000000000000000000000000000') {
+      console.log('\n📢 Auto-announcing winner...');
+      try {
+        const baseUrl = process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000';
+
+        const announceResponse = await fetch(`${baseUrl}/api/announce-winner?contestId=${contestId}`);
+        const announceResult = await announceResponse.json();
+
+        if (announceResult.posted) {
+          console.log(`   ✅ Winner announcement posted! Cast: ${announceResult.castHash}`);
+        } else {
+          console.log(`   ⚠️ Announcement created but not posted: ${announceResult.note || 'Unknown reason'}`);
+        }
+
+        return {
+          success: true,
+          contestId,
+          qualifiedCount: qualifiedAddresses.length,
+          txHash: receipt.hash,
+          winner,
+          announced: announceResult.posted,
+          announceCastHash: announceResult.castHash,
+          message: 'Contest finalized and winner announced!'
+        };
+      } catch (announceError) {
+        console.log(`   ⚠️ Auto-announce failed: ${announceError.message}`);
+      }
+    }
+
     return {
       success: true,
       contestId,
       qualifiedCount: qualifiedAddresses.length,
       txHash: receipt.hash,
-      message: 'Contest finalized! Chainlink VRF will select winner shortly.'
+      winner: winner !== '0x0000000000000000000000000000000000000000' ? winner : null,
+      message: winner !== '0x0000000000000000000000000000000000000000'
+        ? 'Contest finalized! Winner selected.'
+        : 'Contest finalized! Chainlink VRF will select winner shortly.'
     };
 
   } catch (error) {
@@ -591,12 +651,18 @@ async function checkAllPendingContests() {
   console.log(`\n🔍 Checking contests 1 to ${nextContestId - 1n}...`);
 
   for (let i = 1n; i < nextContestId; i++) {
-    const canFinalize = await contestEscrow.canFinalize(i);
+    try {
+      const canFinalize = await contestEscrow.canFinalize(i);
 
-    if (canFinalize) {
-      console.log(`\n📋 Contest #${i} is ready to finalize`);
-      const result = await checkAndFinalizeContest(Number(i));
-      results.push(result);
+      if (canFinalize) {
+        console.log(`\n📋 Contest #${i} is ready to finalize`);
+        const result = await checkAndFinalizeContest(Number(i));
+        results.push(result);
+      }
+    } catch (e) {
+      // Skip contests that throw errors (likely old/corrupted data)
+      console.log(`   Skipping contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
+      continue;
     }
   }
 

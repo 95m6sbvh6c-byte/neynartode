@@ -1,18 +1,14 @@
 /**
- * Winner Announcement API
+ * Cron Job: Auto-Announce Winners
  *
- * This endpoint checks for completed contests and posts winner announcements
- * as replies to the original cast.
+ * This endpoint runs on a schedule to:
+ * 1. Check for completed contests with winners
+ * 2. Auto-announce any that haven't been announced yet
  *
- * Flow:
- * 1. Check for contests in "Completed" status that haven't been announced
- * 2. Get winner address from contract
- * 3. Look up winner's Farcaster username via their wallet
- * 4. Post reply to original cast with winner announcement
+ * Vercel Cron: runs every minute
  *
  * Usage:
- *   POST /api/announce-winner (cron - checks all completed contests)
- *   GET /api/announce-winner?contestId=7 (announce specific contest)
+ *   GET /api/cron-announce (triggered by Vercel Cron)
  */
 
 const { ethers } = require('ethers');
@@ -23,9 +19,9 @@ const { ethers } = require('ethers');
 
 const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-  NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
+  NEYNAR_SIGNER_UUID: process.env.NEYNAR_SIGNER_UUID,
 };
 
 const CONTEST_ESCROW_ABI = [
@@ -39,67 +35,68 @@ const ERC20_ABI = [
   'function decimals() view returns (uint8)',
 ];
 
-// Track announced contests (in production, use a database)
-// For now, we'll check if a cast reply already exists
-const announcedContests = new Set();
+// ═══════════════════════════════════════════════════════════════════
+// KV STORAGE FOR TRACKING ANNOUNCED CONTESTS
+// ═══════════════════════════════════════════════════════════════════
+
+async function getAnnouncedContests() {
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      const announced = await kv.get('announced_contests');
+      return announced ? new Set(announced) : new Set();
+    }
+  } catch (e) {
+    console.log('KV not available for announced tracking');
+  }
+  return new Set();
+}
+
+async function markContestAnnounced(contestId) {
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      const announced = await kv.get('announced_contests') || [];
+      if (!announced.includes(contestId)) {
+        announced.push(contestId);
+        await kv.set('announced_contests', announced);
+      }
+    }
+  } catch (e) {
+    console.log('Could not persist announced status:', e.message);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // NEYNAR API FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════
 
-/**
- * Get Farcaster user by wallet address
- * Uses the bulk-by-address endpoint which returns users mapped by address
- */
 async function getUserByWallet(walletAddress) {
   try {
-    const normalizedAddress = walletAddress.toLowerCase();
-    console.log(`   Looking up Farcaster user for wallet: ${normalizedAddress}`);
-
     const response = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${normalizedAddress}`,
-      {
-        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
-      }
+      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${walletAddress}`,
+      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log(`   Neynar API error: ${response.status} - ${errorText}`);
-      return null;
-    }
+    if (!response.ok) return null;
 
     const data = await response.json();
-    console.log(`   Neynar response keys: ${Object.keys(data).join(', ')}`);
-
-    // Response format: { "0xaddress": [array of users] }
-    const users = data[normalizedAddress];
-
-    if (users && users.length > 0) {
-      const user = users[0];
-      console.log(`   ✅ Found Farcaster user: @${user.username} (FID: ${user.fid})`);
-      return user;
-    }
-
-    console.log(`   No Farcaster user found for ${normalizedAddress}`);
-    return null;
+    // Response format: { [address]: [users] }
+    const users = data[walletAddress.toLowerCase()];
+    return users?.[0] || null;
   } catch (error) {
     console.error('Error fetching user by wallet:', error);
     return null;
   }
 }
 
-/**
- * Post a cast as a reply to the original contest cast
- */
-async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
-  try {
-    // Need a signer UUID to post casts - this should be set up in Neynar dashboard
-    if (!signerUuid) {
-      console.log('   ⚠️ No NEYNAR_SIGNER_UUID configured - cannot post cast');
-      return { success: false, error: 'No signer configured' };
-    }
+async function postWinnerAnnouncement(parentCastHash, message) {
+  if (!CONFIG.NEYNAR_SIGNER_UUID) {
+    console.log('⚠️ No NEYNAR_SIGNER_UUID - cannot post');
+    return { success: false, error: 'No signer configured' };
+  }
 
+  try {
     const response = await fetch('https://api.neynar.com/v2/farcaster/cast', {
       method: 'POST',
       headers: {
@@ -107,7 +104,7 @@ async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
         'api_key': CONFIG.NEYNAR_API_KEY
       },
       body: JSON.stringify({
-        signer_uuid: signerUuid,
+        signer_uuid: CONFIG.NEYNAR_SIGNER_UUID,
         text: message,
         parent: parentCastHash
       })
@@ -115,12 +112,11 @@ async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('   Failed to post cast:', errorText);
+      console.error('Failed to post cast:', errorText);
       return { success: false, error: errorText };
     }
 
     const data = await response.json();
-    console.log('   ✅ Winner announcement posted!');
     return { success: true, castHash: data.cast?.hash };
   } catch (error) {
     console.error('Error posting cast:', error);
@@ -128,24 +124,14 @@ async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
   }
 }
 
-/**
- * Get stored custom message for a contest
- */
 async function getCustomMessage(contestId) {
   try {
-    // Try to fetch from the store-message API
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
-
-    const response = await fetch(`${baseUrl}/api/store-message?contestId=${contestId}`);
-
-    if (response.ok) {
-      const data = await response.json();
-      return data.message || null;
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      return await kv.get(`contest_message_${contestId}`);
     }
   } catch (e) {
-    console.log('   Could not fetch custom message:', e.message);
+    console.log('Could not fetch custom message');
   }
   return null;
 }
@@ -154,10 +140,7 @@ async function getCustomMessage(contestId) {
 // MAIN ANNOUNCEMENT LOGIC
 // ═══════════════════════════════════════════════════════════════════
 
-/**
- * Announce winner for a specific contest
- */
-async function announceWinner(contestId) {
+async function announceWinner(contestId, announcedSet) {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
   const contestEscrow = new ethers.Contract(
     CONFIG.CONTEST_ESCROW,
@@ -165,50 +148,29 @@ async function announceWinner(contestId) {
     provider
   );
 
-  // Get contest details
   const contest = await contestEscrow.getContest(contestId);
   const [host, prizeToken, prizeAmount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner] = contest;
 
   // Status: 0=Active, 1=PendingVRF, 2=Completed, 3=Cancelled
   if (status !== 2n) {
-    return {
-      success: false,
-      error: `Contest not completed (status: ${status})`,
-      contestId
-    };
+    return { skip: true, reason: `Not completed (status: ${status})` };
   }
 
   if (winner === '0x0000000000000000000000000000000000000000') {
-    return {
-      success: false,
-      error: 'No winner set',
-      contestId
-    };
+    return { skip: true, reason: 'No winner set' };
   }
 
-  // Check if already announced
-  if (announcedContests.has(contestId)) {
-    return {
-      success: false,
-      error: 'Already announced',
-      contestId
-    };
+  if (announcedSet.has(contestId)) {
+    return { skip: true, reason: 'Already announced' };
   }
 
-  console.log(`\n🎉 Announcing winner for Contest #${contestId}`);
-  console.log(`   Host: ${host}`);
+  console.log(`\n🎉 Announcing Contest #${contestId}`);
   console.log(`   Winner: ${winner}`);
-
-  // Get host's Farcaster profile
-  const hostUser = await getUserByWallet(host);
-  const hostTag = hostUser ? `@${hostUser.username}` : null;
-  console.log(`   Host tag: ${hostTag || 'not found'}`);
 
   // Get winner's Farcaster profile
   const winnerUser = await getUserByWallet(winner);
   const winnerTag = winnerUser ? `@${winnerUser.username}` : winner.slice(0, 10) + '...';
-  // Use username for congrats message (display names can have weird unicode)
-  const winnerDisplay = winnerUser ? winnerUser.username : 'Winner';
+  const winnerDisplay = winnerUser ? winnerUser.display_name || winnerUser.username : 'Winner';
 
   // Get prize info
   let prizeDisplay = '';
@@ -230,59 +192,28 @@ async function announceWinner(contestId) {
   const qualifiedEntries = await contestEscrow.getQualifiedEntries(contestId);
   const participantCount = qualifiedEntries.length;
 
-  // Get custom message (if stored)
+  // Get custom message
   const customMessage = await getCustomMessage(contestId);
 
-  // Build announcement message
+  // Build announcement
   let announcement = `🎉 CONTEST COMPLETE!\n\n`;
-
   if (customMessage) {
     announcement += `${customMessage}\n\n`;
   }
-
-  // Add host tag if found
-  if (hostTag) {
-    announcement += `🎤 Host: ${hostTag}\n`;
-  }
-
   announcement += `🏆 Winner: ${winnerTag}\n`;
   announcement += `💰 Prize: ${prizeDisplay}\n`;
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n\n`;
-  announcement += `Congrats ${winnerTag}! 🦎`;
+  announcement += `Congrats ${winnerDisplay}! 🦎`;
 
-  console.log(`   Message: ${announcement.slice(0, 100)}...`);
-
-  // Extract actual cast hash (remove requirements suffix if present)
+  // Extract actual cast hash
   const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
 
-  // Post the announcement
-  const signerUuid = process.env.NEYNAR_SIGNER_UUID;
-
-  if (!signerUuid) {
-    console.log('   ⚠️ NEYNAR_SIGNER_UUID not set - skipping cast post');
-    console.log('   Would have posted:', announcement);
-
-    // Mark as announced anyway (for dry run)
-    announcedContests.add(contestId);
-
-    return {
-      success: true,
-      contestId,
-      winner,
-      winnerUsername: winnerUser?.username,
-      prize: prizeDisplay,
-      participants: participantCount,
-      message: announcement,
-      posted: false,
-      note: 'Set NEYNAR_SIGNER_UUID to enable automatic cast posting'
-    };
-  }
-
-  const postResult = await postWinnerAnnouncement(actualCastHash, announcement, signerUuid);
+  // Post announcement
+  const postResult = await postWinnerAnnouncement(actualCastHash, announcement);
 
   if (postResult.success) {
-    announcedContests.add(contestId);
+    await markContestAnnounced(contestId);
   }
 
   return {
@@ -292,15 +223,11 @@ async function announceWinner(contestId) {
     winnerUsername: winnerUser?.username,
     prize: prizeDisplay,
     participants: participantCount,
-    message: announcement,
     posted: postResult.success,
     castHash: postResult.castHash
   };
 }
 
-/**
- * Check all contests and announce any completed ones
- */
 async function checkAndAnnounceAll() {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
   const contestEscrow = new ethers.Contract(
@@ -310,11 +237,20 @@ async function checkAndAnnounceAll() {
   );
 
   const nextContestId = await contestEscrow.nextContestId();
+  const announcedSet = await getAnnouncedContests();
   const results = [];
 
   console.log(`\n🔍 Checking contests 1 to ${nextContestId - 1n} for announcements...`);
+  console.log(`   Already announced: ${announcedSet.size} contests`);
 
   for (let i = 1n; i < nextContestId; i++) {
+    const contestId = Number(i);
+
+    // Skip if already announced
+    if (announcedSet.has(contestId)) {
+      continue;
+    }
+
     try {
       const contest = await contestEscrow.getContest(i);
       const status = contest[8];
@@ -322,8 +258,8 @@ async function checkAndAnnounceAll() {
 
       // Only announce completed contests with winners
       if (status === 2n && winner !== '0x0000000000000000000000000000000000000000') {
-        if (!announcedContests.has(Number(i))) {
-          const result = await announceWinner(Number(i));
+        const result = await announceWinner(contestId, announcedSet);
+        if (!result.skip) {
           results.push(result);
         }
       }
@@ -349,55 +285,30 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
+  // Verify cron secret if configured (optional but recommended)
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && req.headers['authorization'] !== `Bearer ${cronSecret}`) {
+    // Allow manual calls without secret for testing
+    if (req.query.manual !== 'true') {
+      console.log('⚠️ No cron secret provided, allowing anyway for now');
+    }
+  }
+
   try {
-    // GET: Announce specific contest
-    if (req.method === 'GET') {
-      const contestId = parseInt(req.query.contestId);
+    const results = await checkAndAnnounceAll();
 
-      if (!contestId || isNaN(contestId)) {
-        return res.status(400).json({
-          error: 'Missing or invalid contestId parameter'
-        });
-      }
-
-      const result = await announceWinner(contestId);
-      return res.status(result.success ? 200 : 400).json(result);
-    }
-
-    // POST: Check all contests (for cron)
-    if (req.method === 'POST') {
-      const results = await checkAndAnnounceAll();
-      return res.status(200).json({
-        checked: results.length,
-        results
-      });
-    }
-
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(200).json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      announced: results.length,
+      results
+    });
 
   } catch (error) {
-    console.error('API error:', error);
+    console.error('Cron error:', error);
     return res.status(500).json({
+      success: false,
       error: error.message
     });
   }
 };
-
-// For local testing
-if (require.main === module) {
-  const contestId = process.argv[2];
-
-  if (contestId) {
-    announceWinner(parseInt(contestId))
-      .then(result => {
-        console.log('\n📊 Result:', JSON.stringify(result, null, 2));
-        process.exit(result.success ? 0 : 1);
-      });
-  } else {
-    checkAndAnnounceAll()
-      .then(results => {
-        console.log('\n📊 Results:', JSON.stringify(results, null, 2));
-        process.exit(0);
-      });
-  }
-}
