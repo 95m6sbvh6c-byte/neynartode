@@ -117,7 +117,8 @@
       minRecasts: '0',
       minReplies: '0',
 
-      // Tokenomics (always enabled - defaults to NEYNARTODES)
+      // Tokenomics (can be toggled off for 0.005 ETH)
+      tokenomicsEnabled: true, // Main toggle for tokenomics section
       tokenEnabled: true,
       tokenAddress: '0x8de1622fe07f56cda2e2273e615a513f1d828b07', // Default to NEYNARTODES
       tokenTicker: 'NEYNARTODES',
@@ -125,7 +126,7 @@
       tokenMcap: 0,
       tokenSearch: '',
       showTokenSuggestions: false,
-      minTradeVolume: '',
+      minTradeVolume: '20', // Default to $20 for NEYNARTODES
 
       // Winner announcement
       customMessage: '',
@@ -1547,7 +1548,7 @@
                         <input type="number" id="durationMinutes" value="${state.durationMinutes}" min="0" max="59" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
                       </div>
                     </div>
-                    <p class="text-xs text-gray-600 mt-2">⏱️ Minimum duration: 30 minutes</p>
+                    <p class="text-xs text-gray-600 mt-2">⏱️ Minimum duration: 1 minute</p>
                   </div>
 
                   ${state.startMode === 'scheduled' && state.startDate && state.durationHours !== '' && state.durationMinutes !== '' ? `
@@ -1654,12 +1655,32 @@
                   </div>
                 </div>
 
-                <!-- Tokenomics (Always ON - Trading Volume) -->
+                <!-- Tokenomics (Can be toggled off for 0.005 ETH) -->
                 <div class="p-6 bg-green-50 rounded-xl border-2 border-green-200">
                   <div class="flex items-center justify-between mb-4">
                     <h3 class="text-xl font-bold text-green-800">💰 Trading Volume Requirement</h3>
-                    <span class="px-4 py-2 rounded-lg font-semibold bg-purple-600 text-white">REQUIRED</span>
+                    ${isDevWallet(state.userAddress) ? `
+                      <label class="flex items-center gap-3 cursor-pointer">
+                        <span class="text-sm font-semibold text-gray-700">Enable Tokenomics</span>
+                        <div class="relative">
+                          <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
+                          <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
+                        </div>
+                        <span class="text-xs text-gray-500">(Dev: FREE)</span>
+                      </label>
+                    ` : `
+                      <label class="flex items-center gap-3 cursor-pointer">
+                        <span class="text-sm font-semibold text-gray-700">Enable Tokenomics</span>
+                        <div class="relative">
+                          <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
+                          <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
+                        </div>
+                        <span class="text-xs ${state.tokenomicsEnabled ? 'text-green-600 font-semibold' : 'text-orange-600 font-semibold'}">${state.tokenomicsEnabled ? '(Enabled)' : '(-0.005 ETH to disable)'}</span>
+                      </label>
+                    `}
                   </div>
+
+                  ${state.tokenomicsEnabled ? `
 
                   <div class="space-y-4">
                     <!-- Default Token Info -->
@@ -1720,16 +1741,27 @@
                     <!-- Trade Volume Input -->
                     <div>
                       <label class="block text-sm font-semibold text-gray-700 mb-2">Min Trade Volume ($)</label>
-                      <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                      <p class="text-xs text-gray-600 mt-1">Minimum volume traded during contest (NEYNARTODES: max $20, Custom token: max = prize amount)</p>
+                      ${state.tokenAddress && state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
+                        <input type="number" id="minTradeVolume" value="20" readonly class="w-full px-4 py-2 border-2 border-green-300 rounded-lg bg-green-50 text-green-800 font-bold cursor-not-allowed" />
+                        <p class="text-xs text-green-600 mt-1 font-semibold">🔒 NEYNARTODES volume is locked at $20</p>
+                      ` : `
+                        <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                        <p class="text-xs text-gray-600 mt-1">Custom token: max volume = prize amount</p>
+                      `}
                     </div>
 
                     <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
                       <p class="text-xs text-blue-800 font-semibold">
-                        💡 <strong>NEYNARTODES:</strong> Max $20 volume (FREE) | <strong>Custom token:</strong> Volume ≤ prize amount (+0.005 ETH fee)
+                        💡 <strong>NEYNARTODES:</strong> Locked at $20 (FREE) | <strong>Custom token:</strong> Volume ≤ prize amount (+0.005 ETH fee)
                       </p>
                     </div>
                   </div>
+                  ` : `
+                  <div class="bg-gray-100 p-4 rounded-lg text-center">
+                    <p class="text-gray-600 font-semibold">Tokenomics disabled - No volume requirements</p>
+                    <p class="text-xs text-gray-500 mt-1">Toggle ON to enable trading volume requirements</p>
+                  </div>
+                  `}
                 </div>
 
                 <!-- Winner Announcement -->
@@ -1909,6 +1941,73 @@
       if (startNow) startNow.onclick = () => { state.startMode = 'now'; render(); };
       if (startScheduled) startScheduled.onclick = () => { state.startMode = 'scheduled'; render(); };
 
+      // Tokenomics toggle handler
+      const tokenomicsToggle = document.getElementById('tokenomicsToggle');
+      if (tokenomicsToggle) {
+        tokenomicsToggle.onchange = async (e) => {
+          const wantsDisable = !e.target.checked;
+
+          // Dev wallet can toggle freely
+          if (isDevWallet(state.userAddress)) {
+            state.tokenomicsEnabled = e.target.checked;
+            if (!state.tokenomicsEnabled) {
+              state.minTradeVolume = '0';
+            } else {
+              state.minTradeVolume = '20'; // Reset to default
+            }
+            render();
+            return;
+          }
+
+          // Regular users must pay 0.005 ETH to disable
+          if (wantsDisable) {
+            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.005 ETH\n\nProceed?');
+            if (!confirmed) {
+              e.target.checked = true; // Revert toggle
+              return;
+            }
+
+            try {
+              // Send 0.005 ETH to treasury
+              const ethProvider = window.activeEthProvider || window.ethereum;
+              if (!ethProvider) {
+                alert('No wallet connected!');
+                e.target.checked = true;
+                return;
+              }
+
+              const provider = new ethers.providers.Web3Provider(ethProvider);
+              const signer = provider.getSigner();
+              const fee = ethers.utils.parseEther('0.005');
+
+              alert('💸 Sending 0.005 ETH fee...\n\nConfirm in your wallet!');
+
+              const tx = await signer.sendTransaction({
+                to: CONFIG.CONTRACTS.treasury,
+                value: fee
+              });
+
+              alert('⏳ Transaction submitted!\n\nWaiting for confirmation...\n\nTx: ' + tx.hash);
+              await tx.wait();
+
+              state.tokenomicsEnabled = false;
+              state.minTradeVolume = '0';
+              alert('✅ Tokenomics disabled!\n\nYou can now create contests without volume requirements.');
+              render();
+            } catch (error) {
+              console.error('Fee payment error:', error);
+              alert('❌ Fee payment failed!\n\n' + error.message);
+              e.target.checked = true; // Revert toggle
+            }
+          } else {
+            // Enabling is free
+            state.tokenomicsEnabled = true;
+            state.minTradeVolume = '20'; // Reset to default
+            render();
+          }
+        };
+      }
+
       // Custom token checkbox handler
       const useCustomToken = document.getElementById('useCustomToken');
       if (useCustomToken) {
@@ -1923,7 +2022,9 @@
             state.tokenTicker = 'NEYNARTODES';
             state.tokenImage = '';
             state.tokenSearch = '';
+            state.minTradeVolume = '20'; // Reset volume
           }
+          render();
         };
       }
 
@@ -2036,8 +2137,8 @@
           const minutes = parseInt(state.durationMinutes) || 0;
           const totalMinutes = hours * 60 + minutes;
 
-          if (totalMinutes < 30) {
-            alert('Contest duration must be at least 30 minutes!\n\nCurrent duration: ' + totalMinutes + ' minutes\nRequired: 30 minutes minimum');
+          if (totalMinutes < 1) {
+            alert('Contest duration must be at least 1 minute!\n\nCurrent duration: ' + totalMinutes + ' minutes\nRequired: 1 minute minimum');
             return;
           }
 
@@ -2250,12 +2351,17 @@
 
         // Sanitize volume requirement - ensure valid number
         let volumeRequirement = ethers.BigNumber.from(0);
-        if (state.tokenEnabled && state.minTradeVolume) {
+        if (state.tokenomicsEnabled && state.tokenEnabled && state.minTradeVolume) {
           try {
-            // Clean the input - remove any invalid chars and limit decimals
-            const cleanVolume = parseFloat(state.minTradeVolume).toFixed(18).replace(/\.?0+$/, '');
-            if (cleanVolume && !isNaN(parseFloat(cleanVolume))) {
-              volumeRequirement = ethers.utils.parseEther(cleanVolume);
+            // For NEYNARTODES, lock at 20
+            if (state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase()) {
+              volumeRequirement = ethers.utils.parseEther('20');
+            } else {
+              // Clean the input - remove any invalid chars and limit decimals
+              const cleanVolume = parseFloat(state.minTradeVolume).toFixed(18).replace(/\.?0+$/, '');
+              if (cleanVolume && !isNaN(parseFloat(cleanVolume))) {
+                volumeRequirement = ethers.utils.parseEther(cleanVolume);
+              }
             }
           } catch (e) {
             console.error('Invalid volume format:', e);
@@ -2263,6 +2369,7 @@
           }
         }
         console.log('   Volume requirement:', ethers.utils.formatEther(volumeRequirement));
+        console.log('   Tokenomics enabled:', state.tokenomicsEnabled);
 
         // Cast ID - validated cast hash from user input (REQUIRED)
         // Encode social requirements into castId: "castHash|R1L0P1" format
