@@ -70,18 +70,24 @@ async function getCastEngagement(castId) {
     const castData = await castResponse.json();
     const cast = castData.cast;
 
-    // Get reactions (likes and recasts)
-    const reactionsResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castId}&types=likes,recasts&limit=100`,
-      {
-        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
-      }
-    );
-
+    // Get reactions (likes and recasts) with pagination
     let likers = [];
     let recasters = [];
+    let cursor = null;
+    let pageCount = 0;
+    const maxPages = 50; // Safety limit: 50 pages * 100 = 5000 max reactions
 
-    if (reactionsResponse.ok) {
+    do {
+      const url = cursor
+        ? `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castId}&types=likes,recasts&limit=100&cursor=${cursor}`
+        : `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castId}&types=likes,recasts&limit=100`;
+
+      const reactionsResponse = await fetch(url, {
+        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+      });
+
+      if (!reactionsResponse.ok) break;
+
       const reactionsData = await reactionsResponse.json();
 
       // Extract unique addresses from reactions
@@ -93,19 +99,33 @@ async function getCastEngagement(castId) {
           recasters.push(...addresses);
         }
       }
-    }
 
-    // Get replies
-    const repliesResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castId}&type=hash&reply_depth=1&limit=100`,
-      {
-        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
-      }
-    );
+      cursor = reactionsData.cursor;
+      pageCount++;
 
+      // Small delay to avoid rate limiting
+      if (cursor) await new Promise(r => setTimeout(r, 100));
+
+    } while (cursor && pageCount < maxPages);
+
+    console.log(`   Fetched ${pageCount} pages of reactions`);
+
+    // Get replies with pagination
     let repliers = [];
+    let replyCursor = null;
+    let replyPageCount = 0;
 
-    if (repliesResponse.ok) {
+    do {
+      const replyUrl = replyCursor
+        ? `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castId}&type=hash&reply_depth=1&limit=50&cursor=${replyCursor}`
+        : `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castId}&type=hash&reply_depth=1&limit=50`;
+
+      const repliesResponse = await fetch(replyUrl, {
+        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+      });
+
+      if (!repliesResponse.ok) break;
+
       const repliesData = await repliesResponse.json();
       const replies = repliesData.conversation?.cast?.direct_replies || [];
 
@@ -120,7 +140,15 @@ async function getCastEngagement(castId) {
           })));
         }
       }
-    }
+
+      replyCursor = repliesData.next?.cursor;
+      replyPageCount++;
+
+      if (replyCursor) await new Promise(r => setTimeout(r, 100));
+
+    } while (replyCursor && replyPageCount < maxPages);
+
+    console.log(`   Fetched ${replyPageCount} pages of replies`);
 
     return {
       recasters: [...new Set(recasters.map(a => a.toLowerCase()))],
