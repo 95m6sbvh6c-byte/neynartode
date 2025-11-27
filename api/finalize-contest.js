@@ -706,17 +706,13 @@ async function checkAllPendingContests() {
   const nextContestId = await contestEscrow.nextContestId();
   const results = [];
 
-  // Only check the last 5 contests to avoid RPC rate limits on free tier
-  // This is enough since contests are created sequentially
-  const MAX_CONTESTS_TO_CHECK = 5n;
+  // Check the last 10 contests to support multiple concurrent contests
+  const MAX_CONTESTS_TO_CHECK = 10n;
   const startId = nextContestId > MAX_CONTESTS_TO_CHECK ? nextContestId - MAX_CONTESTS_TO_CHECK : 1n;
 
   console.log(`\n🔍 Checking contests ${startId} to ${nextContestId - 1n}...`);
 
   for (let i = startId; i < nextContestId; i++) {
-    // Add delay between RPC calls to avoid rate limiting on free tier
-    await new Promise(r => setTimeout(r, 1000));
-
     try {
       const canFinalize = await contestEscrow.canFinalize(i);
 
