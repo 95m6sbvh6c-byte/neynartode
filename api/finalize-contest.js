@@ -706,10 +706,10 @@ async function checkAllPendingContests() {
   const nextContestId = await contestEscrow.nextContestId();
   const results = [];
 
-  // Start from contest 15 to skip old broken/completed contests
-  // This avoids RPC rate limiting from checking too many contests
-  const START_CONTEST_ID = 15n;
-  const startId = START_CONTEST_ID < nextContestId ? START_CONTEST_ID : 1n;
+  // Only check the last 10 contests to avoid RPC rate limits
+  // This is enough since contests are created sequentially
+  const MAX_CONTESTS_TO_CHECK = 10n;
+  const startId = nextContestId > MAX_CONTESTS_TO_CHECK ? nextContestId - MAX_CONTESTS_TO_CHECK : 1n;
 
   console.log(`\n🔍 Checking contests ${startId} to ${nextContestId - 1n}...`);
 
