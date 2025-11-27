@@ -39,9 +39,30 @@ const ERC20_ABI = [
   'function decimals() view returns (uint8)',
 ];
 
-// Track announced contests (in production, use a database)
-// For now, we'll check if a cast reply already exists
-const announcedContests = new Set();
+// Track announced contests using KV for persistence across serverless cold starts
+async function isAlreadyAnnounced(contestId) {
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      const announced = await kv.get(`announced_${contestId}`);
+      return !!announced;
+    }
+  } catch (e) {
+    console.log('   Could not check announced status:', e.message);
+  }
+  return false;
+}
+
+async function markAsAnnounced(contestId) {
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      await kv.set(`announced_${contestId}`, true);
+    }
+  } catch (e) {
+    console.log('   Could not mark as announced:', e.message);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // NEYNAR API FUNCTIONS
@@ -130,22 +151,21 @@ async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
 
 /**
  * Get stored custom message for a contest
+ * Reads directly from Vercel KV for reliability
  */
 async function getCustomMessage(contestId) {
   try {
-    // Try to fetch from the store-message API
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
-
-    const response = await fetch(`${baseUrl}/api/store-message?contestId=${contestId}`);
-
-    if (response.ok) {
-      const data = await response.json();
-      return data.message || null;
+    // Use Vercel KV directly (more reliable than HTTP call)
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      const message = await kv.get(`contest_message_${contestId}`);
+      if (message) {
+        console.log(`   ✅ Found custom message in KV for contest ${contestId}`);
+        return message;
+      }
     }
   } catch (e) {
-    console.log('   Could not fetch custom message:', e.message);
+    console.log('   Could not fetch custom message from KV:', e.message);
   }
   return null;
 }
@@ -186,8 +206,8 @@ async function announceWinner(contestId) {
     };
   }
 
-  // Check if already announced
-  if (announcedContests.has(contestId)) {
+  // Check if already announced (using KV for persistence)
+  if (await isAlreadyAnnounced(contestId)) {
     return {
       success: false,
       error: 'Already announced',
@@ -264,7 +284,7 @@ async function announceWinner(contestId) {
     console.log('   Would have posted:', announcement);
 
     // Mark as announced anyway (for dry run)
-    announcedContests.add(contestId);
+    await markAsAnnounced(contestId);
 
     return {
       success: true,
@@ -282,7 +302,7 @@ async function announceWinner(contestId) {
   const postResult = await postWinnerAnnouncement(actualCastHash, announcement, signerUuid);
 
   if (postResult.success) {
-    announcedContests.add(contestId);
+    await markAsAnnounced(contestId);
   }
 
   return {
@@ -322,7 +342,7 @@ async function checkAndAnnounceAll() {
 
       // Only announce completed contests with winners
       if (status === 2n && winner !== '0x0000000000000000000000000000000000000000') {
-        if (!announcedContests.has(Number(i))) {
+        if (!(await isAlreadyAnnounced(Number(i)))) {
           const result = await announceWinner(Number(i));
           results.push(result);
         }
