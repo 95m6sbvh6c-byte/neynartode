@@ -117,7 +117,7 @@
       minRecasts: '0',
       minReplies: '0',
 
-      // Tokenomics (can be toggled off for 0.005 ETH)
+      // Tokenomics (can be toggled off for 0.001 ETH)
       tokenomicsEnabled: true, // Main toggle for tokenomics section
       tokenEnabled: true,
       tokenAddress: '0x8de1622fe07f56cda2e2273e615a513f1d828b07', // Default to NEYNARTODES
@@ -126,7 +126,7 @@
       tokenMcap: 0,
       tokenSearch: '',
       showTokenSuggestions: false,
-      minTradeVolume: '20', // Default to $20 for NEYNARTODES
+      minTradeVolume: '10', // Default to $10 for NEYNARTODES
 
       // Winner announcement
       customMessage: '',
@@ -1503,7 +1503,7 @@
                 <p>• <strong>Whitelist Required:</strong> Only whitelisted addresses can participate</p>
                 <p>• <strong>Token Gate:</strong> Minimum 20,000 $NEYNARTODES required</p>
                 <p>• <strong>Reply Quality:</strong> Minimum 4 words per reply to prevent spam</p>
-                <p>• <strong>Trade Volume Cap:</strong> $20 max for NEYNARTODES, or ≤ prize for custom token</p>
+                <p>• <strong>Trade Volume Cap:</strong> $10 max for NEYNARTODES, or ≤ prize for custom token</p>
               </div>
             </div>
 
@@ -1653,7 +1653,7 @@
                   </div>
                 </div>
 
-                <!-- Tokenomics (Can be toggled off for 0.005 ETH) -->
+                <!-- Tokenomics (Can be toggled off for 0.001 ETH) -->
                 <div class="p-6 bg-green-50 rounded-xl border-2 border-green-200">
                   <div class="flex items-center justify-between mb-4">
                     <h3 class="text-xl font-bold text-green-800">💰 Trading Volume Requirement</h3>
@@ -1673,7 +1673,7 @@
                           <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
                           <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
                         </div>
-                        <span class="text-xs ${state.tokenomicsEnabled ? 'text-green-600 font-semibold' : 'text-orange-600 font-semibold'}">${state.tokenomicsEnabled ? '(Enabled)' : '(-0.005 ETH to disable)'}</span>
+                        <span class="text-xs ${state.tokenomicsEnabled ? 'text-green-600 font-semibold' : 'text-orange-600 font-semibold'}">${state.tokenomicsEnabled ? '(Enabled)' : '(-0.001 ETH to disable)'}</span>
                       </label>
                     `}
                   </div>
@@ -1697,7 +1697,7 @@
                     <div class="border-2 border-dashed border-green-300 rounded-lg p-4">
                       <div class="flex items-center gap-2 mb-3">
                         <input type="checkbox" id="useCustomToken" ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? 'checked' : ''} class="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
-                        <label for="useCustomToken" class="text-sm font-semibold text-gray-700">Use Custom Token (+0.005 ETH fee)</label>
+                        <label for="useCustomToken" class="text-sm font-semibold text-gray-700">Use Custom Token (+0.001 ETH fee)</label>
                       </div>
 
                       <div id="customTokenSection" class="${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? '' : 'hidden'}">
@@ -1727,7 +1727,7 @@
                           <div class="bg-gradient-to-r from-orange-50 to-yellow-50 p-4 rounded-lg border-2 border-orange-200 flex items-center gap-3">
                             <img src="${state.tokenImage}" alt="${state.tokenTicker}" class="w-12 h-12 rounded-full object-cover border-2 border-orange-400 shadow-lg" onerror="this.src='https://via.placeholder.com/48/22c55e/ffffff?text=${state.tokenTicker[0]}'" />
                             <div class="flex-1">
-                              <div class="text-xs text-orange-600 font-semibold mb-1">✓ Custom Token (+0.005 ETH)</div>
+                              <div class="text-xs text-orange-600 font-semibold mb-1">✓ Custom Token (+0.001 ETH)</div>
                               <div class="font-bold text-orange-900 text-lg">${state.tokenTicker}</div>
                               <div class="text-xs text-gray-500 font-mono">${state.tokenAddress.substring(0, 10)}...${state.tokenAddress.substring(38)}</div>
                             </div>
@@ -1740,8 +1740,8 @@
                     <div>
                       <label class="block text-sm font-semibold text-gray-700 mb-2">Min Trade Volume ($)</label>
                       ${state.tokenAddress && state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
-                        <input type="number" id="minTradeVolume" value="20" readonly class="w-full px-4 py-2 border-2 border-green-300 rounded-lg bg-green-50 text-green-800 font-bold cursor-not-allowed" />
-                        <p class="text-xs text-green-600 mt-1 font-semibold">🔒 NEYNARTODES volume is locked at $20</p>
+                        <input type="number" id="minTradeVolume" value="10" readonly class="w-full px-4 py-2 border-2 border-green-300 rounded-lg bg-green-50 text-green-800 font-bold cursor-not-allowed" />
+                        <p class="text-xs text-green-600 mt-1 font-semibold">🔒 NEYNARTODES volume is locked at $10</p>
                       ` : `
                         <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
                         <p class="text-xs text-gray-600 mt-1">Custom token: max volume = prize amount</p>
@@ -1750,7 +1750,7 @@
 
                     <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
                       <p class="text-xs text-blue-800 font-semibold">
-                        💡 <strong>NEYNARTODES:</strong> Locked at $20 (FREE) | <strong>Custom token:</strong> Volume ≤ prize amount (+0.005 ETH fee)
+                        💡 <strong>NEYNARTODES:</strong> Locked at $10 (FREE) | <strong>Custom token:</strong> Volume ≤ prize amount (+0.001 ETH fee)
                       </p>
                     </div>
                   </div>
@@ -1951,22 +1951,22 @@
             if (!state.tokenomicsEnabled) {
               state.minTradeVolume = '0';
             } else {
-              state.minTradeVolume = '20'; // Reset to default
+              state.minTradeVolume = '10'; // Reset to default
             }
             render();
             return;
           }
 
-          // Regular users must pay 0.005 ETH to disable
+          // Regular users must pay 0.001 ETH to disable
           if (wantsDisable) {
-            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.005 ETH\n\nProceed?');
+            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.001 ETH\n\nProceed?');
             if (!confirmed) {
               e.target.checked = true; // Revert toggle
               return;
             }
 
             try {
-              // Send 0.005 ETH to treasury
+              // Send 0.001 ETH to treasury
               const ethProvider = window.activeEthProvider || window.ethereum;
               if (!ethProvider) {
                 alert('No wallet connected!');
@@ -1976,9 +1976,9 @@
 
               const provider = new ethers.providers.Web3Provider(ethProvider);
               const signer = provider.getSigner();
-              const fee = ethers.utils.parseEther('0.005');
+              const fee = ethers.utils.parseEther('0.001');
 
-              alert('💸 Sending 0.005 ETH fee...\n\nConfirm in your wallet!');
+              alert('💸 Sending 0.001 ETH fee...\n\nConfirm in your wallet!');
 
               const tx = await signer.sendTransaction({
                 to: CONFIG.CONTRACTS.treasury,
@@ -2000,7 +2000,7 @@
           } else {
             // Enabling is free
             state.tokenomicsEnabled = true;
-            state.minTradeVolume = '20'; // Reset to default
+            state.minTradeVolume = '10'; // Reset to default
             render();
           }
         };
@@ -2020,7 +2020,7 @@
             state.tokenTicker = 'NEYNARTODES';
             state.tokenImage = '';
             state.tokenSearch = '';
-            state.minTradeVolume = '20'; // Reset volume
+            state.minTradeVolume = '10'; // Reset volume
           }
           render();
         };
@@ -2195,9 +2195,9 @@
               return;
             }
           } else {
-            // Default NEYNARTODES: fixed cap at $20
-            if (volumeReq > 20) {
-              alert('Trade volume requirement cannot exceed $20 for NEYNARTODES!\n\nMax: $20\nYour value: $' + volumeReq + '\n\nPay for custom token to set higher volume requirements.');
+            // Default NEYNARTODES: fixed cap at $10
+            if (volumeReq > 10) {
+              alert('Trade volume requirement cannot exceed $10 for NEYNARTODES!\n\nMax: $10\nYour value: $' + volumeReq + '\n\nPay for custom token to set higher volume requirements.');
               return;
             }
           }
@@ -2758,7 +2758,7 @@
         } else if (error.message?.includes('Prize required')) {
           alert('❌ Prize amount required!\n\nPlease enter a prize amount greater than 0.');
         } else if (error.message?.includes('Include custom token fee')) {
-          alert('❌ Custom token fee required!\n\nUsing a custom token requirement costs 0.005 ETH.\nMake sure you have enough ETH for the fee.');
+          alert('❌ Custom token fee required!\n\nUsing a custom token requirement costs 0.001 ETH.\nMake sure you have enough ETH for the fee.');
         } else if (error.message?.includes('Invalid duration')) {
           alert('❌ Invalid duration!\n\nContest duration must be greater than 0.');
         } else {
