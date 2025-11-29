@@ -766,6 +766,26 @@
       }
     }
 
+    // Dedicated function to load burned tokens - isolated to prevent failures
+    async function loadBurnedTokens() {
+      const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+      try {
+        // Use direct JsonRpcProvider for reliability
+        const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        const neynartodeToken = new ethers.Contract(
+          CONFIG.CONTRACTS.neynartodes,
+          ['function balanceOf(address) view returns (uint256)'],
+          rpcProvider
+        );
+        const burnedBalance = await neynartodeToken.balanceOf(BURN_ADDRESS);
+        state.totalTokensBurned = ethers.utils.formatEther(burnedBalance);
+        console.log('Total tokens burned:', state.totalTokensBurned);
+      } catch (e) {
+        console.error('Error fetching burned tokens:', e);
+        state.totalTokensBurned = '0';
+      }
+    }
+
     async function loadPrizePools() {
       try {
         // Use stored provider or fallback to JsonRpcProvider for read-only calls
@@ -802,21 +822,8 @@
         state.pendingClankerFees = '0';
 
         // Get total tokens burned by checking balance at burn address (0x...dEaD)
-        const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD';
-        const neynartodeToken = new ethers.Contract(
-          CONFIG.CONTRACTS.neynartodes,
-          ['function balanceOf(address) view returns (uint256)'],
-          provider
-        );
-
-        try {
-          const burnedBalance = await neynartodeToken.balanceOf(BURN_ADDRESS);
-          state.totalTokensBurned = ethers.utils.formatEther(burnedBalance);
-          console.log('Total tokens burned:', state.totalTokensBurned);
-        } catch (e) {
-          console.error('Error fetching burned tokens:', e);
-          state.totalTokensBurned = '0';
-        }
+        // Use a separate try/catch and dedicated RPC to ensure this always works
+        await loadBurnedTokens();
 
         // For now, calculate prizes given from all seasons (you can add a totalPrizesDistributed to contract later)
         // For beta, we'll use the current season's total as placeholder
