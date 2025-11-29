@@ -51,7 +51,7 @@
       BASE_RPC_URL: 'https://mainnet.base.org',
       CONTRACTS: {
         prizeNFT: '0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81',
-        votingManager: '0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99',
+        votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8', // V2 deployed 2025-11-29
         contestEscrow: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
         treasury: '0xB5A1a3AAD5962dBF2B8DF3C5712d137c1640A176',
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
@@ -990,6 +990,12 @@
       // Check if dev wallet (unlimited voting)
       const isDev = isDevWallet(state.userAddress);
 
+      // Block self-voting (except dev for testing)
+      if (!isDev && state.userFid && state.userFid === hostFid) {
+        alert("❌ You can't vote for yourself!\n\nNice try though! 😄");
+        return;
+      }
+
       if (!isDev && state.votesRemaining <= 0) {
         alert('You have used all 10 votes for today! Come back tomorrow.');
         return;
@@ -1005,11 +1011,12 @@
         const provider = new ethers.providers.Web3Provider(ethProvider);
         const signer = provider.getSigner();
 
-        // Contract ABIs
+        // Contract ABIs - VotingManager V2 with upvote/downvote
         const votingManagerABI = [
-          'function vote(uint256 contestId) external',
+          'function voteForHost(uint256 hostFid, bool isUpvote) external',
           'function getRemainingVotes(address user) external view returns (uint256)',
-          'function canVote(address user, uint256 contestId) external view returns (bool)',
+          'function canVote(address user) external view returns (bool)',
+          'function getHostVoteStats(uint256 hostFid) external view returns (uint256 upvotes, uint256 downvotes, int256 netScore)',
           'function TOKENS_PER_VOTE() external view returns (uint256)'
         ];
 
@@ -1031,14 +1038,11 @@
           signer
         );
 
-        // Use hostFid as contestId for now
-        const contestId = hostFid;
-
         // Check if can vote (skip for dev wallet)
-        if (!isDevWallet) {
-          const canVote = await votingManager.canVote(state.userAddress, contestId);
-          if (!canVote) {
-            alert('❌ Cannot vote!\n\nYou may have:\n- Already voted for this host\n- Used all 10 votes today\n- Insufficient token balance');
+        if (!isDev) {
+          const canVoteResult = await votingManager.canVote(state.userAddress);
+          if (!canVoteResult) {
+            alert('❌ Cannot vote!\n\nYou may have:\n- Used all 10 votes today\n- Insufficient token balance (need 20K minimum)\n- Not whitelisted (Season 0 Beta)');
             return;
           }
         }
@@ -1071,14 +1075,14 @@
         // Cast vote on-chain
         alert('🗳️ Submitting your vote on-chain...\n\nThis will:\n• Burn 500 NEYNARTODES (50%)\n• Send 500 to treasury (50%)\n\nConfirm in MetaMask!');
 
-        const voteTx = await votingManager.vote(contestId);
+        const voteTx = await votingManager.voteForHost(hostFid, isUpvote);
 
         // Track vote event
         if (window.analytics?.track) {
           window.analytics.track('Vote Cast', {
-            contestId,
             hostFid,
             isUpvote,
+            voteType: isUpvote ? 'upvote' : 'downvote',
             txHash: voteTx.hash
           });
         }
