@@ -26,7 +26,7 @@ const CONFIG = {
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
 
   // RPC
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
 
   // API Keys
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
@@ -182,162 +182,72 @@ async function getCastEngagement(castId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TRADING VOLUME CHECK - Uses Neynar webhook data or fallback
+// TRADING VOLUME CHECK - Direct Uniswap V2/V3/V4 Query
 // ═══════════════════════════════════════════════════════════════════
+
+// Import Uniswap volume checker
+const { getUniswapVolumes } = require('./lib/uniswap-volume');
 
 /**
  * Get trading volume for addresses on a specific token
- * Priority:
- * 1. Neynar webhook data (real-time, free)
- * 2. Covalent API (if configured)
- * 3. Fallback to token balance check
+ *
+ * Uses direct Uniswap pool queries (V2, V3, V4) for accurate volume data.
+ * This is called AFTER social filtering, so we only check a small subset of wallets.
  *
  * @param {string} tokenAddress - Token contract address
- * @param {string[]} addresses - Array of wallet addresses to check
- * @param {number} minVolume - Minimum volume required (in token units)
+ * @param {string[]} addresses - Array of wallet addresses to check (already socially qualified)
+ * @param {number} minVolumeUSD - Minimum USD volume required
  * @param {number} startTime - Contest start timestamp
  * @param {number} endTime - Contest end timestamp
  */
-async function getTraderVolumes(tokenAddress, addresses, minVolume, startTime, endTime) {
+async function getTraderVolumes(tokenAddress, addresses, minVolumeUSD, startTime, endTime, contestId = null) {
   try {
     // If no volume requirement, everyone passes
-    if (minVolume === 0) {
-      return addresses.map(addr => ({ address: addr, volume: 0, passed: true }));
+    if (minVolumeUSD === 0) {
+      return addresses.map(addr => ({ address: addr, volumeUSD: 0, passed: true }));
     }
 
-    // Try Neynar webhook data first (via our trade-webhook API)
-    try {
-      const baseUrl = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000';
+    console.log(`\n💰 Checking trading volumes for ${addresses.length} socially-qualified wallets...`);
 
-      console.log('📊 Checking trade volumes via Neynar webhook data...');
-
-      const results = [];
-      for (const address of addresses) {
-        const response = await fetch(
-          `${baseUrl}/api/trade-webhook?token=${tokenAddress}&wallet=${address}`
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const volume = data.volume || 0;
-
-          console.log(`   ${address.slice(0, 8)}... volume: ${volume.toFixed(2)} tokens`);
-
-          results.push({
-            address,
-            volume,
-            passed: volume >= minVolume
-          });
-        } else {
-          results.push({ address, volume: 0, passed: false });
-        }
-      }
-
-      // If we got results from webhook, use them
-      if (results.length > 0 && results.some(r => r.volume > 0)) {
-        return results;
-      }
-
-      console.log('   No webhook data found, trying fallback...');
-    } catch (e) {
-      console.log('   Webhook check failed:', e.message);
+    // Set contestId globally so volume checker can use stored price
+    if (contestId) {
+      global._currentContestId = contestId;
     }
 
-    // Fallback to Covalent if configured
-    const COVALENT_API_KEY = process.env.COVALENT_API_KEY;
+    // Use direct token transfer queries (catches V2, V3, V4, aggregators)
+    const results = await getUniswapVolumes(
+      tokenAddress,
+      addresses,
+      minVolumeUSD,
+      startTime,
+      endTime
+    );
 
-    if (COVALENT_API_KEY) {
-      console.log('💰 Checking volumes via Covalent API...');
-      // Base chain ID for Covalent
-      const CHAIN_ID = 'base-mainnet';
+    // Clear global
+    global._currentContestId = null;
 
-      const results = [];
-
-      for (const address of addresses) {
-        try {
-          const response = await fetch(
-            `https://api.covalenthq.com/v1/${CHAIN_ID}/address/${address}/transfers_v2/?contract-address=${tokenAddress}&starting-block=${await timestampToBlock(startTime)}&ending-block=${await timestampToBlock(endTime)}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${COVALENT_API_KEY}`
-              }
-            }
-          );
-
-          if (!response.ok) {
-            console.log(`   Covalent API error for ${address}: ${response.status}`);
-            results.push({ address, volume: 0, passed: false });
-            continue;
-          }
-
-          const data = await response.json();
-          const transfers = data.data?.items || [];
-
-          let totalVolume = 0n;
-
-          for (const transfer of transfers) {
-            for (const item of transfer.transfers || []) {
-              if (item.contract_address?.toLowerCase() === tokenAddress.toLowerCase()) {
-                const delta = BigInt(item.delta || '0');
-                totalVolume += delta > 0n ? delta : -delta;
-              }
-            }
-          }
-
-          const volumeInTokens = Number(totalVolume) / 1e18;
-          console.log(`   ${address.slice(0, 8)}... volume: ${volumeInTokens.toFixed(2)} tokens`);
-
-          results.push({
-            address,
-            volume: volumeInTokens,
-            passed: volumeInTokens >= minVolume
-          });
-
-        } catch (e) {
-          console.log(`   Error checking ${address}: ${e.message}`);
-          results.push({ address, volume: 0, passed: false });
-        }
-
-        await new Promise(r => setTimeout(r, 50));
-      }
-
-      return results;
-    }
-
-    // Final fallback - token balance check
-    console.log('⚠️ No volume data source available - using token balance fallback');
-    return await fallbackVolumeCheck(tokenAddress, addresses, minVolume);
+    // Map results to expected format
+    return results.map(r => ({
+      address: r.address,
+      volume: r.volumeUSD,
+      volumeTokens: r.volumeTokens,
+      passed: r.passed
+    }));
 
   } catch (error) {
     console.error('Error fetching trader volumes:', error);
-    return await fallbackVolumeCheck(tokenAddress, addresses, minVolume);
-  }
-}
-
-/**
- * Convert timestamp to approximate block number
- * Base has ~2 second blocks
- */
-async function timestampToBlock(timestamp) {
-  try {
-    const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
-    const currentBlock = await provider.getBlockNumber();
-    const currentTime = Math.floor(Date.now() / 1000);
-    const timeDiff = currentTime - timestamp;
-    const blockDiff = Math.floor(timeDiff / 2); // ~2 sec per block on Base
-    return Math.max(1, currentBlock - blockDiff);
-  } catch (e) {
-    return 1; // Fallback to genesis
+    // On error, fall back to token balance check
+    return await fallbackVolumeCheck(tokenAddress, addresses, minVolumeUSD);
   }
 }
 
 /**
  * Fallback volume check - just checks if wallet holds the token
- * Used when Covalent API is not available
+ * Used when Uniswap query fails
  */
-async function fallbackVolumeCheck(tokenAddress, addresses, minVolume) {
+async function fallbackVolumeCheck(tokenAddress, addresses, minVolumeUSD) {
+  console.log('⚠️ Uniswap query failed - using token balance fallback');
+
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
   const tokenContract = new ethers.Contract(
     tokenAddress,
@@ -352,11 +262,11 @@ async function fallbackVolumeCheck(tokenAddress, addresses, minVolume) {
       const hasTokens = balance > 0n;
       results.push({
         address,
-        volume: hasTokens ? minVolume : 0,
-        passed: hasTokens || minVolume === 0
+        volume: hasTokens ? minVolumeUSD : 0,
+        passed: hasTokens || minVolumeUSD === 0
       });
     } catch (e) {
-      results.push({ address, volume: 0, passed: minVolume === 0 });
+      results.push({ address, volume: 0, passed: minVolumeUSD === 0 });
     }
   }
   return results;
@@ -557,7 +467,8 @@ async function checkAndFinalizeContest(contestId) {
       potentialParticipants,
       Number(ethers.formatEther(volumeRequirement)),
       Number(startTime),
-      Number(endTime)
+      Number(endTime),
+      contestId  // Pass contestId to use stored price from contest creation
     );
 
     qualifiedAddresses = volumeResults

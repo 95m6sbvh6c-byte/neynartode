@@ -147,7 +147,13 @@
       leaderboardData: [],
 
       // User badges
-      userBadges: []
+      userBadges: [],
+
+      // Contest History
+      historyData: [],
+      historyLoading: false,
+      historyError: null,
+      historyTotal: 0
     };
 
     // ===== TOKEN DATABASE =====
@@ -862,6 +868,73 @@
       state.upcomingContests = [];
     }
 
+    async function loadHistory() {
+      state.historyLoading = true;
+      state.historyError = null;
+      render();
+
+      try {
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const response = await fetch(`${baseUrl}/api/contest-history?limit=20&includeUsers=true`);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch history: ${response.status}`);
+        }
+
+        const data = await response.json();
+        state.historyData = data.contests || [];
+        state.historyTotal = data.total || 0;
+        state.historyLoading = false;
+        render();
+      } catch (error) {
+        console.error('Error loading history:', error);
+        state.historyError = error.message;
+        state.historyLoading = false;
+        render();
+      }
+    }
+
+    // Format timestamp to readable date
+    function formatDate(timestamp) {
+      const date = new Date(timestamp * 1000);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // Format duration
+    function formatDuration(hours, minutes) {
+      if (hours === 0) return `${minutes}m`;
+      if (minutes === 0) return `${hours}h`;
+      return `${hours}h ${minutes}m`;
+    }
+
+    // Get status color class
+    function getStatusColor(status) {
+      switch (status) {
+        case 0: return 'bg-blue-100 text-blue-700'; // Active
+        case 1: return 'bg-yellow-100 text-yellow-700'; // PendingVRF
+        case 2: return 'bg-green-100 text-green-700'; // Completed
+        case 3: return 'bg-red-100 text-red-700'; // Cancelled
+        default: return 'bg-gray-100 text-gray-700';
+      }
+    }
+
+    // Get status emoji
+    function getStatusEmoji(status) {
+      switch (status) {
+        case 0: return '🔵'; // Active
+        case 1: return '🎲'; // PendingVRF
+        case 2: return '✅'; // Completed
+        case 3: return '❌'; // Cancelled
+        default: return '❓';
+      }
+    }
+
     async function voteForHost(hostFid, isUpvote) {
       // Check if dev wallet (unlimited voting)
       const isDev = isDevWallet(state.userAddress);
@@ -1471,13 +1544,176 @@
 
     function renderHistory() {
       return `
-        <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6">
-          <div class="max-w-7xl mx-auto">
+        <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6 relative">
+          <div class="fixed inset-0 pointer-events-none opacity-10 overflow-hidden">
+            <div class="absolute top-10 left-10 text-6xl">🪸</div>
+            <div class="absolute top-40 right-20 text-5xl">🐚</div>
+            <div class="absolute bottom-20 left-1/4 text-7xl">🌊</div>
+            <div class="absolute bottom-40 right-1/3 text-5xl">🫧</div>
+          </div>
+
+          <div class="max-w-7xl mx-auto relative z-10">
             ${renderHeader()}
 
+            <!-- Stats Summary -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl shadow-xl p-4 text-white border-4 border-purple-400">
+                <div class="text-sm font-bold opacity-90">📊 Total Contests</div>
+                <div class="text-3xl font-black">${state.historyTotal || 0}</div>
+              </div>
+              <div class="bg-gradient-to-br from-green-400 to-emerald-600 rounded-2xl shadow-xl p-4 text-white border-4 border-green-300">
+                <div class="text-sm font-bold opacity-90">✅ Completed</div>
+                <div class="text-3xl font-black">${(state.historyData || []).filter(c => c.status === 2).length}</div>
+              </div>
+              <div class="bg-gradient-to-br from-blue-400 to-cyan-600 rounded-2xl shadow-xl p-4 text-white border-4 border-blue-300">
+                <div class="text-sm font-bold opacity-90">🔵 Active</div>
+                <div class="text-3xl font-black">${(state.historyData || []).filter(c => c.status === 0).length}</div>
+              </div>
+              <div class="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-xl p-4 text-white border-4 border-yellow-300">
+                <div class="text-sm font-bold opacity-90">🎲 Pending VRF</div>
+                <div class="text-3xl font-black">${(state.historyData || []).filter(c => c.status === 1).length}</div>
+              </div>
+            </div>
+
+            <!-- Contest History Table -->
             <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
-              <h2 class="text-2xl font-bold text-gray-800 mb-4">Your Contest History</h2>
-              <p class="text-gray-600">Coming soon: View all your past contests and stats!</p>
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                  <div class="text-purple-600 text-4xl">📜</div>
+                  <div>
+                    <h2 class="text-3xl font-black text-purple-800">Contest History</h2>
+                    <p class="text-sm text-purple-600 font-bold">Last 20 contests on NEYNARtodes</p>
+                  </div>
+                </div>
+                <button
+                  onclick="loadHistory()"
+                  class="px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg font-semibold transition-colors"
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+
+              ${state.historyLoading ? `
+                <div class="text-center py-12">
+                  <div class="text-6xl mb-4 animate-bounce">🦎</div>
+                  <h3 class="text-2xl font-black text-purple-800 mb-2">Loading Contests...</h3>
+                  <p class="text-purple-600 font-semibold">Fetching on-chain data</p>
+                </div>
+              ` : state.historyError ? `
+                <div class="text-center py-12">
+                  <div class="text-6xl mb-4">❌</div>
+                  <h3 class="text-2xl font-black text-red-800 mb-2">Error Loading History</h3>
+                  <p class="text-red-600 font-semibold">${state.historyError}</p>
+                  <button
+                    onclick="loadHistory()"
+                    class="mt-4 px-6 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ` : state.historyData.length === 0 ? `
+                <div class="text-center py-12">
+                  <div class="text-6xl mb-4">🦎</div>
+                  <h3 class="text-2xl font-black text-purple-800 mb-2">No Contests Yet!</h3>
+                  <p class="text-purple-600 font-semibold">Be the first to launch a contest!</p>
+                </div>
+              ` : `
+                <div class="overflow-x-auto">
+                  <table class="w-full">
+                    <thead>
+                      <tr class="border-b-2 border-gray-200">
+                        <th class="text-left py-3 px-2 font-semibold text-gray-700">#</th>
+                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Host</th>
+                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Prize</th>
+                        <th class="text-center py-3 px-2 font-semibold text-gray-700">Duration</th>
+                        <th class="text-center py-3 px-2 font-semibold text-gray-700">Participants</th>
+                        <th class="text-center py-3 px-2 font-semibold text-gray-700">Status</th>
+                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Winner</th>
+                        <th class="text-right py-3 px-2 font-semibold text-gray-700">Ended</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${state.historyData.map(contest => `
+                        <tr class="border-b-2 border-purple-100 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 transition-all">
+                          <td class="py-4 px-2">
+                            <div class="font-black text-purple-600">#${contest.contestId}</div>
+                          </td>
+                          <td class="py-4 px-2">
+                            <div class="flex items-center gap-2">
+                              ${contest.hostUser ? `
+                                <div>
+                                  <div class="font-semibold text-gray-800">@${contest.hostUser.username}</div>
+                                  <div class="text-xs text-gray-500">${contest.host.slice(0, 8)}...</div>
+                                </div>
+                              ` : `
+                                <div class="font-mono text-sm text-gray-600">${contest.host.slice(0, 10)}...</div>
+                              `}
+                            </div>
+                          </td>
+                          <td class="py-4 px-2">
+                            <div class="font-bold text-green-600">
+                              ${contest.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${contest.prizeTokenSymbol}
+                            </div>
+                            ${contest.volumeRequirement > 0 ? `
+                              <div class="text-xs text-gray-500">
+                                Min: $${contest.volumeRequirement} ${contest.tokenRequirementSymbol || ''}
+                              </div>
+                            ` : ''}
+                          </td>
+                          <td class="py-4 px-2 text-center">
+                            <div class="text-gray-700 font-semibold">
+                              ${formatDuration(contest.durationHours, contest.durationMinutes)}
+                            </div>
+                          </td>
+                          <td class="py-4 px-2 text-center">
+                            <div class="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-bold inline-block">
+                              👥 ${contest.participantCount}
+                            </div>
+                          </td>
+                          <td class="py-4 px-2 text-center">
+                            <span class="${getStatusColor(contest.status)} px-3 py-1 rounded-full text-sm font-bold">
+                              ${getStatusEmoji(contest.status)} ${contest.statusText}
+                            </span>
+                          </td>
+                          <td class="py-4 px-2">
+                            ${contest.status === 2 && contest.winner !== '0x0000000000000000000000000000000000000000' ? `
+                              <div class="flex items-center gap-2">
+                                <span class="text-lg">🏆</span>
+                                ${contest.winnerUser ? `
+                                  <div>
+                                    <div class="font-semibold text-yellow-700">@${contest.winnerUser.username}</div>
+                                    <div class="text-xs text-gray-500">${contest.winner.slice(0, 8)}...</div>
+                                  </div>
+                                ` : `
+                                  <div class="font-mono text-sm text-gray-600">${contest.winner.slice(0, 10)}...</div>
+                                `}
+                              </div>
+                            ` : `
+                              <span class="text-gray-400 text-sm">-</span>
+                            `}
+                          </td>
+                          <td class="py-4 px-2 text-right">
+                            <div class="text-sm text-gray-600">
+                              ${formatDate(contest.endTime)}
+                            </div>
+                          </td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Legend -->
+                <div class="mt-6 p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Status Legend:</p>
+                  <div class="flex flex-wrap gap-4 text-sm">
+                    <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded">🔵 Active - Contest running</span>
+                    <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded">🎲 PendingVRF - Awaiting random winner</span>
+                    <span class="bg-green-100 text-green-700 px-2 py-1 rounded">✅ Completed - Winner selected</span>
+                    <span class="bg-red-100 text-red-700 px-2 py-1 rounded">❌ Cancelled - Contest cancelled</span>
+                  </div>
+                </div>
+              `}
             </div>
           </div>
         </div>
@@ -1925,7 +2161,12 @@
       if (viewHistory) viewHistory.onclick = () => {
         state.currentView = 'history';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'history' });
-        render();
+        // Load history data if not already loaded
+        if (state.historyData.length === 0 && !state.historyLoading) {
+          loadHistory();
+        } else {
+          render();
+        }
       };
       if (viewLeaderboard) viewLeaderboard.onclick = () => {
         state.currentView = 'leaderboard';
@@ -2700,9 +2941,10 @@
         }
 
         // Store custom message for winner announcement (if provided)
+        const apiBaseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
         if (state.customMessage && contestId !== 'Unknown') {
           try {
-            await fetch('/api/store-message', {
+            await fetch(`${apiBaseUrl}/api/store-message`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -2713,6 +2955,23 @@
             console.log('✅ Custom message stored for winner announcement');
           } catch (e) {
             console.log('⚠️ Could not store custom message:', e.message);
+          }
+        }
+
+        // Store token price at contest creation (for fair volume calculations)
+        if (contestId !== 'Unknown' && tokenRequirement !== ethers.constants.AddressZero) {
+          try {
+            await fetch(`${apiBaseUrl}/api/store-contest-price`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contestId: contestId,
+                tokenAddress: tokenRequirement
+              })
+            });
+            console.log('✅ Token price captured at contest creation');
+          } catch (e) {
+            console.log('⚠️ Could not store token price:', e.message);
           }
         }
 

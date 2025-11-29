@@ -8,7 +8,7 @@ const CONTRACTS = {
   prizeNFT: '0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81',
 };
 
-const BASE_RPC = 'https://mainnet.base.org';
+const BASE_RPC = process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
 
 export default async function handler(req, res) {
   // Only accept POST requests
