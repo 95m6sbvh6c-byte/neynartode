@@ -787,6 +787,9 @@
     }
 
     async function loadPrizePools() {
+      // FIRST: Load burned tokens - this runs independently and should always work
+      await loadBurnedTokens();
+
       try {
         // Use stored provider or fallback to JsonRpcProvider for read-only calls
         const ethProvider = window.activeEthProvider || window.ethereum;
@@ -820,10 +823,6 @@
 
         // Clanker fees now go direct to Treasury - no pending fees to track
         state.pendingClankerFees = '0';
-
-        // Get total tokens burned by checking balance at burn address (0x...dEaD)
-        // Use a separate try/catch and dedicated RPC to ensure this always works
-        await loadBurnedTokens();
 
         // For now, calculate prizes given from all seasons (you can add a totalPrizesDistributed to contract later)
         // For beta, we'll use the current season's total as placeholder
