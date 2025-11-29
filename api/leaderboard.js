@@ -1,109 +1,307 @@
-// Vercel Serverless Function - Show Leaderboard in Frame
+/**
+ * Host Leaderboard API
+ *
+ * Fetches all completed contests, aggregates host stats, and calculates scores.
+ *
+ * Scoring System:
+ *   Total Score = Contest Score + Vote Score
+ *   Contest Score = (Social x 3) + Token
+ *   Vote Score = (Upvotes - Downvotes) x 5,000
+ *   Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100
+ *   Token = Volume Points x 50
+ *
+ * Usage:
+ *   GET /api/leaderboard?limit=10
+ */
 
-const NEYNAR_API_KEY = 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D';
+const { ethers } = require('ethers');
 
-const WHITELIST_FIDS = [
-  1020, 10956, 202051, 217530, 280534, 368206, 466345, 473136,
-  655816, 918820, 1009822, 1188162, 1328864, 8425, 16538, 191870
+const CONFIG = {
+  CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+  VOTING_MANAGER: '0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+  NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
+};
+
+const CONTEST_ESCROW_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function nextContestId() external view returns (uint256)',
 ];
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
+const VOTING_MANAGER_ABI = [
+  'function getHostVotes(address host) external view returns (uint256 upvotes, uint256 downvotes)',
+];
+
+/**
+ * Get Farcaster user info by wallet address
+ */
+async function getUserByWallet(walletAddress) {
+  try {
+    const response = await fetch(
+      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${walletAddress.toLowerCase()}`,
+      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const users = data[walletAddress.toLowerCase()];
+
+    if (users && users.length > 0) {
+      return {
+        fid: users[0].fid,
+        username: users[0].username,
+        displayName: users[0].display_name,
+        pfpUrl: users[0].pfp_url,
+        neynarScore: users[0].experimental?.neynar_user_score || 0,
+      };
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Get cast engagement metrics from Neynar
+ * Only counts engagement if the host is the original author of the cast
+ *
+ * @param {string} castHash - The cast hash to check
+ * @param {number} hostFid - The host's Farcaster ID (to verify authorship)
+ */
+async function getCastEngagement(castHash, hostFid) {
+  if (!castHash || castHash === '' || castHash.includes('|')) {
+    return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+  }
+
+  try {
+    // Clean the cast hash - remove any prefix
+    const cleanHash = castHash.startsWith('0x') ? castHash : `0x${castHash}`;
+
+    const response = await fetch(
+      `https://api.neynar.com/v2/farcaster/cast?identifier=${cleanHash}&type=hash`,
+      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+    );
+
+    if (!response.ok) return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+
+    const data = await response.json();
+    const cast = data.cast;
+
+    if (!cast) return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+
+    // Check if the host is the original author of this cast
+    const authorFid = cast.author?.fid;
+    const isAuthor = hostFid && authorFid && authorFid === hostFid;
+
+    // Only count engagement if host authored the cast
+    if (!isAuthor) {
+      console.log(`   Cast ${cleanHash.slice(0, 10)}... authored by FID ${authorFid}, not host FID ${hostFid} - skipping engagement`);
+      return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+    }
+
+    if (cast.reactions) {
+      return {
+        likes: cast.reactions.likes_count || 0,
+        recasts: cast.reactions.recasts_count || 0,
+        replies: cast.replies?.count || 0,
+        isAuthor: true,
+      };
+    }
+    return { likes: 0, recasts: 0, replies: 0, isAuthor: true };
+  } catch (e) {
+    console.error('Error fetching cast engagement:', e.message);
+    return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+  }
+}
+
+/**
+ * Main handler
+ */
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Fetch top 5 users from Neynar
-    const topFids = WHITELIST_FIDS.slice(0, 5);
-    const fidsParam = topFids.join(',');
+    const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
+    const contestContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
+    const votingContract = new ethers.Contract(CONFIG.VOTING_MANAGER, VOTING_MANAGER_ABI, provider);
 
-    const response = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fidsParam}`,
-      {
-        headers: {
-          'api_key': NEYNAR_API_KEY,
-        },
+    const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+
+    // Get total contest count
+    const nextContestId = await contestContract.nextContestId();
+    const totalContests = Number(nextContestId) - 1;
+
+    if (totalContests <= 0) {
+      return res.status(200).json({
+        hosts: [],
+        totalContests: 0,
+      });
+    }
+
+    // Aggregate host stats
+    const hostStats = {};
+
+    // Fetch all contests
+    for (let i = 1; i <= totalContests; i++) {
+      try {
+        const contestData = await contestContract.getContest(i);
+        const [host, , , , , castId, , volumeRequirement, status] = contestData;
+
+        // Skip non-completed contests for scoring (but count all for participation)
+        const hostLower = host.toLowerCase();
+
+        if (!hostStats[hostLower]) {
+          hostStats[hostLower] = {
+            address: host,
+            contests: 0,
+            completedContests: 0,
+            totalLikes: 0,
+            totalRecasts: 0,
+            totalReplies: 0,
+            totalVolume: 0,
+            castHashes: [],
+          };
+        }
+
+        hostStats[hostLower].contests++;
+
+        // Only count completed contests for scoring
+        if (Number(status) === 2) {
+          hostStats[hostLower].completedContests++;
+
+          // Extract actual cast hash
+          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+          if (actualCastHash && actualCastHash !== '') {
+            hostStats[hostLower].castHashes.push(actualCastHash);
+          }
+
+          // Add volume (stored in wei, convert to regular number)
+          const volume = Number(volumeRequirement) / 1e18;
+          hostStats[hostLower].totalVolume += volume;
+        }
+      } catch (e) {
+        console.error(`Error fetching contest ${i}:`, e.message);
       }
-    );
+    }
 
-    const data = await response.json();
-    const users = data.users || [];
+    // Fetch user info, engagement, and votes for all hosts
+    const hostAddresses = Object.keys(hostStats);
+    const hostsWithScores = [];
 
-    // Sort by followers
-    users.sort((a, b) => (b.follower_count || 0) - (a.follower_count || 0));
+    for (const hostLower of hostAddresses) {
+      const stats = hostStats[hostLower];
 
-    const image = generateLeaderboardImage(users);
+      // Skip hosts with no completed contests
+      if (stats.completedContests === 0) continue;
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta property="fc:frame" content="vNext" />
-          <meta property="fc:frame:image" content="data:image/svg+xml;base64,${Buffer.from(image).toString('base64')}" />
-          <meta property="fc:frame:button:1" content="🎮 Open Full App" />
-          <meta property="fc:frame:button:1:action" content="link" />
-          <meta property="fc:frame:button:1:target" content="https://neynartode.vercel.app/app" />
-          <meta property="fc:frame:button:2" content="🔄 Refresh" />
-          <meta property="fc:frame:button:2:action" content="post" />
-        </head>
-      </html>
-    `;
+      // First, get the host's Farcaster info (we need their FID to verify cast authorship)
+      const userInfo = await getUserByWallet(stats.address);
+      const hostFid = userInfo?.fid || 0;
 
-    res.setHeader('Content-Type', 'text/html');
-    res.status(200).send(html);
+      // Fetch engagement for each cast - only counts if host authored the cast
+      let ownedCastsCount = 0;
+      for (const castHash of stats.castHashes) {
+        const engagement = await getCastEngagement(castHash, hostFid);
+        if (engagement.isAuthor) {
+          stats.totalLikes += engagement.likes;
+          stats.totalRecasts += engagement.recasts;
+          stats.totalReplies += engagement.replies;
+          ownedCastsCount++;
+        }
+      }
+
+      console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount}/${stats.castHashes.length} casts authored by host`);
+
+      // Fetch votes from VotingManager
+      try {
+        const [upvotes, downvotes] = await votingContract.getHostVotes(stats.address);
+        stats.upvotes = Number(upvotes);
+        stats.downvotes = Number(downvotes);
+      } catch (e) {
+        stats.upvotes = 0;
+        stats.downvotes = 0;
+      }
+
+      // Scoring calculations:
+      // Host Bonus = 100 points per completed contest (regardless of cast ownership)
+      const hostBonus = stats.completedContests * 100;
+
+      // Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100 (only from owned casts)
+      const socialScore = (stats.totalLikes * 1 + stats.totalRecasts * 2 + stats.totalReplies * 3) * 100;
+
+      // Token = Volume Points x 50
+      const tokenScore = stats.totalVolume * 50;
+
+      // Contest Score = Host Bonus + (Social x 3) + Token
+      const contestScore = hostBonus + (socialScore * 3) + tokenScore;
+
+      // Vote Score = (Upvotes - Downvotes) x 5,000
+      const voteScore = (stats.upvotes - stats.downvotes) * 5000;
+
+      // Total Score = Contest Score + Vote Score
+      const totalScore = contestScore + voteScore;
+
+      hostsWithScores.push({
+        address: stats.address,
+        fid: hostFid,
+        username: userInfo?.username || stats.address.slice(0, 8),
+        displayName: userInfo?.displayName || 'Unknown',
+        pfpUrl: userInfo?.pfpUrl || '',
+        neynarScore: Math.round((userInfo?.neynarScore || 0) * 100) / 100,
+        contests: stats.contests,
+        completedContests: stats.completedContests,
+        ownedCasts: ownedCastsCount,
+        // Engagement breakdown (only from host's own casts)
+        likes: stats.totalLikes,
+        recasts: stats.totalRecasts,
+        replies: stats.totalReplies,
+        volume: stats.totalVolume,
+        upvotes: stats.upvotes,
+        downvotes: stats.downvotes,
+        // Score breakdown
+        hostBonus,
+        socialScore,
+        tokenScore,
+        contestScore,
+        voteScore,
+        totalScore,
+      });
+    }
+
+    // Sort by total score and get top N
+    hostsWithScores.sort((a, b) => b.totalScore - a.totalScore);
+    const topHosts = hostsWithScores.slice(0, limit).map((host, idx) => ({
+      ...host,
+      rank: idx + 1,
+    }));
+
+    return res.status(200).json({
+      hosts: topHosts,
+      totalContests,
+      totalHosts: hostsWithScores.length,
+      scoringFormula: {
+        total: 'Contest Score + Vote Score',
+        contest: 'Host Bonus + (Social x 3) + Token',
+        hostBonus: '100 points per completed contest',
+        vote: '(Upvotes - Downvotes) x 5,000',
+        social: '(Likes x 1 + Recasts x 2 + Replies x 3) x 100',
+        token: 'Volume Points x 50',
+      },
+    });
 
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(500).json({ error: 'Failed to process' });
+    console.error('Leaderboard API error:', error);
+    return res.status(500).json({ error: error.message });
   }
-}
-
-function generateLeaderboardImage(users) {
-  const rows = users.slice(0, 5).map((user, idx) => {
-    const rank = idx + 1;
-    const emoji = rank === 1 ? '👑' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
-    const followers = (user.follower_count || 0).toLocaleString();
-
-    return `
-      <text x="100" y="${200 + idx * 120}" font-family="Arial, sans-serif" font-size="50" font-weight="bold" fill="white">
-        ${emoji}
-      </text>
-      <text x="200" y="${200 + idx * 120}" font-family="Arial, sans-serif" font-size="50" font-weight="bold" fill="white">
-        @${user.username}
-      </text>
-      <text x="900" y="${200 + idx * 120}" font-family="Arial, sans-serif" font-size="40" fill="#fbbf24" text-anchor="end">
-        ${followers} followers
-      </text>
-    `;
-  }).join('');
-
-  return `
-    <svg width="1200" height="1200" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#7c3aed;stop-opacity:1" />
-          <stop offset="50%" style="stop-color:#ec4899;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1" />
-        </linearGradient>
-      </defs>
-
-      <rect width="1200" height="1200" fill="url(#grad)"/>
-
-      <text x="600" y="100" font-family="Arial, sans-serif" font-size="80" font-weight="bold" text-anchor="middle" fill="white">
-        🦎 TOP 5 BETA TESTERS 🦎
-      </text>
-
-      <rect x="50" y="150" width="1100" height="700" rx="20" fill="rgba(255,255,255,0.1)"/>
-
-      ${rows}
-
-      <text x="600" y="1050" font-family="Arial, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#fbbf24">
-        🐸 NEYNARtodes Season 0 Beta
-      </text>
-
-      <text x="600" y="1120" font-family="Arial, sans-serif" font-size="30" text-anchor="middle" fill="white">
-        Click "Open Full App" to vote!
-      </text>
-    </svg>
-  `;
-}
+};

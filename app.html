@@ -801,20 +801,22 @@
         // Clanker fees now go direct to Treasury - no pending fees to track
         state.pendingClankerFees = '0';
 
-        // Load all-time stats from VotingManager
-        const votingManagerABI = [
-          'function totalTokensBurned() external view returns (uint256)',
-          'function totalVotes() external view returns (uint256)'
-        ];
-
-        const votingManager = new ethers.Contract(
-          CONFIG.CONTRACTS.votingManager,
-          votingManagerABI,
+        // Get total tokens burned by checking balance at burn address (0x...dEaD)
+        const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+        const neynartodeToken = new ethers.Contract(
+          CONFIG.CONTRACTS.neynartodes,
+          ['function balanceOf(address) view returns (uint256)'],
           provider
         );
 
-        const tokensBurned = await votingManager.totalTokensBurned();
-        state.totalTokensBurned = ethers.utils.formatEther(tokensBurned);
+        try {
+          const burnedBalance = await neynartodeToken.balanceOf(BURN_ADDRESS);
+          state.totalTokensBurned = ethers.utils.formatEther(burnedBalance);
+          console.log('Total tokens burned:', state.totalTokensBurned);
+        } catch (e) {
+          console.error('Error fetching burned tokens:', e);
+          state.totalTokensBurned = '0';
+        }
 
         // For now, calculate prizes given from all seasons (you can add a totalPrizesDistributed to contract later)
         // For beta, we'll use the current season's total as placeholder
@@ -840,32 +842,75 @@
       // Load prize pools from contracts
       await loadPrizePools();
 
-      // Start with empty leaderboard - will be populated from on-chain contest data
-      // TODO: Fetch actual host stats from ContestEscrow events
-      state.leaderboardData = [];
+      try {
+        // Fetch leaderboard data from API
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const response = await fetch(`${baseUrl}/api/leaderboard?limit=10`);
 
-      // Award Season 0 Beta badges to all participants and add to their badge list
-      state.leaderboardData = state.leaderboardData.map(host => {
-        // Award the badge if they're on the leaderboard during Season 0/1
-        awardSeasonBetaBadge(host.fid, host.username);
-
-        // Add season0_beta badge to their current badges if they've earned it
-        const badges = [...host.badges];
-        if (hasSeasonBetaBadge(host.fid) && !badges.includes('season0_beta')) {
-          badges.push('season0_beta');
+        if (!response.ok) {
+          console.error('Failed to fetch leaderboard:', response.status);
+          state.leaderboardData = [];
+          return;
         }
 
-        return { ...host, badges };
-      });
+        const data = await response.json();
+        const hosts = data.hosts || [];
 
-      // Limit to top 10 hosts (or all if less than 10)
-      state.leaderboardData = state.leaderboardData
-        .sort((a, b) => b.totalScore - a.totalScore)
-        .slice(0, 10)
-        .map((host, idx) => ({ ...host, rank: idx + 1 }));
+        // Transform API data to match expected leaderboard format
+        state.leaderboardData = hosts.map(host => {
+          // Award Season 0 Beta badges to all participants
+          awardSeasonBetaBadge(host.fid, host.username);
+
+          // Build badges array
+          const badges = [];
+          if (hasSeasonBetaBadge(host.fid)) {
+            badges.push('season0_beta');
+          }
+
+          // Get a pfp emoji based on username hash or use first letter
+          const pfpEmoji = getPfpEmoji(host.username);
+
+          return {
+            rank: host.rank,
+            fid: host.fid,
+            username: host.username,
+            displayName: host.displayName,
+            pfp: pfpEmoji,
+            pfpUrl: host.pfpUrl,
+            badges,
+            contests: host.contests,
+            completedContests: host.completedContests,
+            // Score breakdown
+            likes: host.likes,
+            recasts: host.recasts,
+            replies: host.replies,
+            volume: host.volume,
+            upvotes: host.upvotes,
+            downvotes: host.downvotes,
+            socialScore: host.socialScore,
+            tokenScore: host.tokenScore,
+            contestScore: host.contestScore,
+            voteScore: host.voteScore,
+            totalScore: host.totalScore,
+            neynarScore: host.neynarScore,
+          };
+        });
+
+      } catch (error) {
+        console.error('Error loading leaderboard:', error);
+        state.leaderboardData = [];
+      }
 
       // Clear sample upcoming contests - will be populated from on-chain data
       state.upcomingContests = [];
+    }
+
+    // Get a consistent emoji for a user based on their username
+    function getPfpEmoji(username) {
+      const emojis = ['🦎', '🐸', '🐊', '🦖', '🐢', '🦕', '🐍', '🐲', '🌊', '🪸'];
+      if (!username) return '🦎';
+      const hash = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      return emojis[hash % emojis.length];
     }
 
     async function loadHistory() {
@@ -1293,10 +1338,10 @@
                   <div class="text-xs opacity-90 font-semibold">For Contest Creators</div>
                 </div>
 
-                <div class="bg-gradient-to-br from-blue-400 to-cyan-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-blue-300 transform hover:scale-105 transition-transform">
-                  <div class="text-sm font-bold mb-2 opacity-90">🗳️ Voter Prize Pool 🗳️</div>
-                  <div class="text-4xl font-black mb-2">${state.voterPoolETH.toFixed(4)} ETH</div>
-                  <div class="text-xs opacity-90 font-semibold">For Active Voters</div>
+                <div class="bg-gradient-to-br from-red-400 to-orange-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-red-300 transform hover:scale-105 transition-transform">
+                  <div class="text-sm font-bold mb-2 opacity-90">🔥 ALL-TIME BURNED 🔥</div>
+                  <div class="text-4xl font-black mb-2">${Number(state.totalTokensBurned).toLocaleString(undefined, {maximumFractionDigits: 0})} $NEYNARTODES</div>
+                  <div class="text-xs opacity-90 font-semibold">Permanently removed from supply</div>
                 </div>
 
                 <div class="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-2xl p-6 text-white border-4 border-yellow-300 transform hover:scale-105 transition-transform">
@@ -1311,13 +1356,7 @@
               </div>
 
               <!-- All-Time Stats -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="bg-gradient-to-br from-red-400 to-orange-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-red-300">
-                  <div class="text-sm font-bold mb-2 opacity-90">🔥 ALL-TIME BURNED 🔥</div>
-                  <div class="text-4xl font-black mb-2">${parseFloat(state.totalTokensBurned).toLocaleString()} $NEYNARTODES</div>
-                  <div class="text-xs opacity-90 font-semibold">Permanently removed from supply</div>
-                </div>
-
+              <div class="grid grid-cols-1 gap-4">
                 <div class="bg-gradient-to-br from-emerald-400 to-green-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-emerald-300">
                   <div class="text-sm font-bold mb-2 opacity-90">💎 ALL-TIME PRIZES 💎</div>
                   <div class="text-4xl font-black mb-2">${state.totalPrizesGiven.toFixed(4)} ETH</div>
@@ -1398,7 +1437,7 @@
                         <th class="text-left py-3 px-2 font-semibold text-gray-700">Host</th>
                         <th class="text-right py-3 px-2 font-semibold text-gray-700">Score</th>
                         <th class="text-center py-3 px-2 font-semibold text-gray-700">Vote</th>
-                        <th class="text-right py-3 px-2 font-semibold text-gray-700">Contests</th>
+                        <th class="text-right py-3 px-2 font-semibold text-gray-700">Completed</th>
                         <th class="text-right py-3 px-2 font-semibold text-gray-700">Neynar</th>
                       </tr>
                     </thead>
@@ -1427,8 +1466,13 @@
                             </div>
                           </td>
                           <td class="py-4 px-2 text-right">
-                            <div class="font-bold text-purple-600 text-lg">
-                              ${host.totalScore.toLocaleString()}
+                            <div class="font-bold text-purple-600 text-lg" title="Contest: ${(host.contestScore || 0).toLocaleString()} | Votes: ${(host.voteScore || 0).toLocaleString()}">
+                              ${(host.totalScore || 0).toLocaleString()}
+                            </div>
+                            <div class="text-xs text-gray-500">
+                              <span title="Social Score">💬${(host.socialScore || 0).toLocaleString()}</span>
+                              <span class="ml-1" title="Token Score">💰${(host.tokenScore || 0).toLocaleString()}</span>
+                              <span class="ml-1" title="Vote Score (${host.upvotes || 0}👍 - ${host.downvotes || 0}👎)">🗳️${(host.voteScore || 0).toLocaleString()}</span>
                             </div>
                           </td>
                           <td class="py-4 px-2">
@@ -1451,7 +1495,10 @@
                               </button>
                             </div>
                           </td>
-                          <td class="py-4 px-2 text-right text-gray-700">${host.contests}</td>
+                          <td class="py-4 px-2 text-right text-gray-700">
+                            <div class="font-semibold">${host.completedContests || host.contests || 0}</div>
+                            <div class="text-xs text-gray-400">${host.contests || 0} total</div>
+                          </td>
                           <td class="py-4 px-2 text-right">
                             <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm font-semibold">
                               ${host.neynarScore}
