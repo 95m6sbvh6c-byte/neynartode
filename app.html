@@ -1102,11 +1102,53 @@
         state.historyTotal = data.total || 0;
         state.historyLoading = false;
         render();
+
+        // Start auto-refresh if there are active/pending contests (and we're on history view)
+        if (state.currentView === 'history') {
+          startHistoryAutoRefresh();
+        }
       } catch (error) {
         console.error('Error loading history:', error);
         state.historyError = error.message;
         state.historyLoading = false;
         render();
+      }
+    }
+
+    // Auto-refresh for history page when there are active or pending VRF contests
+    let historyRefreshInterval = null;
+
+    function startHistoryAutoRefresh() {
+      // Clear any existing interval
+      stopHistoryAutoRefresh();
+
+      // Check if there are active (status 0) or pending VRF (status 1) contests
+      const hasActiveOrPending = (state.historyData || []).some(c => c.status === 0 || c.status === 1);
+
+      if (hasActiveOrPending) {
+        console.log('Starting history auto-refresh (active/pending contests detected)');
+        historyRefreshInterval = setInterval(async () => {
+          // Only refresh if still on history view
+          if (state.currentView === 'history') {
+            console.log('Auto-refreshing history...');
+            await loadHistory();
+
+            // Check if we still need to auto-refresh
+            const stillHasActiveOrPending = (state.historyData || []).some(c => c.status === 0 || c.status === 1);
+            if (!stillHasActiveOrPending) {
+              console.log('No more active/pending contests, stopping auto-refresh');
+              stopHistoryAutoRefresh();
+            }
+          }
+        }, 15000); // Refresh every 15 seconds
+      }
+    }
+
+    function stopHistoryAutoRefresh() {
+      if (historyRefreshInterval) {
+        clearInterval(historyRefreshInterval);
+        historyRefreshInterval = null;
+        console.log('Stopped history auto-refresh');
       }
     }
 
@@ -1811,7 +1853,7 @@
                                 <div class="bg-white p-2 rounded-lg">
                                   <div class="text-xs text-gray-600">📊 Requirements</div>
                                   <div class="text-xs font-semibold text-gray-700">
-                                    ${contest.socialEnabled ? '👥 Social' : ''} ${contest.tokenEnabled ? '💰 Token' : ''}
+                                    ${contest.socialEnabled ? '👥 Social' : ''}${contest.socialEnabled && contest.tokenEnabled ? ' + ' : ''}${contest.tokenEnabled ? '💰 Token' : ''}${!contest.socialEnabled && !contest.tokenEnabled ? '🎁 Open' : ''}
                                   </div>
                                 </div>
                               </div>
@@ -2449,21 +2491,21 @@
       if (viewCreate) viewCreate.onclick = () => {
         state.currentView = 'create';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'create' });
+        stopHistoryAutoRefresh();
         render();
       };
       if (viewHistory) viewHistory.onclick = () => {
         state.currentView = 'history';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'history' });
-        // Load history data if not already loaded
-        if (state.historyData.length === 0 && !state.historyLoading) {
-          loadHistory();
-        } else {
-          render();
-        }
+        // Always refresh history when switching to this view
+        loadHistory();
+        // Start auto-refresh for active/pending contests
+        startHistoryAutoRefresh();
       };
       if (viewLeaderboard) viewLeaderboard.onclick = () => {
         state.currentView = 'leaderboard';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'leaderboard' });
+        stopHistoryAutoRefresh();
         render();
       };
 
@@ -2765,7 +2807,8 @@
             endTime: endTime,
             duration: `${hours}h ${minutes}m`,
             socialEnabled: state.socialEnabled,
-            tokenEnabled: state.tokenEnabled
+            // Token is only enabled if tokenomics is enabled AND tokenEnabled is true
+            tokenEnabled: state.tokenomicsEnabled && state.tokenEnabled
           };
 
           // Launch contest on ContestEscrow contract
