@@ -962,11 +962,14 @@
             socialScore: host.socialScore,
             tokenScore: host.tokenScore,
             contestScore: host.contestScore,
-            voteScore: host.voteScore,
+            voteScore: host.voteScore || 0,
             totalScore: host.totalScore,
             neynarScore: host.neynarScore,
           };
         });
+
+        // Fetch on-chain vote scores and merge with leaderboard data
+        await fetchOnChainVoteScores();
 
       } catch (error) {
         console.error('Error loading leaderboard:', error);
@@ -975,6 +978,70 @@
 
       // Clear sample upcoming contests - will be populated from on-chain data
       state.upcomingContests = [];
+    }
+
+    // Fetch vote scores from VotingManager contract and update leaderboard
+    async function fetchOnChainVoteScores() {
+      if (state.leaderboardData.length === 0) return;
+
+      try {
+        const readProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        const votingManagerABI = [
+          'function getHostVoteStats(uint256 hostFid) external view returns (uint256 upvotes, uint256 downvotes, int256 netScore)'
+        ];
+        const votingManager = new ethers.Contract(
+          CONFIG.CONTRACTS.votingManager,
+          votingManagerABI,
+          readProvider
+        );
+
+        // Fetch vote stats for each host in parallel
+        const votePromises = state.leaderboardData.map(async (host) => {
+          try {
+            const stats = await votingManager.getHostVoteStats(host.fid);
+            return {
+              fid: host.fid,
+              upvotes: stats.upvotes.toNumber(),
+              downvotes: stats.downvotes.toNumber(),
+              netScore: stats.netScore.toNumber()
+            };
+          } catch (e) {
+            console.warn(`Failed to get vote stats for FID ${host.fid}:`, e.message);
+            return { fid: host.fid, upvotes: 0, downvotes: 0, netScore: 0 };
+          }
+        });
+
+        const voteStats = await Promise.all(votePromises);
+
+        // Update leaderboard with on-chain vote scores (200 points per net vote)
+        state.leaderboardData = state.leaderboardData.map(host => {
+          const stats = voteStats.find(s => s.fid === host.fid);
+          if (stats) {
+            const onChainVoteScore = stats.netScore * 200; // 200 points per net vote
+            // Replace API vote score with on-chain score
+            const adjustedTotal = host.totalScore - (host.voteScore || 0) + onChainVoteScore;
+            return {
+              ...host,
+              upvotes: stats.upvotes,
+              downvotes: stats.downvotes,
+              voteScore: onChainVoteScore,
+              totalScore: adjustedTotal
+            };
+          }
+          return host;
+        });
+
+        // Re-sort and re-rank after updating scores
+        state.leaderboardData = state.leaderboardData
+          .sort((a, b) => b.totalScore - a.totalScore)
+          .map((host, idx) => ({ ...host, rank: idx + 1 }));
+
+        console.log('Updated leaderboard with on-chain vote scores');
+        render();
+
+      } catch (error) {
+        console.error('Error fetching on-chain vote scores:', error);
+      }
     }
 
     // Get a consistent emoji for a user based on their username
@@ -1224,21 +1291,24 @@
           showToast('Vote submitted but not yet confirmed. Check BaseScan.', 'warning');
         }
 
-        // Update UI after successful vote
-        const votePoints = isUpvote ? 5 : -5;
+        // Update UI after successful vote (200 points per vote to align with scoring system)
+        const votePoints = isUpvote ? 200 : -200;
         const oldRankings = state.leaderboardData.map(h => ({ fid: h.fid, rank: h.rank }));
 
-        // Update leaderboard
+        // Update leaderboard locally
         state.leaderboardData = state.leaderboardData.map(host => {
           if (host.fid === hostFid) {
             return {
               ...host,
-              voteScore: host.voteScore + (votePoints * 1000),
-              totalScore: host.totalScore + (votePoints * 1000)
+              voteScore: host.voteScore + votePoints,
+              totalScore: host.totalScore + votePoints
             };
           }
           return host;
         }).sort((a, b) => b.totalScore - a.totalScore).map((host, idx) => ({ ...host, rank: idx + 1 }));
+
+        // Refresh burned tokens counter
+        await loadBurnedTokens();
 
         const votedHost = state.leaderboardData.find(h => h.fid === hostFid);
         const oldRank = oldRankings.find(h => h.fid === hostFid)?.rank;
