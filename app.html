@@ -39,10 +39,76 @@
     }
     .bubble { animation: bubble 3s ease-in-out infinite; }
     body { font-family: system-ui, -apple-system, sans-serif; }
+
+    /* Toast notifications (replacement for alert) */
+    #toast-container {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 90vw;
+      pointer-events: none;
+    }
+    .toast {
+      background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+      color: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-line;
+      animation: toastIn 0.3s ease-out;
+      pointer-events: auto;
+      max-width: 350px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .toast.success { border-left: 4px solid #10b981; }
+    .toast.error { border-left: 4px solid #ef4444; }
+    .toast.info { border-left: 4px solid #3b82f6; }
+    .toast.warning { border-left: 4px solid #f59e0b; }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-20px); }
+    }
   </style>
 </head>
 <body>
+  <div id="toast-container"></div>
   <div id="app"></div>
+
+  <script>
+    // Toast notification system (replaces alert() which is blocked in Farcaster iframe)
+    function showToast(message, type = 'info', duration = 5000) {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      // Auto-remove after duration
+      setTimeout(() => {
+        toast.style.animation = 'toastOut 0.3s ease-out forwards';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+
+      // Click to dismiss
+      toast.onclick = () => {
+        toast.style.animation = 'toastOut 0.3s ease-out forwards';
+        setTimeout(() => toast.remove(), 300);
+      };
+    }
+  </script>
 
   <script>
     // ===== CONFIGURATION =====
@@ -577,7 +643,7 @@
         }
 
         if (!ethProvider) {
-          alert('No wallet found!\n\nFarcaster SDK: ' + (window.FarcasterSDK ? 'loaded' : 'not loaded') + '\nwindow.ethereum: ' + (window.ethereum ? 'yes' : 'no'));
+          showToast('No wallet found! Farcaster SDK: ' + (window.FarcasterSDK ? 'loaded' : 'not loaded'), 'error');
           return false;
         }
 
@@ -611,13 +677,13 @@
           render();
           // User rejected or other error
           if (e.code === 4001) {
-            alert('Wallet connection rejected. Please try again.');
+            showToast('Wallet connection rejected. Please try again.', 'error');
           } else if (e.code === -32002) {
             // Already pending - wallet popup might be hidden
-            alert('Wallet request already pending!\n\nCheck if MetaMask popup is hidden or click the MetaMask extension icon.');
+            showToast('Wallet request already pending! Check your wallet extension.', 'warning');
             return false;
           } else {
-            alert(e.message || 'Failed to connect wallet. Please try again.');
+            showToast(e.message || 'Failed to connect wallet. Please try again.', 'error');
           }
           return false;
         }
@@ -630,7 +696,7 @@
         if (!accounts || accounts.length === 0) {
           state.isCheckingWhitelist = false;
           render();
-          alert('No accounts found. Please unlock MetaMask and try again.');
+          showToast('No accounts found. Please unlock your wallet and try again.', 'error');
           return false;
         }
 
@@ -686,7 +752,7 @@
         if (!state.isWhitelisted) {
           state.isCheckingWhitelist = false;
           render();
-          alert('🚫 Season 0 Access Denied!\n\nYou are not on the whitelist for Season 0 beta.\n\nStay tuned for public launch! 🦎');
+          showToast('Season 0 Access Denied! You are not on the whitelist. Stay tuned for public launch!', 'error');
           return false;
         }
 
@@ -713,7 +779,7 @@
         if (balance.lt(CONFIG.SEASON_0_MIN_TOKENS)) {
           state.isCheckingWhitelist = false;
           render();
-          alert(`🚫 Insufficient Tokens!\n\nYou need at least 20,000 $NEYNARTODES to use this app.\n\nYour balance: ${parseFloat(state.userBalance).toLocaleString()} NEYNARTODES\nRequired: 20,000 NEYNARTODES\n\nGo get more Neynartodes! 🦎`);
+          showToast(`Insufficient Tokens! Need 20K NEYNARTODES. Your balance: ${parseFloat(state.userBalance).toLocaleString()}`, 'error');
           return false;
         }
 
@@ -761,7 +827,7 @@
         state.isCheckingWhitelist = false;
         state.walletStatus = null;
         render();
-        alert('Failed to connect wallet: ' + error.message);
+        showToast('Failed to connect wallet: ' + error.message, 'error');
         return false;
       }
     }
@@ -992,12 +1058,12 @@
 
       // Block self-voting (except dev for testing)
       if (!isDev && state.userFid && state.userFid === hostFid) {
-        alert("❌ You can't vote for yourself!\n\nNice try though! 😄");
+        showToast("You can't vote for yourself! Nice try though!", 'error');
         return;
       }
 
       if (!isDev && state.votesRemaining <= 0) {
-        alert('You have used all 10 votes for today! Come back tomorrow.');
+        showToast('You have used all 10 votes for today! Come back tomorrow.', 'warning');
         return;
       }
 
@@ -1005,7 +1071,7 @@
         // Create provider and signer using stored provider
         const ethProvider = window.activeEthProvider || window.ethereum;
         if (!ethProvider) {
-          alert('Wallet not connected! Please reconnect.');
+          showToast('Wallet not connected! Please reconnect.', 'error');
           return;
         }
         const walletProvider = new ethers.providers.Web3Provider(ethProvider);
@@ -1059,7 +1125,7 @@
         if (!isDev) {
           const canVoteResult = await votingManagerRead.canVote(state.userAddress);
           if (!canVoteResult) {
-            alert('❌ Cannot vote!\n\nYou may have:\n- Used all 10 votes today\n- Insufficient token balance (need 20K minimum)\n- Not whitelisted (Season 0 Beta)');
+            showToast('Cannot vote! You may have used all votes today, have insufficient tokens, or not be whitelisted.', 'error');
             return;
           }
         }
@@ -1070,27 +1136,27 @@
         // Check balance - use read-only provider
         const balance = await neynartodeTokenRead.balanceOf(state.userAddress);
         if (balance.lt(tokensPerVote)) {
-          alert(`❌ Insufficient balance!\n\nYou need 1,000 $NEYNARTODES to vote.\n\nYour balance: ${ethers.utils.formatEther(balance)} NEYNARTODES`);
+          showToast(`Insufficient balance! You need 1,000 NEYNARTODES to vote. Your balance: ${ethers.utils.formatEther(balance)}`, 'error');
           return;
         }
 
         // Check and set approval if needed - use read-only provider for allowance check
         const currentAllowance = await neynartodeTokenRead.allowance(state.userAddress, CONFIG.CONTRACTS.votingManager);
         if (currentAllowance.lt(tokensPerVote)) {
-          alert('🔐 First, you need to approve the voting contract to spend your tokens.\n\nThis is a one-time approval for security.\n\nClick OK to approve...');
+          showToast('Approving voting contract... Confirm in wallet.', 'info', 8000);
 
           const approveTx = await neynartodeToken.approve(
             CONFIG.CONTRACTS.votingManager,
             ethers.constants.MaxUint256 // Infinite approval
           );
 
-          alert('⏳ Approval transaction submitted!\n\nWaiting for confirmation...\n\nTx: ' + approveTx.hash);
+          showToast('Approval submitted! Waiting for confirmation...', 'info', 10000);
           await approveTx.wait();
-          alert('✅ Approval confirmed!\n\nNow submitting your vote...');
+          showToast('Approval confirmed! Now submitting vote...', 'success');
         }
 
         // Cast vote on-chain
-        alert('🗳️ Submitting your vote on-chain...\n\nThis will:\n• Burn 500 NEYNARTODES (50%)\n• Send 500 to treasury (50%)\n\nConfirm in MetaMask!');
+        showToast('Submitting vote... Burns 500 + 500 to treasury. Confirm in wallet!', 'info', 8000);
 
         const voteTx = await votingManager.voteForHost(hostFid, isUpvote);
 
@@ -1104,7 +1170,7 @@
           });
         }
 
-        alert('⏳ Vote transaction submitted!\n\nWaiting for confirmation...\n\nTx: ' + voteTx.hash);
+        showToast('Vote submitted! Waiting for confirmation...', 'info', 15000);
         const receipt = await voteTx.wait();
 
         // Update UI after successful vote
@@ -1146,22 +1212,22 @@
         const ethFromVote = 0.00001;
         state.prizePoolETH += (ethFromVote * 0.5);
 
-        alert(`✅ ${isUpvote ? '👍 Upvote' : '👎 Downvote'} confirmed on-chain!${movementText}\n\n🔥 500 $NEYNARTODES burned\n💰 500 $NEYNARTODES → Treasury\n\nTx: ${receipt.transactionHash}\n\n${isDevWallet ? '🛠️ Dev Mode: Unlimited votes' : `Votes remaining today: ${state.votesRemaining}/10`}`);
+        showToast(`${isUpvote ? 'Upvote' : 'Downvote'} confirmed! 500 burned, 500 to treasury. ${isDevWallet ? 'Dev mode' : `${state.votesRemaining}/10 votes left`}`, 'success', 6000);
 
         render();
       } catch (error) {
         console.error('Voting error:', error);
 
         if (error.code === 4001) {
-          alert('❌ Transaction rejected by user');
+          showToast('Transaction rejected by user', 'error');
         } else if (error.message && error.message.includes('Daily vote limit')) {
-          alert('❌ Daily vote limit reached!\n\nYou can only vote 10 times per day.\n\nCome back tomorrow!');
+          showToast('Daily vote limit reached! Come back tomorrow.', 'error');
         } else if (error.message && error.message.includes('Already voted')) {
-          alert('❌ Already voted!\n\nYou have already voted for this host.');
+          showToast('Already voted for this host!', 'error');
         } else if (error.message && error.message.includes('Not whitelisted')) {
-          alert('❌ Not whitelisted!\n\nYou need to be on the Season 0 whitelist.');
+          showToast('Not whitelisted for Season 0 Beta.', 'error');
         } else {
-          alert('❌ Vote failed!\n\n' + (error.reason || error.message || 'Unknown error'));
+          showToast('Vote failed: ' + (error.reason || error.message || 'Unknown error'), 'error');
         }
       }
     }
@@ -2284,7 +2350,7 @@
               // Send 0.001 ETH to treasury
               const ethProvider = window.activeEthProvider || window.ethereum;
               if (!ethProvider) {
-                alert('No wallet connected!');
+                showToast('No wallet connected!', 'error');
                 e.target.checked = true;
                 return;
               }
@@ -2293,23 +2359,23 @@
               const signer = provider.getSigner();
               const fee = ethers.utils.parseEther('0.001');
 
-              alert('💸 Sending 0.001 ETH fee...\n\nConfirm in your wallet!');
+              showToast('Sending 0.001 ETH fee... Confirm in wallet!', 'info');
 
               const tx = await signer.sendTransaction({
                 to: CONFIG.CONTRACTS.treasury,
                 value: fee
               });
 
-              alert('⏳ Transaction submitted!\n\nWaiting for confirmation...\n\nTx: ' + tx.hash);
+              showToast('Transaction submitted! Waiting for confirmation...', 'info', 10000);
               await tx.wait();
 
               state.tokenomicsEnabled = false;
               state.minTradeVolume = '0';
-              alert('✅ Tokenomics disabled!\n\nYou can now create contests without volume requirements.');
+              showToast('Tokenomics disabled! You can now create contests without volume requirements.', 'success');
               render();
             } catch (error) {
               console.error('Fee payment error:', error);
-              alert('❌ Fee payment failed!\n\n' + error.message);
+              showToast('Fee payment failed: ' + error.message, 'error');
               e.target.checked = true; // Revert toggle
             }
           } else {
@@ -2439,7 +2505,7 @@
               const lastLaunchDay = new Date(lastLaunch.getFullYear(), lastLaunch.getMonth(), lastLaunch.getDate());
 
               if (today.getTime() === lastLaunchDay.getTime()) {
-                alert('🚫 Daily Contest Limit Reached!\n\nYou can only launch 1 contest per day per wallet.\n\nThis prevents leaderboard farming.\n\nYour last launch: ' + lastLaunch.toLocaleString() + '\n\nTry again tomorrow!');
+                showToast('Daily Contest Limit! You can only launch 1 contest per day. Try again tomorrow!', 'warning');
                 return;
               }
             }
@@ -2451,31 +2517,31 @@
           const totalMinutes = hours * 60 + minutes;
 
           if (totalMinutes < 1) {
-            alert('Contest duration must be at least 1 minute!\n\nCurrent duration: ' + totalMinutes + ' minutes\nRequired: 1 minute minimum');
+            showToast('Contest duration must be at least 1 minute!', 'error');
             return;
           }
 
           // Validate scheduled start date
           if (state.startMode === 'scheduled' && !state.startDate) {
-            alert('Please set contest start date!');
+            showToast('Please set contest start date!', 'error');
             return;
           }
 
           if (!state.prizeTokenAddress || !state.prizeTokenAmount) {
-            alert('Please select a prize token and enter the amount!');
+            showToast('Please select a prize token and enter the amount!', 'error');
             return;
           }
 
           // Cast hash is ALWAYS required
           if (!state.castHash) {
-            alert('📢 Cast Required!\n\nPlease post your contest announcement on Warpcast first, then paste the cast URL or hash here.\n\nParticipants are determined by engagement on your cast (recasts, replies).');
+            showToast('Cast Required! Post your contest announcement on Warpcast first, then paste the URL.', 'warning');
             return;
           }
 
           // Extract and validate cast hash
           const extractedHash = extractCastHash(state.castHash);
           if (!extractedHash) {
-            alert('❌ Invalid cast URL/hash format.\n\nPlease enter a valid Warpcast URL or cast hash (e.g., 0x1234abcd...)');
+            showToast('Invalid cast URL/hash format. Please enter a valid Warpcast URL.', 'error');
             return;
           }
 
@@ -2506,13 +2572,13 @@
           if (isCustomToken) {
             // Custom token: volume must be <= prize amount
             if (volumeReq > prizeAmount) {
-              alert(`Trade volume requirement cannot exceed prize amount!\n\nPrize: ${prizeAmount} ${state.prizeTokenTicker}\nVolume Req: ${volumeReq}\n\nVolume must be ≤ ${prizeAmount}`);
+              showToast(`Volume requirement cannot exceed prize amount (${prizeAmount} ${state.prizeTokenTicker})`, 'error');
               return;
             }
           } else {
             // Default NEYNARTODES: fixed cap at $10
             if (volumeReq > 10) {
-              alert('Trade volume requirement cannot exceed $10 for NEYNARTODES!\n\nMax: $10\nYour value: $' + volumeReq + '\n\nPay for custom token to set higher volume requirements.');
+              showToast('Volume requirement cannot exceed $10 for NEYNARTODES!', 'error');
               return;
             }
           }
@@ -2696,7 +2762,7 @@
         console.log('   Requirements encoded: Recast=' + reqRecast + ', Like=' + reqLike + ', Reply=' + reqReply);
         if (!state.castHash || !state.castHash.startsWith('0x')) {
           console.error('❌ Invalid cast hash - empty or doesnt start with 0x');
-          alert('❌ Invalid cast hash. Please start over and enter a valid cast URL/hash.');
+          showToast('Invalid cast hash. Please start over and enter a valid cast URL/hash.', 'error');
           return;
         }
 
@@ -2716,7 +2782,7 @@
             // Sanitize prize amount
             const cleanPrize = parseFloat(state.prizeTokenAmount).toFixed(18).replace(/\.?0+$/, '');
             if (!cleanPrize || isNaN(parseFloat(cleanPrize))) {
-              alert('❌ Invalid prize amount. Please enter a valid number.');
+              showToast('Invalid prize amount. Please enter a valid number.', 'error');
               return;
             }
             const prizeAmount = ethers.utils.parseEther(cleanPrize);
@@ -2924,7 +2990,7 @@
           }
         } else {
           // NFT prize - not supported in current contract
-          alert('❌ NFT prizes are not yet supported.\n\nPlease use token prizes for now.');
+          showToast('NFT prizes are not yet supported. Please use token prizes for now.', 'error');
           return;
         }
 
@@ -3087,22 +3153,22 @@
         console.error('Contest launch error:', error);
 
         if (error.code === 4001) {
-          alert('❌ Transaction rejected by user');
+          showToast('Transaction rejected by user', 'error');
         } else if (error.message?.includes('Prize required')) {
-          alert('❌ Prize amount required!\n\nPlease enter a prize amount greater than 0.');
+          showToast('Prize amount required! Please enter an amount greater than 0.', 'error');
         } else if (error.message?.includes('Include custom token fee')) {
-          alert('❌ Custom token fee required!\n\nUsing a custom token requirement costs 0.001 ETH.\nMake sure you have enough ETH for the fee.');
+          showToast('Custom token fee required! Using a custom token costs 0.001 ETH.', 'error');
         } else if (error.message?.includes('Invalid duration')) {
-          alert('❌ Invalid duration!\n\nContest duration must be greater than 0.');
+          showToast('Invalid duration! Contest duration must be greater than 0.', 'error');
         } else {
-          alert('❌ Contest launch failed!\n\n' + (error.reason || error.message || 'Unknown error'));
+          showToast('Contest launch failed: ' + (error.reason || error.message || 'Unknown error'), 'error');
         }
       }
     }
 
     // Feed the Neynartodes function - DEPRECATED (Clanker fees now go direct to Treasury)
     window.feedTheNeynartodes = async () => {
-      alert('🦎 This feature has been retired!\n\nClanker fees now flow directly to the Treasury.\n\nNo manual collection needed anymore.');
+      showToast('This feature has been retired! Clanker fees now flow directly to Treasury.', 'info');
     };
 
     // Make functions globally accessible for inline onclick handlers
@@ -3120,7 +3186,7 @@
       address = address.trim();
 
       if (!address.startsWith('0x') || address.length !== 42) {
-        alert(`Invalid address format.\n\nMust start with 0x and be 42 characters.\nYou entered: "${address}" (${address.length} chars)`);
+        showToast(`Invalid address format. Must start with 0x and be 42 characters.`, 'error');
         return;
       }
 
@@ -3163,7 +3229,7 @@
       address = address.trim();
 
       if (!address.startsWith('0x') || address.length !== 42) {
-        alert(`Invalid address format.\n\nMust start with 0x and be 42 characters.\nYou entered: "${address}" (${address.length} chars)`);
+        showToast(`Invalid address format. Must start with 0x and be 42 characters.`, 'error');
         return;
       }
 
@@ -3201,7 +3267,7 @@
       const maxPercent = basePercent * multiplier;
       const maxTokens = Math.floor(customToken.supply * maxPercent);
 
-      alert(`Custom token added!\n\n💰 Market Cap: $${customToken.mcap.toLocaleString()}\n📊 Max Holdings: ${(maxPercent * 100).toFixed(2)}% of supply\n= ${maxTokens.toLocaleString()} ${customToken.ticker}\n\n🦎 Your badge multiplier: ${multiplier}x\n💸 Max trade volume: $500`);
+      showToast(`Custom token added! Market Cap: $${customToken.mcap.toLocaleString()}, Max: ${maxTokens.toLocaleString()} ${customToken.ticker}`, 'success');
     };
 
     window.selectPrizeToken = (idx) => {
@@ -3245,7 +3311,7 @@
         const maxPercent = basePercent * multiplier;
         const maxTokens = Math.floor(token.supply * maxPercent);
 
-        alert(`Token selected!\n\n💰 Market Cap: $${token.mcap.toLocaleString()}\n📊 Max Holdings: ${(maxPercent * 100).toFixed(2)}% of supply\n= ${maxTokens.toLocaleString()} ${token.ticker}\n\n🦎 Your badge multiplier: ${multiplier}x\n💸 Max trade volume: $500`);
+        showToast(`Token selected! Market Cap: $${token.mcap.toLocaleString()}, Max: ${maxTokens.toLocaleString()} ${token.ticker}`, 'success');
       }
     };
 
