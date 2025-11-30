@@ -832,20 +832,52 @@
       }
     }
 
-    // Dedicated function to load burned tokens - isolated to prevent failures
+    // Dedicated function to load burned tokens - checks all burn sources
     async function loadBurnedTokens() {
-      const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+      // All common burn addresses on Base/Ethereum
+      const BURN_ADDRESSES = [
+        '0x000000000000000000000000000000000000dEaD', // Most common burn address
+        '0x0000000000000000000000000000000000000000', // Zero address
+      ];
+
       try {
-        // Use direct JsonRpcProvider for reliability
         const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+
+        // Token contract for checking burn address balances
         const neynartodeToken = new ethers.Contract(
           CONFIG.CONTRACTS.neynartodes,
           ['function balanceOf(address) view returns (uint256)'],
           rpcProvider
         );
-        const burnedBalance = await neynartodeToken.balanceOf(BURN_ADDRESS);
-        state.totalTokensBurned = ethers.utils.formatEther(burnedBalance);
-        console.log('Total tokens burned:', state.totalTokensBurned);
+
+        // VotingManager contract for checking burned via burn() function
+        const votingManager = new ethers.Contract(
+          CONFIG.CONTRACTS.votingManager,
+          ['function totalTokensBurned() view returns (uint256)'],
+          rpcProvider
+        );
+
+        // Check all sources in parallel
+        const [burnAddressBalances, vmBurned] = await Promise.all([
+          // Check burn addresses
+          Promise.all(BURN_ADDRESSES.map(addr =>
+            neynartodeToken.balanceOf(addr).catch(() => ethers.BigNumber.from(0))
+          )),
+          // Check VotingManager's tracked burns
+          votingManager.totalTokensBurned().catch(() => ethers.BigNumber.from(0))
+        ]);
+
+        // Sum all burned tokens from burn addresses
+        let totalBurned = ethers.BigNumber.from(0);
+        for (const balance of burnAddressBalances) {
+          totalBurned = totalBurned.add(balance);
+        }
+
+        // Add VotingManager tracked burns (these are actual burn() calls that reduce supply)
+        totalBurned = totalBurned.add(vmBurned);
+
+        state.totalTokensBurned = ethers.utils.formatEther(totalBurned);
+        console.log('Total tokens burned (all sources):', state.totalTokensBurned, '| VM burned:', ethers.utils.formatEther(vmBurned));
       } catch (e) {
         console.error('Error fetching burned tokens:', e);
         state.totalTokensBurned = '0';
@@ -1695,7 +1727,7 @@
                                 onclick="voteForHost(${host.fid}, true)"
                                 ${state.votesRemaining <= 0 ? 'disabled' : ''}
                                 class="p-2 bg-green-100 hover:bg-green-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-green-600 rounded transition-colors"
-                                title="Upvote (+5000 pts)"
+                                title="Upvote (+200 pts)"
                               >
                                 👍
                               </button>
@@ -1703,7 +1735,7 @@
                                 onclick="voteForHost(${host.fid}, false)"
                                 ${state.votesRemaining <= 0 ? 'disabled' : ''}
                                 class="p-2 bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-red-600 rounded transition-colors"
-                                title="Downvote (-5000 pts)"
+                                title="Downvote (-200 pts)"
                               >
                                 👎
                               </button>
@@ -1730,7 +1762,7 @@
                   <div class="text-sm text-purple-800 space-y-2 font-semibold">
                     <div>🎯 <strong>Total Score = Contest Score + Vote Score</strong></div>
                     <div>📊 Contest Score = (Social×3) + Token</div>
-                    <div>🗳️ Vote Score = (Upvotes - Downvotes) × 5,000</div>
+                    <div>🗳️ Vote Score = (Upvotes - Downvotes) × 200</div>
                     <div>💬 Social = (Likes×1 + Recasts×2 + Replies×3) × 100</div>
                     <div>💰 Token = Volume Points × 50</div>
                   </div>
