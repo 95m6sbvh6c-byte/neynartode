@@ -1145,20 +1145,60 @@
         if (currentAllowance.lt(tokensPerVote)) {
           showToast('Approving voting contract... Confirm in wallet.', 'info', 8000);
 
-          const approveTx = await neynartodeToken.approve(
+          // Encode approve call manually for smart wallet compatibility
+          const approveInterface = new ethers.utils.Interface(tokenABI);
+          const approveData = approveInterface.encodeFunctionData('approve', [
             CONFIG.CONTRACTS.votingManager,
-            ethers.constants.MaxUint256 // Infinite approval
-          );
+            ethers.constants.MaxUint256
+          ]);
+
+          // Send via raw eth_sendTransaction for Farcaster smart wallet
+          const approveTxHash = await ethProvider.request({
+            method: 'eth_sendTransaction',
+            params: [{
+              from: state.userAddress,
+              to: CONFIG.CONTRACTS.neynartodes,
+              data: approveData,
+              gas: '0x' + (100000).toString(16) // 100k gas for approve
+            }]
+          });
 
           showToast('Approval submitted! Waiting for confirmation...', 'info', 10000);
-          await approveTx.wait();
-          showToast('Approval confirmed! Now submitting vote...', 'success');
+
+          // Wait for approval confirmation
+          let approveReceipt = null;
+          for (let i = 0; i < 30; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            approveReceipt = await readProvider.getTransactionReceipt(approveTxHash);
+            if (approveReceipt) break;
+          }
+
+          if (approveReceipt) {
+            showToast('Approval confirmed! Now submitting vote...', 'success');
+          } else {
+            showToast('Approval may still be pending. Continuing with vote...', 'warning');
+          }
         }
 
         // Cast vote on-chain
         showToast('Submitting vote... Burns 500 + 500 to treasury. Confirm in wallet!', 'info', 8000);
 
-        const voteTx = await votingManager.voteForHost(hostFid, isUpvote);
+        // Encode the function call manually (Farcaster provider doesn't support eth_estimateGas)
+        const voteInterface = new ethers.utils.Interface(votingManagerABI);
+        const voteData = voteInterface.encodeFunctionData('voteForHost', [hostFid, isUpvote]);
+
+        // Send transaction via raw eth_sendTransaction (works with Farcaster wallet)
+        const txHash = await ethProvider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: state.userAddress,
+            to: CONFIG.CONTRACTS.votingManager,
+            data: voteData,
+            gas: '0x' + (300000).toString(16) // 300k gas limit
+          }]
+        });
+
+        console.log('Vote tx hash:', txHash);
 
         // Track vote event
         if (window.analytics?.track) {
@@ -1166,12 +1206,23 @@
             hostFid,
             isUpvote,
             voteType: isUpvote ? 'upvote' : 'downvote',
-            txHash: voteTx.hash
+            txHash: txHash
           });
         }
 
         showToast('Vote submitted! Waiting for confirmation...', 'info', 15000);
-        const receipt = await voteTx.wait();
+
+        // Wait for receipt using read provider
+        let receipt = null;
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          receipt = await readProvider.getTransactionReceipt(txHash);
+          if (receipt) break;
+        }
+
+        if (!receipt) {
+          showToast('Vote submitted but not yet confirmed. Check BaseScan.', 'warning');
+        }
 
         // Update UI after successful vote
         const votePoints = isUpvote ? 5 : -5;
