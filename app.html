@@ -1008,8 +1008,11 @@
           alert('Wallet not connected! Please reconnect.');
           return;
         }
-        const provider = new ethers.providers.Web3Provider(ethProvider);
-        const signer = provider.getSigner();
+        const walletProvider = new ethers.providers.Web3Provider(ethProvider);
+        const signer = walletProvider.getSigner();
+
+        // Use JSON-RPC provider for read operations (Farcaster wallet doesn't support eth_call)
+        const readProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
 
         // Contract ABIs - VotingManager V2 with upvote/downvote
         const votingManagerABI = [
@@ -1026,6 +1029,20 @@
           'function balanceOf(address account) external view returns (uint256)'
         ];
 
+        // Read-only contract instances for checking balances/allowances
+        const votingManagerRead = new ethers.Contract(
+          CONFIG.CONTRACTS.votingManager,
+          votingManagerABI,
+          readProvider
+        );
+
+        const neynartodeTokenRead = new ethers.Contract(
+          CONFIG.CONTRACTS.neynartodes,
+          tokenABI,
+          readProvider
+        );
+
+        // Write contract instances for transactions
         const votingManager = new ethers.Contract(
           CONFIG.CONTRACTS.votingManager,
           votingManagerABI,
@@ -1038,9 +1055,9 @@
           signer
         );
 
-        // Check if can vote (skip for dev wallet)
+        // Check if can vote (skip for dev wallet) - use read-only provider
         if (!isDev) {
-          const canVoteResult = await votingManager.canVote(state.userAddress);
+          const canVoteResult = await votingManagerRead.canVote(state.userAddress);
           if (!canVoteResult) {
             alert('❌ Cannot vote!\n\nYou may have:\n- Used all 10 votes today\n- Insufficient token balance (need 20K minimum)\n- Not whitelisted (Season 0 Beta)');
             return;
@@ -1050,15 +1067,15 @@
         // Get tokens per vote (1000 NEYNARTODES)
         const tokensPerVote = ethers.utils.parseEther('1000');
 
-        // Check balance
-        const balance = await neynartodeToken.balanceOf(state.userAddress);
+        // Check balance - use read-only provider
+        const balance = await neynartodeTokenRead.balanceOf(state.userAddress);
         if (balance.lt(tokensPerVote)) {
           alert(`❌ Insufficient balance!\n\nYou need 1,000 $NEYNARTODES to vote.\n\nYour balance: ${ethers.utils.formatEther(balance)} NEYNARTODES`);
           return;
         }
 
-        // Check and set approval if needed
-        const currentAllowance = await neynartodeToken.allowance(state.userAddress, CONFIG.CONTRACTS.votingManager);
+        // Check and set approval if needed - use read-only provider for allowance check
+        const currentAllowance = await neynartodeTokenRead.allowance(state.userAddress, CONFIG.CONTRACTS.votingManager);
         if (currentAllowance.lt(tokensPerVote)) {
           alert('🔐 First, you need to approve the voting contract to spend your tokens.\n\nThis is a one-time approval for security.\n\nClick OK to approve...');
 
