@@ -153,6 +153,7 @@
 
       // Season & Prize Pool
       currentSeason: 0,
+      seasonEndTime: null, // Unix timestamp when season ends
       prizePoolETH: 0,
       hostPoolETH: 0,  // On-chain host prize pool
       voterPoolETH: 0, // On-chain voter prize pool
@@ -917,6 +918,7 @@
           state.hostPoolETH = parseFloat(ethers.utils.formatEther(season.hostPool));
           state.voterPoolETH = parseFloat(ethers.utils.formatEther(season.voterPool));
           state.prizePoolETH = state.hostPoolETH + state.voterPoolETH; // Total
+          state.seasonEndTime = season.endTime.toNumber(); // Store season end timestamp
         }
 
         // Clanker fees now go direct to Treasury - no pending fees to track
@@ -1152,6 +1154,26 @@
       }
     }
 
+    // Countdown timer interval for leaderboard
+    let countdownInterval = null;
+
+    function startCountdownTimer() {
+      stopCountdownTimer();
+      // Update countdown every minute
+      countdownInterval = setInterval(() => {
+        if (state.currentView === 'leaderboard') {
+          render();
+        }
+      }, 60000); // Update every minute
+    }
+
+    function stopCountdownTimer() {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    }
+
     // Format timestamp to readable date
     function formatDate(timestamp) {
       const date = new Date(timestamp * 1000);
@@ -1162,6 +1184,27 @@
         hour: '2-digit',
         minute: '2-digit'
       });
+    }
+
+    // Get season countdown string
+    function getSeasonCountdown() {
+      if (!state.seasonEndTime) return null;
+
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = state.seasonEndTime - now;
+
+      if (remaining <= 0) return { text: 'Season Ended!', days: 0, hours: 0, minutes: 0, ended: true };
+
+      const days = Math.floor(remaining / 86400);
+      const hours = Math.floor((remaining % 86400) / 3600);
+      const minutes = Math.floor((remaining % 3600) / 60);
+
+      let text = '';
+      if (days > 0) text += `${days}d `;
+      if (hours > 0 || days > 0) text += `${hours}h `;
+      text += `${minutes}m`;
+
+      return { text: text.trim(), days, hours, minutes, ended: false };
     }
 
     // Format duration
@@ -1615,9 +1658,16 @@
               <!-- Season Info -->
               <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl shadow-2xl p-6 text-white border-4 border-purple-400 transform hover:scale-105 transition-transform">
-                  <div class="text-sm font-bold mb-2 opacity-90">🌊 Current Season 🌊</div>
-                  <div class="text-5xl font-black mb-2">#${state.currentSeason}</div>
-                  <div class="text-xs opacity-90 font-semibold">Beta Testing</div>
+                  <div class="text-sm font-bold mb-2 opacity-90">⏰ Season Ends In ⏰</div>
+                  ${(() => {
+                    const countdown = getSeasonCountdown();
+                    if (!countdown) return '<div class="text-3xl font-black mb-2">Loading...</div>';
+                    if (countdown.ended) return '<div class="text-3xl font-black mb-2">Season Ended!</div>';
+                    return `
+                      <div class="text-3xl font-black mb-2">${countdown.text}</div>
+                      <div class="text-xs opacity-90 font-semibold">Season #${state.currentSeason} Beta</div>
+                    `;
+                  })()}
                 </div>
 
                 <div class="bg-gradient-to-br from-green-400 to-emerald-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-green-300 transform hover:scale-105 transition-transform">
@@ -2492,11 +2542,13 @@
         state.currentView = 'create';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'create' });
         stopHistoryAutoRefresh();
+        stopCountdownTimer();
         render();
       };
       if (viewHistory) viewHistory.onclick = () => {
         state.currentView = 'history';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'history' });
+        stopCountdownTimer();
         // Always refresh history when switching to this view
         loadHistory();
         // Start auto-refresh for active/pending contests
@@ -2506,6 +2558,7 @@
         state.currentView = 'leaderboard';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'leaderboard' });
         stopHistoryAutoRefresh();
+        startCountdownTimer();
         render();
       };
 
