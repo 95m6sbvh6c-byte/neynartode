@@ -1619,6 +1619,14 @@
               SDK: ${window.FarcasterSDK ? '✅' : '❌'} | Wallet: ${window.FarcasterSDK?.wallet ? '✅' : '❌'} | ETH: ${window.ethereum ? '✅' : '❌'}
             </p>
 
+            <button
+              id="buyTokenButton"
+              class="w-full mt-4 flex items-center justify-center gap-3 bg-gradient-to-r from-green-500 via-emerald-500 to-green-600 hover:from-green-600 hover:via-emerald-600 hover:to-green-700 text-white px-6 py-4 rounded-2xl font-black text-lg transition-all shadow-lg transform hover:scale-105 border-2 border-green-300"
+              style="text-shadow: 1px 1px 2px rgba(0,0,0,0.3)"
+            >
+              🦎 Buy $NEYNARTODES
+            </button>
+
             <div class="mt-8 p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
               <p class="text-sm text-purple-800 mb-2 font-semibold">🌊 Powered by the Colony 🌊</p>
               <a
@@ -2601,6 +2609,30 @@
       const connectButton = document.getElementById('connectButton');
       if (connectButton) {
         connectButton.onclick = connectWallet;
+      }
+
+      // Buy token button - opens Farcaster wallet with NEYNARTODES
+      const buyTokenButton = document.getElementById('buyTokenButton');
+      if (buyTokenButton) {
+        buyTokenButton.onclick = async () => {
+          const tokenAddress = CONFIG.CONTRACTS.neynartodes;
+
+          // Try Farcaster SDK openUrl if available
+          if (window.FarcasterSDK?.actions?.openUrl) {
+            try {
+              // Use Uniswap swap URL for Base chain
+              const swapUrl = `https://app.uniswap.org/swap?outputCurrency=${tokenAddress}&chain=base`;
+              await window.FarcasterSDK.actions.openUrl(swapUrl);
+              return;
+            } catch (e) {
+              console.log('Farcaster openUrl failed, trying fallback:', e);
+            }
+          }
+
+          // Fallback: open in new tab
+          const swapUrl = `https://app.uniswap.org/swap?outputCurrency=${tokenAddress}&chain=base`;
+          window.open(swapUrl, '_blank');
+        };
       }
 
       // View switching
