@@ -2611,27 +2611,47 @@
         connectButton.onclick = connectWallet;
       }
 
-      // Buy token button - opens Farcaster wallet with NEYNARTODES
+      // Buy token button - opens Farcaster wallet for swap
       const buyTokenButton = document.getElementById('buyTokenButton');
       if (buyTokenButton) {
         buyTokenButton.onclick = async () => {
           const tokenAddress = CONFIG.CONTRACTS.neynartodes;
+          const sdk = window.FarcasterSDK;
 
-          // Try Farcaster SDK openUrl if available
-          if (window.FarcasterSDK?.actions?.openUrl) {
-            try {
-              // Use Uniswap swap URL for Base chain
-              const swapUrl = `https://app.uniswap.org/swap?outputCurrency=${tokenAddress}&chain=base`;
-              await window.FarcasterSDK.actions.openUrl(swapUrl);
-              return;
-            } catch (e) {
-              console.log('Farcaster openUrl failed, trying fallback:', e);
+          // Try to get the Farcaster wallet provider
+          let ethProvider = null;
+          if (sdk?.wallet?.ethProvider) {
+            ethProvider = sdk.wallet.ethProvider;
+          } else if (typeof sdk?.wallet?.getEthereumProvider === 'function') {
+            ethProvider = sdk.wallet.getEthereumProvider();
+            if (ethProvider && typeof ethProvider.then === 'function') {
+              ethProvider = await ethProvider;
             }
           }
 
-          // Fallback: open in new tab
-          const swapUrl = `https://app.uniswap.org/swap?outputCurrency=${tokenAddress}&chain=base`;
-          window.open(swapUrl, '_blank');
+          if (ethProvider) {
+            try {
+              // Request accounts - this opens the Farcaster wallet UI
+              await ethProvider.request({ method: 'eth_requestAccounts' });
+
+              // Copy token address to clipboard for easy pasting
+              await navigator.clipboard.writeText(tokenAddress).catch(() => {});
+
+              // Show toast with instructions (alerts are blocked in Farcaster)
+              showToast('Wallet opened! Tap the Swap tab, then paste:\n' + tokenAddress.slice(0, 20) + '...', 'info', 8000);
+              return;
+            } catch (e) {
+              console.log('Wallet request failed:', e);
+            }
+          }
+
+          // Fallback: Copy address and show instructions
+          try {
+            await navigator.clipboard.writeText(tokenAddress);
+            showToast('Token address copied!\n\nOpen Warpcast → Wallet → Swap → Paste to find NEYNARTODES', 'success', 8000);
+          } catch (e) {
+            showToast('Token: ' + tokenAddress + '\n\nCopy this and paste in your wallet swap', 'info', 10000);
+          }
         };
       }
 
