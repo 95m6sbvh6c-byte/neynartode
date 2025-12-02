@@ -1724,18 +1724,27 @@
 
                 <div class="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-2xl p-6 text-white border-4 border-yellow-300 transform hover:scale-105 transition-transform">
                   <div class="text-sm font-bold mb-2 opacity-90">👑 Leader 👑</div>
-                  <div class="flex items-center gap-2 mb-2">
-                    ${state.leaderboardData.length > 0 ? `
-                      ${state.leaderboardData[0].pfpUrl
-                        ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="@${state.leaderboardData[0].username}" class="w-10 h-10 rounded-full object-cover border-2 border-yellow-200" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-10 h-10 rounded-full bg-yellow-200 items-center justify-center text-lg text-yellow-800 hidden">${state.leaderboardData[0].pfp}</span>`
-                        : `<span class="w-10 h-10 rounded-full bg-yellow-200 flex items-center justify-center text-lg text-yellow-800">${state.leaderboardData[0].pfp}</span>`
-                      }
-                      <span class="text-2xl font-black">@${state.leaderboardData[0].username}</span>
-                    ` : '<span class="text-3xl font-black">TBA</span>'}
-                  </div>
-                  <div class="text-xs opacity-90 font-semibold">
-                    ${state.leaderboardData.length > 0 ? `${state.leaderboardData[0].totalScore.toLocaleString()} points` : 'Launch contests to compete!'}
-                  </div>
+                  ${state.leaderboardData.length > 0 ? `
+                    <a href="https://warpcast.com/${state.leaderboardData[0].username}" target="_blank" class="block hover:opacity-90 transition-opacity cursor-pointer">
+                      <div class="flex items-center gap-2 mb-2">
+                        ${state.leaderboardData[0].pfpUrl
+                          ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="@${state.leaderboardData[0].username}" class="w-10 h-10 rounded-full object-cover border-2 border-yellow-200" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-10 h-10 rounded-full bg-yellow-200 items-center justify-center text-lg text-yellow-800 hidden">${state.leaderboardData[0].pfp}</span>`
+                          : `<span class="w-10 h-10 rounded-full bg-yellow-200 flex items-center justify-center text-lg text-yellow-800">${state.leaderboardData[0].pfp}</span>`
+                        }
+                        <span class="text-2xl font-black">@${state.leaderboardData[0].username}</span>
+                      </div>
+                      <div class="text-xs opacity-90 font-semibold">
+                        ${state.leaderboardData[0].totalScore.toLocaleString()} points
+                      </div>
+                    </a>
+                  ` : `
+                    <div class="flex items-center gap-2 mb-2">
+                      <span class="text-3xl font-black">TBA</span>
+                    </div>
+                    <div class="text-xs opacity-90 font-semibold">
+                      Launch contests to compete!
+                    </div>
+                  `}
                 </div>
               </div>
 
@@ -1839,18 +1848,18 @@
                             </div>
                           </td>
                           <td class="py-4 px-2">
-                            <div class="flex items-center gap-2">
+                            <a href="https://warpcast.com/${host.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
                               ${host.pfpUrl
                                 ? `<img src="${host.pfpUrl}" alt="@${host.username}" class="w-10 h-10 rounded-full object-cover border-2 border-purple-300" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-10 h-10 rounded-full bg-purple-200 items-center justify-center text-lg hidden">${host.pfp}</span>`
                                 : `<span class="w-10 h-10 rounded-full bg-purple-200 flex items-center justify-center text-lg">${host.pfp}</span>`
                               }
                               <div>
-                                <div class="font-semibold text-gray-800 flex items-center gap-1">
+                                <div class="font-semibold text-gray-800 flex items-center gap-1 hover:text-purple-600">
                                   @${host.username}
                                   ${host.badges.map(badge => `<span title="${getBadgeTitle(badge)}">${getBadgeEmoji(badge)}</span>`).join('')}
                                 </div>
                               </div>
-                            </div>
+                            </a>
                           </td>
                           <td class="py-4 px-2 text-right">
                             <div class="font-bold text-purple-600 text-lg" title="Contest: ${(host.contestScore || 0).toLocaleString()} | Votes: ${(host.voteScore || 0).toLocaleString()}">
@@ -1914,7 +1923,7 @@
               ${state.upcomingContests.length > 0 ? `
                 <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300 mt-6">
                   <div class="flex items-center gap-3 mb-6">
-                    <div class="text-purple-600 text-4xl">📅</div>
+                    <div class="text-purple-600 text-4xl">����</div>
                     <div>
                       <h2 class="text-3xl font-black text-purple-800">🗓️ Upcoming Contests 🗓️</h2>
                       <p class="text-sm text-purple-600 font-bold">${state.upcomingContests.length} contest${state.upcomingContests.length > 1 ? 's' : ''} scheduled</p>
@@ -2075,10 +2084,16 @@
                           <td class="py-4 px-2">
                             <div class="flex items-center gap-2">
                               ${contest.hostUser ? `
-                                <div>
-                                  <div class="font-semibold text-gray-800">@${contest.hostUser.username}</div>
-                                  <div class="text-xs text-gray-500">${contest.host.slice(0, 8)}...</div>
-                                </div>
+                                <a href="https://warpcast.com/${contest.hostUser.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                                  ${contest.hostUser.pfpUrl
+                                    ? `<img src="${contest.hostUser.pfpUrl}" alt="@${contest.hostUser.username}" class="w-8 h-8 rounded-full object-cover border-2 border-purple-300" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-8 h-8 rounded-full bg-purple-200 items-center justify-center text-sm hidden">👤</span>`
+                                    : `<span class="w-8 h-8 rounded-full bg-purple-200 flex items-center justify-center text-sm">👤</span>`
+                                  }
+                                  <div>
+                                    <div class="font-semibold text-gray-800 hover:text-purple-600">@${contest.hostUser.username}</div>
+                                    <div class="text-xs text-gray-500">${contest.host.slice(0, 8)}...</div>
+                                  </div>
+                                </a>
                               ` : `
                                 <div class="font-mono text-sm text-gray-600">${contest.host.slice(0, 10)}...</div>
                               `}
@@ -2114,10 +2129,16 @@
                               <div class="flex items-center gap-2">
                                 <span class="text-lg">🏆</span>
                                 ${contest.winnerUser ? `
-                                  <div>
-                                    <div class="font-semibold text-yellow-700">@${contest.winnerUser.username}</div>
-                                    <div class="text-xs text-gray-500">${contest.winner.slice(0, 8)}...</div>
-                                  </div>
+                                  <a href="https://warpcast.com/${contest.winnerUser.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                                    ${contest.winnerUser.pfpUrl
+                                      ? `<img src="${contest.winnerUser.pfpUrl}" alt="@${contest.winnerUser.username}" class="w-8 h-8 rounded-full object-cover border-2 border-yellow-400" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-8 h-8 rounded-full bg-yellow-200 items-center justify-center text-sm hidden">👤</span>`
+                                      : `<span class="w-8 h-8 rounded-full bg-yellow-200 flex items-center justify-center text-sm">👤</span>`
+                                    }
+                                    <div>
+                                      <div class="font-semibold text-yellow-700 hover:text-yellow-600">@${contest.winnerUser.username}</div>
+                                      <div class="text-xs text-gray-500">${contest.winner.slice(0, 8)}...</div>
+                                    </div>
+                                  </a>
                                 ` : `
                                   <div class="font-mono text-sm text-gray-600">${contest.winner.slice(0, 10)}...</div>
                                 `}
