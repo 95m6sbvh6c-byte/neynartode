@@ -125,6 +125,9 @@
       SEASON_0_MIN_TOKENS: ethers.utils.parseEther('20000') // 20K tokens
     };
 
+    // ===== SHARED RPC PROVIDER (reduces duplicate connections) =====
+    const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+
     // Dev wallets with unlimited privileges (no contest launch limit, no voting limit)
     const DEV_WALLETS = [
       '0x78EeAA6F014667A339fCF8b4eCd74743366603fb', // MetaMask
@@ -730,16 +733,14 @@
           }
         }
 
-        // Create provider - use JsonRpcProvider for more reliable RPC
-        const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-
+        // Uses shared rpcProvider for read operations
         console.log('Checking whitelist for:', address);
 
         // Check whitelist with timeout
         const prizeNFTContract = new ethers.Contract(
           CONFIG.CONTRACTS.prizeNFT,
           ['function whitelisted(address) external view returns (bool)'],
-          provider
+          rpcProvider
         );
 
         try {
@@ -759,11 +760,11 @@
 
         console.log('Checking token balance...');
 
-        // Check token balance with timeout
+        // Check token balance with timeout (uses shared rpcProvider)
         const neynartodeContract = new ethers.Contract(
           CONFIG.CONTRACTS.neynartodes,
           ['function balanceOf(address) external view returns (uint256)'],
-          provider
+          rpcProvider
         );
 
         let balance;
@@ -834,6 +835,7 @@
     }
 
     // Dedicated function to load burned tokens - checks all burn sources
+    // Uses shared rpcProvider for efficiency
     async function loadBurnedTokens() {
       // All common burn addresses on Base/Ethereum
       const BURN_ADDRESSES = [
@@ -842,23 +844,21 @@
       ];
 
       try {
-        const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-
-        // Token contract for checking burn address balances
+        // Token contract for checking burn address balances (uses shared provider)
         const neynartodeToken = new ethers.Contract(
           CONFIG.CONTRACTS.neynartodes,
           ['function balanceOf(address) view returns (uint256)'],
           rpcProvider
         );
 
-        // VotingManager contract for checking burned via burn() function
+        // VotingManager contract for checking burned via burn() function (uses shared provider)
         const votingManager = new ethers.Contract(
           CONFIG.CONTRACTS.votingManager,
           ['function totalTokensBurned() view returns (uint256)'],
           rpcProvider
         );
 
-        // Check all sources in parallel
+        // Check all sources in parallel (batched RPC calls)
         const [burnAddressBalances, vmBurned] = await Promise.all([
           // Check burn addresses
           Promise.all(BURN_ADDRESSES.map(addr =>
@@ -892,10 +892,8 @@
       try {
         console.log('Loading prize pools from PrizeNFT:', CONFIG.CONTRACTS.prizeNFT);
 
-        // Always use JsonRpcProvider for read-only calls (works without wallet connection)
-        const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-
         // Load current season and prize pools from PrizeNFT contract (V2 - no devPool)
+        // Uses shared rpcProvider for efficiency
         const prizeNFTABI = [
           'function nextSeasonId() external view returns (uint256)',
           'function seasons(uint256) external view returns (string theme, uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)'
@@ -904,7 +902,7 @@
         const prizeNFT = new ethers.Contract(
           CONFIG.CONTRACTS.prizeNFT,
           prizeNFTABI,
-          provider
+          rpcProvider
         );
 
         // Get current season ID (latest season)
@@ -1033,14 +1031,14 @@
       if (state.leaderboardData.length === 0) return;
 
       try {
-        const readProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        // Uses shared rpcProvider for efficiency
         const votingManagerABI = [
           'function getHostVoteStats(uint256 hostFid) external view returns (uint256 upvotes, uint256 downvotes, int256 netScore)'
         ];
         const votingManager = new ethers.Contract(
           CONFIG.CONTRACTS.votingManager,
           votingManagerABI,
-          readProvider
+          rpcProvider
         );
 
         // Fetch vote stats for each host in parallel
@@ -1275,8 +1273,7 @@
         const walletProvider = new ethers.providers.Web3Provider(ethProvider);
         const signer = walletProvider.getSigner();
 
-        // Use JSON-RPC provider for read operations (Farcaster wallet doesn't support eth_call)
-        const readProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        // Use shared rpcProvider for read operations (Farcaster wallet doesn't support eth_call)
 
         // Contract ABIs - VotingManager V2 with upvote/downvote
         const votingManagerABI = [
@@ -1293,17 +1290,17 @@
           'function balanceOf(address account) external view returns (uint256)'
         ];
 
-        // Read-only contract instances for checking balances/allowances
+        // Read-only contract instances for checking balances/allowances (uses shared rpcProvider)
         const votingManagerRead = new ethers.Contract(
           CONFIG.CONTRACTS.votingManager,
           votingManagerABI,
-          readProvider
+          rpcProvider
         );
 
         const neynartodeTokenRead = new ethers.Contract(
           CONFIG.CONTRACTS.neynartodes,
           tokenABI,
-          readProvider
+          rpcProvider
         );
 
         // Write contract instances for transactions
@@ -1367,7 +1364,7 @@
           let approveReceipt = null;
           for (let i = 0; i < 30; i++) {
             await new Promise(r => setTimeout(r, 2000));
-            approveReceipt = await readProvider.getTransactionReceipt(approveTxHash);
+            approveReceipt = await rpcProvider.getTransactionReceipt(approveTxHash);
             if (approveReceipt) break;
           }
 
@@ -1414,7 +1411,7 @@
         let receipt = null;
         for (let i = 0; i < 30; i++) {
           await new Promise(r => setTimeout(r, 2000));
-          receipt = await readProvider.getTransactionReceipt(txHash);
+          receipt = await rpcProvider.getTransactionReceipt(txHash);
           if (receipt) break;
         }
 
@@ -2961,12 +2958,11 @@
 
         if (statusDiv) statusDiv.textContent = 'Step 7c: Creating contract...';
 
-        // Use read-only provider for reading contract data (avoids smart wallet issues)
-        const readProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        // Use shared rpcProvider for reading contract data (avoids smart wallet issues)
         const contestEscrowRead = new ethers.Contract(
           CONFIG.CONTRACTS.contestEscrow,
           CONTEST_ESCROW_ABI,
-          readProvider
+          rpcProvider
         );
 
         // Contract with signer for transactions
@@ -3117,7 +3113,7 @@
             if (statusDiv) statusDiv.textContent = 'Step 8: Preparing ERC20 prize...';
 
             // Get decimals using read-only provider
-            const prizeTokenRead = new ethers.Contract(state.prizeTokenAddress, ERC20_ABI, readProvider);
+            const prizeTokenRead = new ethers.Contract(state.prizeTokenAddress, ERC20_ABI, rpcProvider);
             let decimals;
             try {
               decimals = await prizeTokenRead.decimals();
@@ -3268,7 +3264,7 @@
         let receipt = null;
         for (let i = 0; i < 60; i++) {
           await new Promise(r => setTimeout(r, 2000));
-          receipt = await readProvider.getTransactionReceipt(tx.hash);
+          receipt = await rpcProvider.getTransactionReceipt(tx.hash);
           if (receipt) break;
         }
 
