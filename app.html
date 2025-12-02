@@ -1639,6 +1639,16 @@
               </a>
               <p class="font-mono text-xs text-gray-600 mt-2 break-all">CA: 0x8de1622fe07f56cda2e2273e615a513f1d828b07</p>
             </div>
+
+            <a
+              href="https://github.com/neynartodes/frame#readme"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mt-4 inline-flex items-center gap-2 text-purple-600 hover:text-pink-600 font-semibold text-sm transition-colors"
+            >
+              <span class="w-5 h-5 rounded-full bg-purple-200 flex items-center justify-center text-xs">?</span>
+              How to Use NEYNARtodes
+            </a>
           </div>
         </div>
       `;
@@ -1814,12 +1824,21 @@
 
               <!-- Leaderboard Table -->
               <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
-                <div class="flex items-center gap-3 mb-6">
-                  <div class="text-purple-600 text-4xl">📈</div>
-                  <div>
-                    <h2 class="text-3xl font-black text-purple-800">🦎 Colony Leaderboard 🦎</h2>
-                    <p class="text-sm text-purple-600 font-bold">Top Neynartode Feeders - Season ${state.currentSeason}</p>
+                <div class="flex items-center justify-between mb-6">
+                  <div class="flex items-center gap-3">
+                    <div class="text-purple-600 text-4xl">📈</div>
+                    <div>
+                      <h2 class="text-3xl font-black text-purple-800">🦎 Colony Leaderboard 🦎</h2>
+                      <p class="text-sm text-purple-600 font-bold">Top Neynartode Feeders - Season ${state.currentSeason}</p>
+                    </div>
                   </div>
+                  <a
+                    href="https://github.com/neynartodes/frame/blob/main/docs/GUIDE_LEADERBOARD.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="w-8 h-8 rounded-full bg-purple-200 hover:bg-purple-300 flex items-center justify-center text-purple-700 font-bold text-sm transition-colors"
+                    title="Leaderboard Guide"
+                  >?</a>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -2036,12 +2055,21 @@
                     <p class="text-sm text-purple-600 font-bold">Last 20 contests on NEYNARtodes</p>
                   </div>
                 </div>
-                <button
-                  onclick="loadHistory()"
-                  class="px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg font-semibold transition-colors"
-                >
-                  🔄 Refresh
-                </button>
+                <div class="flex items-center gap-3">
+                  <a
+                    href="https://github.com/neynartodes/frame/blob/main/docs/GUIDE_HISTORY.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="w-8 h-8 rounded-full bg-purple-200 hover:bg-purple-300 flex items-center justify-center text-purple-700 font-bold text-sm transition-colors"
+                    title="History Guide"
+                  >?</a>
+                  <button
+                    onclick="loadHistory()"
+                    class="px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg font-semibold transition-colors"
+                  >
+                    🔄 Refresh
+                  </button>
+                </div>
               </div>
 
               ${state.historyLoading ? `
@@ -2207,7 +2235,16 @@
             </div>
 
             <div class="bg-white rounded-2xl shadow-2xl p-8 border-4 border-purple-300">
-              <h2 class="text-3xl font-black text-purple-800 mb-6">🎉 Create New Contest 🎉</h2>
+              <div class="flex items-center justify-between mb-6">
+                <h2 class="text-3xl font-black text-purple-800">🎉 Create New Contest 🎉</h2>
+                <a
+                  href="https://github.com/neynartodes/frame/blob/main/docs/GUIDE_CREATE.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="w-8 h-8 rounded-full bg-purple-200 hover:bg-purple-300 flex items-center justify-center text-purple-700 font-bold text-sm transition-colors"
+                  title="Create Contest Guide"
+                >?</a>
+              </div>
 
               <div class="space-y-6">
                 <!-- Contest Period -->
@@ -2609,50 +2646,6 @@
       const connectButton = document.getElementById('connectButton');
       if (connectButton) {
         connectButton.onclick = connectWallet;
-      }
-
-      // Buy token button - opens Farcaster wallet for swap
-      const buyTokenButton = document.getElementById('buyTokenButton');
-      if (buyTokenButton) {
-        buyTokenButton.onclick = async () => {
-          const tokenAddress = CONFIG.CONTRACTS.neynartodes;
-          const sdk = window.FarcasterSDK;
-
-          // Try to get the Farcaster wallet provider
-          let ethProvider = null;
-          if (sdk?.wallet?.ethProvider) {
-            ethProvider = sdk.wallet.ethProvider;
-          } else if (typeof sdk?.wallet?.getEthereumProvider === 'function') {
-            ethProvider = sdk.wallet.getEthereumProvider();
-            if (ethProvider && typeof ethProvider.then === 'function') {
-              ethProvider = await ethProvider;
-            }
-          }
-
-          if (ethProvider) {
-            try {
-              // Request accounts - this opens the Farcaster wallet UI
-              await ethProvider.request({ method: 'eth_requestAccounts' });
-
-              // Copy token address to clipboard for easy pasting
-              await navigator.clipboard.writeText(tokenAddress).catch(() => {});
-
-              // Show toast with instructions (alerts are blocked in Farcaster)
-              showToast('Wallet opened! Tap the Swap tab, then paste:\n' + tokenAddress.slice(0, 20) + '...', 'info', 8000);
-              return;
-            } catch (e) {
-              console.log('Wallet request failed:', e);
-            }
-          }
-
-          // Fallback: Copy address and show instructions
-          try {
-            await navigator.clipboard.writeText(tokenAddress);
-            showToast('Token address copied!\n\nOpen Warpcast → Wallet → Swap → Paste to find NEYNARTODES', 'success', 8000);
-          } catch (e) {
-            showToast('Token: ' + tokenAddress + '\n\nCopy this and paste in your wallet swap', 'info', 10000);
-          }
-        };
       }
 
       // View switching

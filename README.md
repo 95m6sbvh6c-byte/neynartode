@@ -1,176 +1,274 @@
-# 🐸 NEYNARtodes Farcaster Frame - Season 0 Beta
+# NEYNARtodes - Season 0 Beta
 
-A Farcaster Frame that allows users to check their Season 0 Beta eligibility and access the full NEYNARtodes platform.
+> Farcaster Mini App for hosting social contests on Base
 
-## ✨ Features
+NEYNARtodes lets you create contests tied to your Farcaster casts. Reward your community for engagement - likes, recasts, replies, and trading volume. Winners are selected randomly via Chainlink VRF.
 
-- 🔍 **Check Access** - Verify token balance & whitelist status
-- 🎮 **Launch App** - Direct link to full interactive platform
-- 📊 **Display Contracts** - Show all Season 0 contract addresses
-- ✅ **Farcaster Integration** - Works in Warpcast and all Farcaster clients
+**Live App:** [frame-opal-eight.vercel.app/app](https://frame-opal-eight.vercel.app/app)
 
-## 🎯 Season 0 Requirements
+---
 
-- **Token Gate**: 20,000 NEYNARTODES minimum
-- **Whitelist**: 74 beta testers
-- **Network**: Base Mainnet
-- **Wallet**: Verified Farcaster wallet required
+## What is NEYNARtodes?
 
-## 📦 Contract Addresses
+NEYNARtodes is a gamified social engagement platform built on Farcaster and Base. Host contests, vote on your favorite creators, and earn rewards.
 
-| Contract | Address |
-|----------|---------|
-| **PrizeNFT Season 0** | `0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81` |
-| **VotingManager Season 0 V2** | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` |
-| **Treasury V2** | `0xd4d84f3477eb482783aAB48F00e357C801c48928` |
-| **Captain Hook V2** | `0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B` |
-| **Clanker Collector V2** | `0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280` |
-| **NEYNARTODES Token** | `0x8de1622fe07f56cda2e2273e615a513f1d828b07` |
+### Core Features
 
-## 🚀 Quick Start
+| Feature | Description |
+|---------|-------------|
+| **Create Contests** | Lock prizes in escrow, set engagement requirements |
+| **Chainlink VRF** | Provably fair random winner selection |
+| **Vote on Hosts** | Upvote/downvote creators, burn tokens |
+| **Season Rewards** | Top hosts win the prize pool |
 
-### 1. Deploy to Vercel
+---
+
+## Quick Start
+
+### For Users
+
+1. Open NEYNARtodes in Warpcast
+2. Connect with your Farcaster wallet
+3. You need:
+   - 20,000+ NEYNARTODES tokens
+   - Whitelisted address (Season 0 Beta)
+
+### For Developers
 
 ```bash
-# Clone and navigate to frame directory
-cd frame/
+# Clone the repo
+git clone https://github.com/YOUR_USERNAME/neynartodes-frame.git
+cd neynartodes-frame/frame
 
-# Install Vercel CLI
-npm install -g vercel
+# Install dependencies
+npm install
+
+# Run locally
+vercel dev
 
 # Deploy
 vercel --prod
 ```
 
-### 2. Update Domain URLs
+---
 
-Replace `YOUR_DOMAIN` with your Vercel URL in:
-- `index.html`
-- `api/check-access.js`
-- `api/connect.js`
+## App Pages
 
-### 3. Test in Warpcast
+### Create Page
+Create new contests with custom prizes and requirements.
 
-Go to: https://warpcast.com/~/developers/frames
+**Features:**
+- Start immediately or schedule for later
+- Set duration (hours + minutes)
+- Choose any ERC-20 token as prize
+- Require likes, recasts, and/or replies
+- Optional trading volume requirement
 
-Enter your Frame URL and click "Validate"
+[Full Create Guide](./docs/GUIDE_CREATE.md)
 
-## 📁 Project Structure
+### History Page
+View all past and active contests.
+
+**Features:**
+- See contest status (Active, Pending VRF, Completed)
+- View winners with Farcaster profiles
+- Track participant counts
+- Monitor prize distributions
+
+[Full History Guide](./docs/GUIDE_HISTORY.md)
+
+### Leaderboard Page
+Vote on hosts and track season standings.
+
+**Features:**
+- Top 10 hosts ranked by score
+- Upvote/downvote with NEYNARTODES
+- 10 votes per day
+- Season countdown and prize pool
+
+[Full Leaderboard Guide](./docs/GUIDE_LEADERBOARD.md)
+
+---
+
+## How Contests Work
+
+### Creating a Contest
+
+1. **Post on Warpcast** - Create your contest announcement cast
+2. **Set Requirements** - Define engagement needed (likes, recasts, replies)
+3. **Lock Prize** - Tokens held in escrow contract
+4. **Wait for Entries** - Participants engage with your cast
+5. **Winner Selected** - Chainlink VRF picks random winner
+6. **Prize Distributed** - Automatic transfer to winner
+
+### Entering a Contest
+
+1. **Find a contest** - Check announcements on Warpcast
+2. **Engage** - Like, recast, and reply as required
+3. **Meet requirements** - Trade volume if needed
+4. **Wait** - Winner selected when contest ends
+5. **Win** - Prize sent directly to your wallet
+
+---
+
+## Voting System
+
+| Action | Cost | Effect |
+|--------|------|--------|
+| Upvote | 1000 NEYNARTODES | +5000 points to host |
+| Downvote | 1000 NEYNARTODES | -5000 points from host |
+
+**Token Distribution:**
+- 50% burned (deflationary)
+- 50% to treasury (prize pool)
+
+**Limits:**
+- 10 votes per day
+- 1 vote per host per day
+- Resets at midnight UTC
+
+---
+
+## Season 0 Beta
+
+### Requirements
+
+| Requirement | Value |
+|-------------|-------|
+| Whitelist | Yes (74 beta testers) |
+| Token Gate | 20,000 NEYNARTODES |
+| Network | Base Mainnet |
+
+### Safeguards
+
+| Safeguard | Purpose |
+|-----------|---------|
+| Whitelist | Trusted beta testers only |
+| Token Gate | Skin in the game |
+| Reply Quality | 4+ words prevents spam |
+| Volume Cap | Prevents gaming |
+
+---
+
+## Contract Addresses
+
+| Contract | Address |
+|----------|---------|
+| **NEYNARTODES Token** | `0x8de1622fe07f56cda2e2273e615a513f1d828b07` |
+| **Contest Escrow** | `0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A` |
+| **Prize NFT V2** | `0x54E3972839A79fB4D1b0F70418141723d02E56e1` |
+| **Voting Manager V2** | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` |
+| **Treasury V2** | `0xd4d84f3477eb482783aAB48F00e357C801c48928` |
+
+[Full Contract Registry](./docs/CONTRACT_REGISTRY.md)
+
+---
+
+## Technical Architecture
+
+```
+Warpcast/Farcaster
+       |
+       v
+  NEYNARtodes Mini App (app.html)
+       |
+  +----+----+
+  |         |
+  v         v
+Neynar    Alchemy RPC
+ API         |
+             v
+      Base Mainnet Contracts
+             |
+             v
+      Chainlink VRF v2.5
+```
+
+[Full System Architecture](./docs/SYSTEM_ARCHITECTURE.md)
+
+---
+
+## Project Structure
 
 ```
 frame/
-├── index.html              # Main Frame entry point
-├── app.html                # Full web app
-├── package.json            # Dependencies
-├── vercel.json             # Vercel configuration
-├── DEPLOYMENT.md           # Detailed deployment guide
-├── README.md               # This file
+├── index.html          # Frame entry point
+├── app.html            # Main Mini App (~3700 lines)
+├── vercel.json         # Vercel config
+├── package.json        # Dependencies
+├── docs/
+│   ├── CONTRACT_REGISTRY.md
+│   ├── SYSTEM_ARCHITECTURE.md
+│   ├── GUIDE_CREATE.md
+│   ├── GUIDE_HISTORY.md
+│   └── GUIDE_LEADERBOARD.md
 └── api/
-    ├── image.js            # Frame image generator
-    ├── connect.js          # Connect wallet handler
-    └── check-access.js     # Access verification
+    ├── image.js        # Frame image generator
+    ├── leaderboard.js  # Leaderboard API
+    ├── finalize.js     # Contest finalization
+    └── ...
 ```
 
-## 🛠️ Local Development
+---
 
-```bash
-# Install dependencies
-npm install
+## Documentation
 
-# Run local dev server
-vercel dev
+| Document | Description |
+|----------|-------------|
+| [Contract Registry](./docs/CONTRACT_REGISTRY.md) | All contract addresses and descriptions |
+| [System Architecture](./docs/SYSTEM_ARCHITECTURE.md) | Technical system design |
+| [Create Guide](./docs/GUIDE_CREATE.md) | How to create contests |
+| [History Guide](./docs/GUIDE_HISTORY.md) | Understanding contest history |
+| [Leaderboard Guide](./docs/GUIDE_LEADERBOARD.md) | Voting and rankings |
+| [Deployment Guide](./DEPLOYMENT.md) | Deploy your own instance |
 
-# Open browser
-open http://localhost:3000
-```
+---
 
-## 📖 Full Documentation
+## Tech Stack
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
-- Step-by-step deployment guide
-- Customization options
-- Debugging tips
-- Frame flow diagrams
-- Best practices
+| Layer | Technology |
+|-------|------------|
+| Frontend | Vanilla JS + Tailwind CSS |
+| Web3 | ethers.js v5 |
+| Social | Neynar API (Farcaster) |
+| Blockchain | Base Mainnet |
+| Randomness | Chainlink VRF v2.5 |
+| Hosting | Vercel |
+| Analytics | Vercel Analytics |
 
-## 🎮 How It Works
+---
 
-1. **User sees Frame** in Farcaster client
-2. **Clicks "Check Access"** button
-3. **Frame fetches** user's verified wallet from Farcaster
-4. **Checks balance** on Base mainnet (NEYNARTODES token)
-5. **Checks whitelist** in PrizeNFT_Season0 contract
-6. **Shows result** - ✅ Access Granted or 🚫 Access Denied
-7. **User clicks "Launch App"** to open full platform
+## FAQ
 
-## 🔑 Environment Variables
+**Q: How are winners selected?**
+A: Chainlink VRF provides a verifiable random number. Winner = qualified entries[random % count].
 
-Set in Vercel dashboard or `vercel.json`:
+**Q: Can I cancel a contest?**
+A: Yes, before finalization. Prize returns to host.
 
-- `NEYNAR_API_KEY` - Your Neynar API key (already set in vercel.json)
+**Q: What if there are no qualified entries?**
+A: Contest cannot finalize. Host can cancel and reclaim prize.
 
-## 🎨 Customization
+**Q: How long does VRF take?**
+A: Usually 1-3 minutes after contest ends.
 
-### Change Token Gate
+**Q: Can I host multiple contests?**
+A: Yes, but Season 0 may have limits for non-dev wallets.
 
-Update in `app.html` and `api/check-access.js`:
-```javascript
-const required = ethers.parseEther('20000'); // Change 20000 to your amount
-```
+---
 
-### Update Contracts
+## Support
 
-Update in `app.html` and `api/check-access.js`:
-```javascript
-const CONTRACTS = {
-  prizeNFT: '0x...', // Your contract address
-  // ...
-};
-```
+- **Issues:** GitHub Issues
+- **Farcaster:** @neynartodes
+- **BaseScan:** Check contract transactions
 
-### Customize Images
+---
 
-Edit SVG generation in:
-- `api/image.js` - Initial Frame image
-- `api/connect.js` - Connect confirmation
-- `api/check-access.js` - Access result
-
-## 🧪 Testing
-
-### Warpcast Frame Validator
-https://warpcast.com/~/developers/frames
-
-### Manual Testing
-1. Deploy to Vercel
-2. Post Frame URL in Warpcast
-3. Click buttons to test flow
-4. Check Vercel logs for errors
-
-## 📊 Tech Stack
-
-- **Frontend**: React (via CDN in app.html)
-- **Styling**: Tailwind CSS
-- **Web3**: ethers.js v6
-- **API**: Vercel Serverless Functions
-- **Farcaster**: Neynar API
-- **Blockchain**: Base Mainnet
-
-## 🔗 Links
-
-- **Farcaster Frame Spec**: https://docs.farcaster.xyz/reference/frames/spec
-- **Vercel Docs**: https://vercel.com/docs
-- **Neynar API**: https://docs.neynar.com/
-- **Base Network**: https://base.org
-
-## 📝 License
+## License
 
 MIT
 
-## 🎉 Ready to Deploy?
+---
 
-1. Read [DEPLOYMENT.md](./DEPLOYMENT.md)
-2. Deploy to Vercel
-3. Test in Warpcast
-4. Share with your community!
-
-**Let's go! 🚀**
+**Built with by the NEYNARtodes team**
