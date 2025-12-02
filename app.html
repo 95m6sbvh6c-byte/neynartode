@@ -1232,22 +1232,42 @@ Launch Your own! 👇`;
           // Filter to only active (status 0) and pending VRF (status 1) contests
           state.upcomingContests = (historyData.contests || [])
             .filter(c => c.status === 0 || c.status === 1)
-            .map(c => ({
-              contestId: c.contestId,
-              host: c.host,
-              hostUser: c.hostUser,
-              prize: `${c.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${c.prizeTokenSymbol}`,
-              prizeToken: c.prizeTokenSymbol,
-              prizeAmount: c.prizeAmount,
-              startTime: new Date(c.startTime * 1000),
-              endTime: new Date(c.endTime * 1000),
-              volumeRequirement: c.volumeRequirement,
-              tokenRequirementSymbol: c.tokenRequirementSymbol,
-              status: c.status,
-              statusText: c.statusText,
-              participantCount: c.participantCount,
-              castId: c.castId,
-            }));
+            .map(c => {
+              // Parse social requirements from castId (format: "hash|R1L0P1")
+              let requireRecast = true, requireLike = false, requireReply = true; // defaults
+              if (c.castId && c.castId.includes('|')) {
+                const reqCode = c.castId.split('|')[1];
+                if (reqCode) {
+                  const recastMatch = reqCode.match(/R(\d)/);
+                  const likeMatch = reqCode.match(/L(\d)/);
+                  const replyMatch = reqCode.match(/P(\d)/);
+                  if (recastMatch) requireRecast = recastMatch[1] !== '0';
+                  if (likeMatch) requireLike = likeMatch[1] !== '0';
+                  if (replyMatch) requireReply = replyMatch[1] !== '0';
+                }
+              }
+
+              return {
+                contestId: c.contestId,
+                host: c.host,
+                hostUser: c.hostUser,
+                prize: `${c.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${c.prizeTokenSymbol}`,
+                prizeToken: c.prizeTokenSymbol,
+                prizeAmount: c.prizeAmount,
+                startTime: new Date(c.startTime * 1000),
+                endTime: new Date(c.endTime * 1000),
+                volumeRequirement: c.volumeRequirement,
+                tokenRequirementSymbol: c.tokenRequirementSymbol,
+                status: c.status,
+                statusText: c.statusText,
+                participantCount: c.participantCount,
+                castId: c.castId,
+                // Social requirements
+                requireRecast,
+                requireLike,
+                requireReply,
+              };
+            });
           console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
         }
       } catch (e) {
@@ -2283,10 +2303,14 @@ Launch Your own! 👇`;
                                   <div class="text-xs text-gray-600">👥 Participants</div>
                                   <div class="text-sm font-bold text-purple-600">${contest.participantCount || 0}</div>
                                 </div>
-                                <div class="bg-white p-2 rounded-lg">
-                                  <div class="text-xs text-gray-600">📊 Requirements</div>
-                                  <div class="text-xs font-semibold text-gray-700">
-                                    ${contest.volumeRequirement > 0 ? `$${contest.volumeRequirement} ${contest.tokenRequirementSymbol || 'volume'}` : '🎁 Open to all'}
+                                <div class="bg-white p-2 rounded-lg col-span-2">
+                                  <div class="text-xs text-gray-600 mb-1">📊 Entry Requirements</div>
+                                  <div class="flex flex-wrap gap-1">
+                                    ${contest.requireRecast ? '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-semibold">🔄 Recast</span>' : ''}
+                                    ${contest.requireLike ? '<span class="bg-pink-100 text-pink-700 px-2 py-0.5 rounded text-xs font-semibold">❤️ Like</span>' : ''}
+                                    ${contest.requireReply ? '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-semibold">💬 Reply</span>' : ''}
+                                    ${contest.volumeRequirement > 0 ? `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-semibold">💰 $${contest.volumeRequirement} ${contest.tokenRequirementSymbol || ''}</span>` : ''}
+                                    ${!contest.requireRecast && !contest.requireLike && !contest.requireReply && !contest.volumeRequirement ? '<span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-semibold">🎁 Open to all</span>' : ''}
                                   </div>
                                 </div>
                               </div>
