@@ -70,31 +70,25 @@ function parseArgs() {
 
 function printHelp() {
   console.log(`
-Fund Prize Pool from Treasury
-=============================
+Fund Host Prize Pool from Treasury
+==================================
 
-This script adds ETH to the PrizeNFT season pools using devAddToPool.
+This script adds ETH to the PrizeNFT host pool using devAddToPool.
 
 Usage:
   node fund-contest.js [options]
 
 Options:
   --season <id>       Season ID to fund (required)
-  --amount <eth>      Total ETH to add (auto-split: 20% dev, 30% host, 50% voter)
-  --dev <eth>         Specific amount for dev pool
-  --host <eth>        Specific amount for host pool
-  --voter <eth>       Specific amount for voter pool
+  --amount <eth>      ETH amount to add to host pool (required)
   --help              Show this help message
 
 Examples:
-  # Add 0.5 ETH split across pools
+  # Add 0.5 ETH to host pool
   node fund-contest.js --season 0 --amount 0.5
 
-  # Add specific amounts to each pool
-  node fund-contest.js --season 0 --dev 0.1 --host 0.15 --voter 0.25
-
-  # Add only to host pool
-  node fund-contest.js --season 0 --host 0.5
+  # Add 1 ETH to host pool
+  node fund-contest.js --season 0 --amount 1
 
 Environment Variables:
   PRIVATE_KEY         Your dev wallet private key
@@ -158,25 +152,21 @@ async function main() {
   let devAmount, hostAmount, voterAmount;
 
   if (config.amount) {
-    // Split total amount: 20% dev, 30% host, 50% voter
+    // All funds go to host pool only
     const total = ethers.parseEther(config.amount.toString());
-    devAmount = (total * 20n) / 100n;
-    hostAmount = (total * 30n) / 100n;
-    voterAmount = total - devAmount - hostAmount;
+    devAmount = 0n;
+    hostAmount = total;
+    voterAmount = 0n;
   } else {
-    // Use individual amounts
-    devAmount = config.devAmount ? ethers.parseEther(config.devAmount.toString()) : 0n;
+    // Use individual amount for host pool only
+    devAmount = 0n;
     hostAmount = config.hostAmount ? ethers.parseEther(config.hostAmount.toString()) : 0n;
-    voterAmount = config.voterAmount ? ethers.parseEther(config.voterAmount.toString()) : 0n;
+    voterAmount = 0n;
   }
 
   const totalValue = devAmount + hostAmount + voterAmount;
 
-  console.log(`\n💰 Adding to Pools:`);
-  console.log(`   Dev:   +${ethers.formatEther(devAmount)} ETH`);
-  console.log(`   Host:  +${ethers.formatEther(hostAmount)} ETH`);
-  console.log(`   Voter: +${ethers.formatEther(voterAmount)} ETH`);
-  console.log(`   Total: ${ethers.formatEther(totalValue)} ETH`);
+  console.log(`\n💰 Adding to Host Pool: ${ethers.formatEther(hostAmount)} ETH`);
 
   // Check balance
   const balance = await provider.getBalance(wallet.address);
