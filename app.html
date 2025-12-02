@@ -83,6 +83,49 @@
 </head>
 <body>
   <div id="toast-container"></div>
+
+  <!-- Cast Share Modal -->
+  <div id="cast-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeCastModal()"></div>
+
+    <!-- Modal Content -->
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-4 border-purple-300">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-black text-purple-800">📣 Share Contest</h3>
+        <button onclick="closeCastModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+      </div>
+
+      <p class="text-sm text-gray-600 mb-3">Customize your message before casting:</p>
+
+      <textarea
+        id="cast-modal-text"
+        rows="8"
+        class="w-full p-3 border-2 border-purple-200 rounded-xl focus:border-purple-400 focus:outline-none resize-none text-sm"
+        placeholder="Enter your cast message..."
+      ></textarea>
+
+      <p class="text-xs text-gray-500 mt-2 mb-4">
+        💡 The NEYNARtodes app link will be automatically added
+      </p>
+
+      <div class="flex gap-3">
+        <button
+          onclick="closeCastModal()"
+          class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-xl transition-all"
+        >
+          Cancel
+        </button>
+        <button
+          onclick="submitCastModal()"
+          class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-3 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg"
+        >
+          🚀 Cast Now
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="app"></div>
 
   <script>
@@ -107,6 +150,61 @@
         toast.style.animation = 'toastOut 0.3s ease-out forwards';
         setTimeout(() => toast.remove(), 300);
       };
+    }
+
+    // Cast sharing modal functions
+    function openCastModal(contestId, prize, hoursLeft, minutesLeft, participants, volumeReq, tokenSymbol) {
+      const defaultText = `🦎 Contest #${contestId} is LIVE on NEYNARtodes! 🔥
+
+🎁 Prize: ${prize}
+⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m
+👥 ${participants} participants
+${volumeReq > 0 ? `📊 Req: $${volumeReq} ${tokenSymbol} volume` : '🎁 Open to everyone!'}
+
+Join now 👇`;
+
+      // Store in window for access
+      window.castModalState = {
+        contestId,
+        text: defaultText
+      };
+
+      // Show the modal
+      const modal = document.getElementById('cast-modal');
+      const textarea = document.getElementById('cast-modal-text');
+      if (modal && textarea) {
+        textarea.value = defaultText;
+        modal.classList.remove('hidden');
+        textarea.focus();
+      }
+    }
+
+    function closeCastModal() {
+      const modal = document.getElementById('cast-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function submitCastModal() {
+      const textarea = document.getElementById('cast-modal-text');
+      if (!textarea) return;
+
+      const text = textarea.value.trim();
+      if (!text) {
+        showToast('Please enter a message', 'warning');
+        return;
+      }
+
+      // Add the frame embed link
+      const fullText = text + '\n\nhttps://frame-opal-eight.vercel.app';
+
+      // Open Warpcast compose
+      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(fullText)}`;
+      window.open(warpcastUrl, '_blank');
+
+      // Close modal
+      closeCastModal();
     }
   </script>
 
@@ -200,6 +298,11 @@
 
       // Winner announcement
       customMessage: '',
+
+      // Cast sharing modal
+      showCastModal: false,
+      castModalText: '',
+      castModalContestId: null,
 
       // Contest state
       contestLaunched: false,
@@ -2189,13 +2292,12 @@
 
                               <!-- Cast It Button -->
                               <div class="mt-4 flex gap-2">
-                                <a
-                                  href="https://warpcast.com/~/compose?text=${encodeURIComponent(`🦎 Contest #${contest.contestId} is LIVE on NEYNARtodes! 🔥\n\n🎁 Prize: ${contest.prize}\n⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m\n👥 ${contest.participantCount || 0} participants\n${contest.volumeRequirement > 0 ? `📊 Req: $${contest.volumeRequirement} ${contest.tokenRequirementSymbol || ''} volume` : '🎁 Open to everyone!'}\n\nJoin now 👇\nhttps://warpcast.com/~/compose?embeds[]=https://frame-opal-eight.vercel.app`)}"
-                                  target="_blank"
-                                  class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-4 rounded-xl text-center text-sm transition-all transform hover:scale-105 shadow-lg"
+                                <button
+                                  onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.participantCount || 0}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}')"
+                                  class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-4 rounded-xl text-center text-sm transition-all transform hover:scale-105 shadow-lg cursor-pointer"
                                 >
                                   📣 Cast It!
-                                </a>
+                                </button>
                                 ${contest.castId ? `
                                   <a
                                     href="https://warpcast.com/~/conversations/${contest.castId}"
