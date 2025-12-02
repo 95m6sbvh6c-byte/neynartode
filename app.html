@@ -1150,6 +1150,9 @@
         console.error('Error fetching active contests:', e);
         state.upcomingContests = [];
       }
+
+      // Re-render to show active contests
+      render();
     }
 
     // Fetch vote scores from VotingManager contract and update leaderboard
