@@ -896,10 +896,10 @@
           ? new ethers.providers.Web3Provider(ethProvider)
           : new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
 
-        // Load current season and prize pools from PrizeNFT contract
+        // Load current season and prize pools from PrizeNFT contract (V2 - no devPool)
         const prizeNFTABI = [
           'function nextSeasonId() external view returns (uint256)',
-          'function seasons(uint256) external view returns (string theme, uint256 startTime, uint256 endTime, uint256 devPool, uint256 hostPool, uint256 voterPool, bool distributed)'
+          'function seasons(uint256) external view returns (string theme, uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)'
         ];
 
         const prizeNFT = new ethers.Contract(
@@ -925,10 +925,9 @@
         state.pendingClankerFees = '0';
 
         // For now, calculate prizes given from all seasons (you can add a totalPrizesDistributed to contract later)
-        // For beta, we'll use the current season's total as placeholder
+        // For beta, we'll use the current season's total as placeholder (V2 has no devPool)
         if (state.currentSeason > 0) {
-          const season = await prizeNFT.seasons(state.currentSeason);
-          state.totalPrizesGiven = parseFloat(ethers.utils.formatEther(season.devPool.add(season.hostPool).add(season.voterPool)));
+          state.totalPrizesGiven = state.hostPoolETH + state.voterPoolETH;
         }
 
         console.log('Prize pools loaded:', {
