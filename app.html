@@ -1640,8 +1640,22 @@
       return `
         <div class="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-500 rounded-2xl shadow-2xl p-5 mb-6 border-4 border-purple-300">
           <div class="text-center mb-4">
-            <h1 class="text-3xl font-black text-white flex items-center justify-center gap-2 drop-shadow-lg" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.3)">
-              🦎 Danng Neynartodes!! 🌊
+            <h1 class="text-3xl font-black text-white flex items-center justify-center gap-3 drop-shadow-lg" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.3)">
+              <svg width="40" height="40" viewBox="0 0 100 100" class="drop-shadow-lg">
+                <defs>
+                  <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#fbbf24"/>
+                    <stop offset="100%" style="stop-color:#f59e0b"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="50" cy="50" r="45" fill="url(#logoGrad)" stroke="white" stroke-width="4"/>
+                <text x="50" y="65" font-size="50" text-anchor="middle" fill="white">🦎</text>
+              </svg>
+              <span>NEYNARtodes</span>
+              <svg width="40" height="40" viewBox="0 0 100 100" class="drop-shadow-lg">
+                <circle cx="50" cy="50" r="45" fill="url(#logoGrad)" stroke="white" stroke-width="4"/>
+                <text x="50" y="65" font-size="50" text-anchor="middle" fill="white">🌊</text>
+              </svg>
             </h1>
             <p class="text-sm text-purple-100 font-semibold">
               Season 0 Beta • ${state.userAddress.substring(0, 6)}...${state.userAddress.substring(38)}
@@ -1710,8 +1724,14 @@
 
                 <div class="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-2xl p-6 text-white border-4 border-yellow-300 transform hover:scale-105 transition-transform">
                   <div class="text-sm font-bold mb-2 opacity-90">👑 Leader 👑</div>
-                  <div class="text-3xl font-black mb-2">
-                    ${state.leaderboardData.length > 0 ? `${state.leaderboardData[0].pfp} @${state.leaderboardData[0].username}` : 'TBA'}
+                  <div class="flex items-center gap-2 mb-2">
+                    ${state.leaderboardData.length > 0 ? `
+                      ${state.leaderboardData[0].pfpUrl
+                        ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="@${state.leaderboardData[0].username}" class="w-10 h-10 rounded-full object-cover border-2 border-yellow-200" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-10 h-10 rounded-full bg-yellow-200 items-center justify-center text-lg text-yellow-800 hidden">${state.leaderboardData[0].pfp}</span>`
+                        : `<span class="w-10 h-10 rounded-full bg-yellow-200 flex items-center justify-center text-lg text-yellow-800">${state.leaderboardData[0].pfp}</span>`
+                      }
+                      <span class="text-2xl font-black">@${state.leaderboardData[0].username}</span>
+                    ` : '<span class="text-3xl font-black">TBA</span>'}
                   </div>
                   <div class="text-xs opacity-90 font-semibold">
                     ${state.leaderboardData.length > 0 ? `${state.leaderboardData[0].totalScore.toLocaleString()} points` : 'Launch contests to compete!'}
@@ -1820,7 +1840,10 @@
                           </td>
                           <td class="py-4 px-2">
                             <div class="flex items-center gap-2">
-                              <span class="text-2xl">${host.pfp}</span>
+                              ${host.pfpUrl
+                                ? `<img src="${host.pfpUrl}" alt="@${host.username}" class="w-10 h-10 rounded-full object-cover border-2 border-purple-300" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-10 h-10 rounded-full bg-purple-200 items-center justify-center text-lg hidden">${host.pfp}</span>`
+                                : `<span class="w-10 h-10 rounded-full bg-purple-200 flex items-center justify-center text-lg">${host.pfp}</span>`
+                              }
                               <div>
                                 <div class="font-semibold text-gray-800 flex items-center gap-1">
                                   @${host.username}
