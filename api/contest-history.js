@@ -120,8 +120,22 @@ async function getContestDetails(provider, contract, contestId) {
     const durationHours = Math.floor(durationSeconds / 3600);
     const durationMinutes = Math.floor((durationSeconds % 3600) / 60);
 
-    // Extract actual cast hash (remove requirements suffix if present)
+    // Extract actual cast hash and parse requirements suffix if present
     const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+
+    // Parse social requirements from castId (format: "hash|R1L0P1")
+    let requireRecast = false, requireLike = false, requireReply = false;
+    if (castId.includes('|')) {
+      const reqCode = castId.split('|')[1];
+      if (reqCode) {
+        const recastMatch = reqCode.match(/R(\d)/);
+        const likeMatch = reqCode.match(/L(\d)/);
+        const replyMatch = reqCode.match(/P(\d)/);
+        if (recastMatch) requireRecast = recastMatch[1] !== '0';
+        if (likeMatch) requireLike = likeMatch[1] !== '0';
+        if (replyMatch) requireReply = replyMatch[1] !== '0';
+      }
+    }
 
     return {
       contestId: Number(contestId),
@@ -144,6 +158,10 @@ async function getContestDetails(provider, contract, contestId) {
       winner: winner,
       participantCount: qualifiedEntries.length,
       qualifiedEntries: qualifiedEntries,
+      // Social requirements
+      requireRecast,
+      requireLike,
+      requireReply,
     };
   } catch (e) {
     console.error(`Error fetching contest ${contestId}:`, e.message);

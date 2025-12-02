@@ -1232,42 +1232,26 @@ Launch Your own! 👇`;
           // Filter to only active (status 0) and pending VRF (status 1) contests
           state.upcomingContests = (historyData.contests || [])
             .filter(c => c.status === 0 || c.status === 1)
-            .map(c => {
-              // Parse social requirements from castId (format: "hash|R1L0P1")
-              let requireRecast = true, requireLike = false, requireReply = true; // defaults
-              if (c.castId && c.castId.includes('|')) {
-                const reqCode = c.castId.split('|')[1];
-                if (reqCode) {
-                  const recastMatch = reqCode.match(/R(\d)/);
-                  const likeMatch = reqCode.match(/L(\d)/);
-                  const replyMatch = reqCode.match(/P(\d)/);
-                  if (recastMatch) requireRecast = recastMatch[1] !== '0';
-                  if (likeMatch) requireLike = likeMatch[1] !== '0';
-                  if (replyMatch) requireReply = replyMatch[1] !== '0';
-                }
-              }
-
-              return {
-                contestId: c.contestId,
-                host: c.host,
-                hostUser: c.hostUser,
-                prize: `${c.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${c.prizeTokenSymbol}`,
-                prizeToken: c.prizeTokenSymbol,
-                prizeAmount: c.prizeAmount,
-                startTime: new Date(c.startTime * 1000),
-                endTime: new Date(c.endTime * 1000),
-                volumeRequirement: c.volumeRequirement,
-                tokenRequirementSymbol: c.tokenRequirementSymbol,
-                status: c.status,
-                statusText: c.statusText,
-                participantCount: c.participantCount,
-                castId: c.castId,
-                // Social requirements
-                requireRecast,
-                requireLike,
-                requireReply,
-              };
-            });
+            .map(c => ({
+              contestId: c.contestId,
+              host: c.host,
+              hostUser: c.hostUser,
+              prize: `${c.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${c.prizeTokenSymbol}`,
+              prizeToken: c.prizeTokenSymbol,
+              prizeAmount: c.prizeAmount,
+              startTime: new Date(c.startTime * 1000),
+              endTime: new Date(c.endTime * 1000),
+              volumeRequirement: c.volumeRequirement,
+              tokenRequirementSymbol: c.tokenRequirementSymbol,
+              status: c.status,
+              statusText: c.statusText,
+              participantCount: c.participantCount,
+              castId: c.castId,
+              // Social requirements from API
+              requireRecast: c.requireRecast || false,
+              requireLike: c.requireLike || false,
+              requireReply: c.requireReply || false,
+            }));
           console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
         }
       } catch (e) {
