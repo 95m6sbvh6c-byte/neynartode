@@ -15,11 +15,19 @@
       "use": "@vercel/static"
     },
     {
+      "src": "public/**",
+      "use": "@vercel/static"
+    },
+    {
       "src": "api/*.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/Neynartodes_1200x638_splash.png",
+      "dest": "/public/Neynartodes_1200x638_splash.png"
+    },
     {
       "src": "/.well-known/farcaster.json",
       "dest": "/.well-known/farcaster.json"
