@@ -3612,6 +3612,14 @@ Launch Your own! 👇`;
         const reqRecast = parseInt(state.minRecasts) > 0 ? '1' : '0';
         const reqLike = parseInt(state.minLikes) > 0 ? '1' : '0';
         const reqReply = parseInt(state.minReplies) > 0 ? '1' : '0';
+
+        // VALIDATION: At least one social requirement must be enabled
+        if (reqRecast === '0' && reqLike === '0' && reqReply === '0') {
+          console.error('❌ No social requirements enabled');
+          showToast('At least one social requirement (Recast, Like, or Reply) must be enabled!', 'error');
+          return;
+        }
+
         const requirementsCode = `R${reqRecast}L${reqLike}P${reqReply}`;
         const castId = `${state.castHash}|${requirementsCode}`;
         console.log('   Cast ID to send (with requirements):', castId);
