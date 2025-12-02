@@ -498,40 +498,125 @@
     }
 
     // ===== CAST VALIDATION =====
-    // Extract cast hash from URL or raw hash
-    function extractCastHash(input) {
-      if (!input) return null;
+    // Extract cast hash and username from URL or raw hash
+    // Returns { hash, username } - username is only set for farcaster.xyz URLs with short hashes
+    function extractCastInfo(input) {
+      if (!input) return { hash: null, username: null };
       input = input.trim();
+
+      // Extract from Farcaster.xyz URL: https://farcaster.xyz/username/0x1234abcd
+      // These use SHORT hashes that need to be resolved
+      const farcasterMatch = input.match(/farcaster\.xyz\/([^/]+)\/(0x[a-fA-F0-9]+)/i);
+      if (farcasterMatch) {
+        const username = farcasterMatch[1].toLowerCase();
+        const hash = farcasterMatch[2].toLowerCase();
+        // farcaster.xyz uses short hashes (10 chars like 0x539e9184)
+        // Full hashes are 66 chars (0x + 64 hex)
+        const isShortHash = hash.length < 42;
+        return { hash, username: isShortHash ? username : null };
+      }
 
       // If it's already a hash (starts with 0x)
       if (input.startsWith('0x')) {
-        return input.toLowerCase();
+        return { hash: input.toLowerCase(), username: null };
       }
 
       // Extract from Warpcast URL: https://warpcast.com/username/0x1234abcd
       const warpcastMatch = input.match(/warpcast\.com\/[^/]+\/(0x[a-fA-F0-9]+)/i);
       if (warpcastMatch) {
-        return warpcastMatch[1].toLowerCase();
-      }
-
-      // Extract from Farcaster.xyz URL: https://farcaster.xyz/username/0x1234abcd
-      const farcasterMatch = input.match(/farcaster\.xyz\/[^/]+\/(0x[a-fA-F0-9]+)/i);
-      if (farcasterMatch) {
-        return farcasterMatch[1].toLowerCase();
+        return { hash: warpcastMatch[1].toLowerCase(), username: null };
       }
 
       // Try to find any 0x hash in the string
       const hashMatch = input.match(/(0x[a-fA-F0-9]{8,})/i);
       if (hashMatch) {
-        return hashMatch[1].toLowerCase();
+        return { hash: hashMatch[1].toLowerCase(), username: null };
       }
 
-      return null;
+      return { hash: null, username: null };
+    }
+
+    // Legacy function for backwards compatibility
+    function extractCastHash(input) {
+      return extractCastInfo(input).hash;
+    }
+
+    // Resolve a short hash to full hash by looking up user's recent casts
+    async function resolveShortHash(shortHash, username) {
+      try {
+        console.log(`Resolving short hash ${shortHash} for user ${username}`);
+
+        // First get the user's FID from username
+        const userResponse = await fetch(`https://api.neynar.com/v2/farcaster/user/by_username?username=${username}`, {
+          headers: {
+            'accept': 'application/json',
+            'api_key': CONFIG.NEYNAR_API_KEY
+          }
+        });
+
+        if (!userResponse.ok) {
+          console.log('Could not find user:', username);
+          return null;
+        }
+
+        const userData = await userResponse.json();
+        const fid = userData.user?.fid;
+        if (!fid) return null;
+
+        // Fetch user's recent casts
+        const castsResponse = await fetch(`https://api.neynar.com/v2/farcaster/feed/user/casts?fid=${fid}&limit=25`, {
+          headers: {
+            'accept': 'application/json',
+            'api_key': CONFIG.NEYNAR_API_KEY
+          }
+        });
+
+        if (!castsResponse.ok) return null;
+
+        const castsData = await castsResponse.json();
+
+        // Find the cast that starts with the short hash
+        const matchingCast = castsData.casts?.find(cast =>
+          cast.hash.toLowerCase().startsWith(shortHash.toLowerCase())
+        );
+
+        if (matchingCast) {
+          console.log(`Resolved ${shortHash} to full hash: ${matchingCast.hash}`);
+          return matchingCast.hash;
+        }
+
+        console.log(`No cast found starting with ${shortHash}`);
+        return null;
+      } catch (e) {
+        console.error('Error resolving short hash:', e);
+        return null;
+      }
     }
 
     // Validate cast exists via Neynar API
-    async function validateCast(castHash) {
+    // Can accept either a hash directly or a raw URL input (for short hash resolution)
+    async function validateCast(castHashOrInput, rawInput = null) {
       try {
+        let castHash = castHashOrInput;
+
+        // If rawInput is provided, try to resolve short hashes from farcaster.xyz URLs
+        if (rawInput) {
+          const castInfo = extractCastInfo(rawInput);
+          if (castInfo.username && castInfo.hash && castInfo.hash.length < 42) {
+            // This is a short hash from farcaster.xyz - resolve it
+            console.log(`Detected short hash ${castInfo.hash} from farcaster.xyz, resolving...`);
+            const fullHash = await resolveShortHash(castInfo.hash, castInfo.username);
+            if (fullHash) {
+              castHash = fullHash;
+            } else {
+              return {
+                valid: false,
+                error: `Could not resolve short hash ${castInfo.hash} for user @${castInfo.username}.\n\nThe cast may be older than recent history. Try using the full Warpcast URL instead.`
+              };
+            }
+          }
+        }
+
         console.log('Validating cast hash:', castHash);
 
         const response = await fetch(`https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash`, {
@@ -595,6 +680,7 @@
           return {
             valid: true,
             cast: data.cast,
+            hash: castHash, // Return the resolved full hash
             author: authorUsername,
             authorFid: authorFid,
             authorAddresses: authorAddresses,
@@ -3118,13 +3204,13 @@
           // Extract and validate cast hash
           const extractedHash = extractCastHash(state.castHash);
           if (!extractedHash) {
-            showToast('Invalid cast URL/hash format. Please enter a valid Warpcast URL.', 'error');
+            showToast('Invalid cast URL/hash format. Please enter a valid Warpcast or Farcaster URL.', 'error');
             return;
           }
 
-          // Validate cast exists
+          // Validate cast exists (pass raw input for short hash resolution from farcaster.xyz)
           if (statusDiv) statusDiv.textContent = 'Step 2: Validating cast...';
-          const castValidation = await validateCast(extractedHash);
+          const castValidation = await validateCast(extractedHash, state.castHash);
           if (!castValidation.valid) {
             if (statusDiv) statusDiv.textContent = '❌ Cast validation failed: ' + castValidation.error;
             return;
@@ -3138,8 +3224,8 @@
 
           if (statusDiv) statusDiv.textContent = 'Step 3: Cast verified ✓ Preparing transaction...';
 
-          // Store the validated hash
-          state.castHash = extractedHash;
+          // Store the validated hash (use resolved full hash if available)
+          state.castHash = castValidation.hash || extractedHash;
 
           // Volume requirement validation
           const prizeAmount = parseFloat(state.prizeTokenAmount) || 0;
