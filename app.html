@@ -514,6 +514,12 @@
         return warpcastMatch[1].toLowerCase();
       }
 
+      // Extract from Farcaster.xyz URL: https://farcaster.xyz/username/0x1234abcd
+      const farcasterMatch = input.match(/farcaster\.xyz\/[^/]+\/(0x[a-fA-F0-9]+)/i);
+      if (farcasterMatch) {
+        return farcasterMatch[1].toLowerCase();
+      }
+
       // Try to find any 0x hash in the string
       const hashMatch = input.match(/(0x[a-fA-F0-9]{8,})/i);
       if (hashMatch) {
