@@ -2186,6 +2186,26 @@
                                   </div>
                                 </div>
                               </div>
+
+                              <!-- Cast It Button -->
+                              <div class="mt-4 flex gap-2">
+                                <a
+                                  href="https://warpcast.com/~/compose?text=${encodeURIComponent(`🦎 Contest #${contest.contestId} is LIVE on NEYNARtodes! 🔥\n\n🎁 Prize: ${contest.prize}\n⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m\n👥 ${contest.participantCount || 0} participants\n${contest.volumeRequirement > 0 ? `📊 Req: $${contest.volumeRequirement} ${contest.tokenRequirementSymbol || ''} volume` : '🎁 Open to everyone!'}\n\nJoin now 👇\nhttps://warpcast.com/~/compose?embeds[]=https://frame-opal-eight.vercel.app`)}"
+                                  target="_blank"
+                                  class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-4 rounded-xl text-center text-sm transition-all transform hover:scale-105 shadow-lg"
+                                >
+                                  📣 Cast It!
+                                </a>
+                                ${contest.castId ? `
+                                  <a
+                                    href="https://warpcast.com/~/conversations/${contest.castId}"
+                                    target="_blank"
+                                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-xl text-center text-sm transition-all"
+                                  >
+                                    👀 View
+                                  </a>
+                                ` : ''}
+                              </div>
                             </div>
                           </div>
                         </div>
