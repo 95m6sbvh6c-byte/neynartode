@@ -153,7 +153,7 @@
     }
 
     // Cast sharing modal functions
-    function openCastModal(contestId, prize, hoursLeft, minutesLeft, participants, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply) {
+    function openCastModal(contestId, prize, hoursLeft, minutesLeft, participants, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId) {
       const hostTag = hostUsername ? `@${hostUsername}` : 'a host';
 
       // Build requirements string
@@ -164,6 +164,7 @@
       if (volumeReq > 0) reqs.push(`💰 $${volumeReq} ${tokenSymbol} volume`);
 
       const reqsLine = reqs.length > 0 ? `📋 To Enter: ${reqs.join(' + ')}` : '🎁 Open to everyone!';
+      const reactLine = reqs.length > 0 ? '👆 React to the cast above to enter!' : '';
 
       const defaultText = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
 
@@ -171,13 +172,15 @@
 ⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m
 👥 ${participants} participants
 ${reqsLine}
+${reactLine}
 
 Launch Your own! 👇`;
 
-      // Store in window for access
+      // Store in window for access (including castId for quoting)
       window.castModalState = {
         contestId,
-        text: defaultText
+        text: defaultText,
+        castId: castId || null
       };
 
       // Show the modal
@@ -210,8 +213,17 @@ Launch Your own! 👇`;
       // Add the frame embed link
       const fullText = text + '\n\nhttps://frame-opal-eight.vercel.app';
 
-      // Open Warpcast compose
-      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(fullText)}`;
+      // Build Warpcast compose URL
+      let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(fullText)}`;
+
+      // Quote the original cast if we have a castId
+      const castId = window.castModalState?.castId;
+      if (castId) {
+        // Add the original cast as an embed (quote cast)
+        const castUrl = `https://warpcast.com/~/conversations/${castId}`;
+        warpcastUrl += `&embeds[]=${encodeURIComponent(castUrl)}`;
+      }
+
       window.open(warpcastUrl, '_blank');
 
       // Close modal
@@ -2312,7 +2324,7 @@ Launch Your own! 👇`;
                               <!-- Cast It Button -->
                               <div class="mt-4 flex gap-2">
                                 <button
-                                  onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.participantCount || 0}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}', '${(contest.hostUser?.username || '').replace(/'/g, "\\'")}', ${contest.requireRecast || false}, ${contest.requireLike || false}, ${contest.requireReply || false})"
+                                  onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.participantCount || 0}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}', '${(contest.hostUser?.username || '').replace(/'/g, "\\'")}', ${contest.requireRecast || false}, ${contest.requireLike || false}, ${contest.requireReply || false}, '${(contest.castId || '').replace(/'/g, "\\'")}')"
                                   class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-4 rounded-xl text-center text-sm transition-all transform hover:scale-105 shadow-lg cursor-pointer"
                                 >
                                   📣 Cast It!
