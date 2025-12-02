@@ -1119,8 +1119,37 @@
         state.leaderboardData = [];
       }
 
-      // Clear sample upcoming contests - will be populated from on-chain data
-      state.upcomingContests = [];
+      // Fetch active contests from contest-history API
+      try {
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=20&includeUsers=true`);
+        if (historyResponse.ok) {
+          const historyData = await historyResponse.json();
+          // Filter to only active (status 0) and pending VRF (status 1) contests
+          state.upcomingContests = (historyData.contests || [])
+            .filter(c => c.status === 0 || c.status === 1)
+            .map(c => ({
+              contestId: c.contestId,
+              host: c.host,
+              hostUser: c.hostUser,
+              prize: `${c.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${c.prizeTokenSymbol}`,
+              prizeToken: c.prizeTokenSymbol,
+              prizeAmount: c.prizeAmount,
+              startTime: new Date(c.startTime * 1000),
+              endTime: new Date(c.endTime * 1000),
+              volumeRequirement: c.volumeRequirement,
+              tokenRequirementSymbol: c.tokenRequirementSymbol,
+              status: c.status,
+              statusText: c.statusText,
+              participantCount: c.participantCount,
+              castId: c.castId,
+            }));
+          console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
+        }
+      } catch (e) {
+        console.error('Error fetching active contests:', e);
+        state.upcomingContests = [];
+      }
     }
 
     // Fetch vote scores from VotingManager contract and update leaderboard
@@ -2100,14 +2129,14 @@
                 </div>
               </div>
 
-              <!-- Upcoming Contests Calendar -->
+              <!-- Active Contests Section -->
               ${state.upcomingContests.length > 0 ? `
-                <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300 mt-6">
+                <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-green-300 mt-6">
                   <div class="flex items-center gap-3 mb-6">
-                    <div class="text-purple-600 text-4xl">����</div>
+                    <div class="text-green-600 text-4xl">🔥</div>
                     <div>
-                      <h2 class="text-3xl font-black text-purple-800">🗓️ Upcoming Contests 🗓️</h2>
-                      <p class="text-sm text-purple-600 font-bold">${state.upcomingContests.length} contest${state.upcomingContests.length > 1 ? 's' : ''} scheduled</p>
+                      <h2 class="text-3xl font-black text-green-700">🔴 Active Contests 🔴</h2>
+                      <p class="text-sm text-green-600 font-bold">${state.upcomingContests.length} contest${state.upcomingContests.length > 1 ? 's' : ''} live now!</p>
                     </div>
                   </div>
 
@@ -2115,34 +2144,42 @@
                     ${state.upcomingContests.filter(c => new Date(c.endTime) > new Date()).slice(0, 10).map(contest => {
                       const now = new Date();
                       const isLive = new Date(contest.startTime) <= now && new Date(contest.endTime) > now;
-                      const isUpcoming = new Date(contest.startTime) > now;
+                      const isPending = contest.status === 1;
+                      const timeLeft = Math.max(0, Math.floor((new Date(contest.endTime) - now) / 1000));
+                      const hoursLeft = Math.floor(timeLeft / 3600);
+                      const minutesLeft = Math.floor((timeLeft % 3600) / 60);
 
                       return `
-                        <div class="border-2 ${isLive ? 'border-green-400 bg-green-50' : 'border-purple-200 bg-purple-50'} rounded-xl p-4">
+                        <div class="border-2 ${isLive ? 'border-green-400 bg-green-50' : isPending ? 'border-yellow-400 bg-yellow-50' : 'border-purple-200 bg-purple-50'} rounded-xl p-4">
                           <div class="flex items-start justify-between">
                             <div class="flex-1">
                               <div class="flex items-center gap-2 mb-2">
-                                ${isLive ? '<span class="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">🔴 LIVE NOW</span>' : '<span class="bg-purple-500 text-white px-3 py-1 rounded-full text-xs font-bold">⏰ UPCOMING</span>'}
-                                <span class="text-sm font-semibold text-gray-700">Host: ${contest.host}</span>
+                                ${isLive ? '<span class="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">🔴 LIVE NOW</span>' : isPending ? '<span class="bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-bold">🎲 PENDING VRF</span>' : '<span class="bg-purple-500 text-white px-3 py-1 rounded-full text-xs font-bold">⏰ UPCOMING</span>'}
+                                <span class="text-sm font-semibold text-gray-700">Contest #${contest.contestId}</span>
+                              </div>
+
+                              <div class="flex items-center gap-2 mb-3">
+                                ${contest.hostUser?.pfpUrl ? `<img src="${contest.hostUser.pfpUrl}" class="w-8 h-8 rounded-full border-2 border-purple-300" onerror="this.style.display='none'" />` : ''}
+                                <span class="font-bold text-purple-700">${contest.hostUser?.username ? '@' + contest.hostUser.username : contest.host.slice(0, 10) + '...'}</span>
                               </div>
 
                               <div class="grid grid-cols-2 gap-3 mt-3">
                                 <div class="bg-white p-2 rounded-lg">
                                   <div class="text-xs text-gray-600">🎁 Prize</div>
-                                  <div class="text-sm font-bold text-purple-600">${contest.prize}</div>
+                                  <div class="text-sm font-bold text-green-600">${contest.prize}</div>
                                 </div>
                                 <div class="bg-white p-2 rounded-lg">
-                                  <div class="text-xs text-gray-600">⏱️ Duration</div>
-                                  <div class="text-sm font-bold text-blue-600">${contest.duration}</div>
+                                  <div class="text-xs text-gray-600">⏱️ Time Left</div>
+                                  <div class="text-sm font-bold text-blue-600">${hoursLeft}h ${minutesLeft}m</div>
                                 </div>
                                 <div class="bg-white p-2 rounded-lg">
-                                  <div class="text-xs text-gray-600">${isLive ? '🏁 Ends' : '🚀 Starts'}</div>
-                                  <div class="text-sm font-bold text-gray-800">${isLive ? new Date(contest.endTime).toLocaleString() : new Date(contest.startTime).toLocaleString()}</div>
+                                  <div class="text-xs text-gray-600">👥 Participants</div>
+                                  <div class="text-sm font-bold text-purple-600">${contest.participantCount || 0}</div>
                                 </div>
                                 <div class="bg-white p-2 rounded-lg">
                                   <div class="text-xs text-gray-600">📊 Requirements</div>
                                   <div class="text-xs font-semibold text-gray-700">
-                                    ${contest.socialEnabled ? '👥 Social' : ''}${contest.socialEnabled && contest.tokenEnabled ? ' + ' : ''}${contest.tokenEnabled ? '💰 Token' : ''}${!contest.socialEnabled && !contest.tokenEnabled ? '🎁 Open' : ''}
+                                    ${contest.volumeRequirement > 0 ? `$${contest.volumeRequirement} ${contest.tokenRequirementSymbol || 'volume'}` : '🎁 Open to all'}
                                   </div>
                                 </div>
                               </div>
