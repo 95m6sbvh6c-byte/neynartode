@@ -91,8 +91,8 @@ async function getCastEngagement(castId) {
       const reactionsData = await reactionsResponse.json();
 
       // Extract ONE address per user (first verified address only)
-      // Filter by Neynar score >= 0.35 to reduce bots
-      const MIN_NEYNAR_SCORE = 0.35;
+      // Filter by Neynar score >= 0.30 to reduce bots
+      const MIN_NEYNAR_SCORE = 0.30;
 
       for (const reaction of reactionsData.reactions || []) {
         const user = reaction.user;
@@ -138,8 +138,8 @@ async function getCastEngagement(castId) {
       const repliesData = await repliesResponse.json();
       const replies = repliesData.conversation?.cast?.direct_replies || [];
 
-      // Filter replies by Neynar score >= 0.35 to reduce bots
-      const MIN_REPLY_SCORE = 0.35;
+      // Filter replies by Neynar score >= 0.30 to reduce bots
+      const MIN_REPLY_SCORE = 0.30;
 
       for (const reply of replies) {
         // Check reply has at least 4 words
