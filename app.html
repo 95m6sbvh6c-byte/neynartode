@@ -147,7 +147,7 @@
       userAddress: '',
       userFid: null,
       userBalance: '0',
-      currentView: 'create', // 'create', 'leaderboard', 'history'
+      currentView: 'create', // 'create', 'leaderboard', 'history', 'suggestions'
       pendingTx: null, // Pending transaction hash
 
       // Voting
@@ -223,7 +223,12 @@
       historyData: [],
       historyLoading: false,
       historyError: null,
-      historyTotal: 0
+      historyTotal: 0,
+
+      // Suggestions (anonymous)
+      suggestions: [],
+      suggestionText: '',
+      suggestionsLoading: false
     };
 
     // ===== TOKEN DATABASE =====
@@ -1129,6 +1134,66 @@
       }
     }
 
+    // ===== ANONYMOUS SUGGESTIONS =====
+    // Uses localStorage for storage - suggestions are completely anonymous (no user data stored)
+    const SUGGESTIONS_KEY = 'neynartodes_suggestions';
+
+    function loadSuggestions() {
+      state.suggestionsLoading = true;
+      render();
+
+      try {
+        const stored = localStorage.getItem(SUGGESTIONS_KEY);
+        state.suggestions = stored ? JSON.parse(stored) : [];
+        // Sort by newest first
+        state.suggestions.sort((a, b) => b.timestamp - a.timestamp);
+      } catch (error) {
+        console.error('Error loading suggestions:', error);
+        state.suggestions = [];
+      }
+
+      state.suggestionsLoading = false;
+      render();
+    }
+
+    function submitAnonymousSuggestion() {
+      const text = state.suggestionText.trim();
+
+      if (text.length < 10) {
+        showToast('Suggestion must be at least 10 characters', 'error');
+        return;
+      }
+
+      try {
+        // Load existing suggestions
+        const stored = localStorage.getItem(SUGGESTIONS_KEY);
+        const suggestions = stored ? JSON.parse(stored) : [];
+
+        // Add new suggestion (completely anonymous - no user data)
+        suggestions.push({
+          id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+          text: text,
+          timestamp: Date.now()
+        });
+
+        // Save back to localStorage
+        localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(suggestions));
+
+        // Clear the input and show success
+        state.suggestionText = '';
+        showToast('Suggestion submitted anonymously! Thank you for your feedback.', 'success');
+        render();
+
+        // Track analytics (without any identifying info)
+        if (window.analytics?.track) {
+          window.analytics.track('Suggestion Submitted', { anonymous: true });
+        }
+      } catch (error) {
+        console.error('Error submitting suggestion:', error);
+        showToast('Failed to submit suggestion. Please try again.', 'error');
+      }
+    }
+
     // Auto-refresh for history page when there are active or pending VRF contests
     let historyRefreshInterval = null;
 
@@ -1508,6 +1573,8 @@
         app.innerHTML = renderLeaderboard();
       } else if (state.currentView === 'history') {
         app.innerHTML = renderHistory();
+      } else if (state.currentView === 'suggestions') {
+        app.innerHTML = renderSuggestions();
       } else {
         app.innerHTML = renderCreateContest();
       }
@@ -1676,7 +1743,7 @@
               🦎 ${parseFloat(state.userBalance).toLocaleString()} $NEYNARTODES
             </p>
           </div>
-          <div class="flex justify-center gap-2">
+          <div class="flex justify-center gap-2 flex-wrap">
             <button id="viewCreate" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'create' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
               ✨ Create
             </button>
@@ -1685,6 +1752,9 @@
             </button>
             <button id="viewLeaderboard" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'leaderboard' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
               🏆 Leaderboard
+            </button>
+            <button id="viewSuggestions" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'suggestions' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
+              💡 Suggestions
             </button>
           </div>
         </div>
@@ -2203,6 +2273,119 @@
       `;
     }
 
+    function renderSuggestions() {
+      const isDev = isDevWallet(state.userAddress);
+
+      // Build DEV-only suggestions list
+      let suggestionsHtml = '';
+      if (isDev) {
+        if (state.suggestionsLoading) {
+          suggestionsHtml = `
+            <div class="text-center py-8">
+              <div class="text-4xl mb-2 animate-bounce">💡</div>
+              <p class="text-yellow-700 font-semibold">Loading suggestions...</p>
+            </div>
+          `;
+        } else if (state.suggestions.length === 0) {
+          suggestionsHtml = `
+            <div class="text-center py-8">
+              <div class="text-4xl mb-2">📭</div>
+              <p class="text-yellow-700 font-semibold">No suggestions yet</p>
+            </div>
+          `;
+        } else {
+          suggestionsHtml = `
+            <div class="space-y-3 max-h-96 overflow-y-auto">
+              ${state.suggestions.map(s => `
+                <div class="bg-white rounded-lg p-4 border border-yellow-200">
+                  <div class="flex items-start justify-between gap-3">
+                    <p class="text-gray-800 flex-1">${s.text}</p>
+                    <span class="text-xs text-gray-400 whitespace-nowrap">${new Date(s.timestamp).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            <p class="text-xs text-yellow-600 mt-4">Total: ${state.suggestions.length} suggestions</p>
+          `;
+        }
+      }
+
+      return `
+        <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6 relative">
+          <div class="fixed inset-0 pointer-events-none opacity-10 overflow-hidden">
+            <div class="absolute top-10 left-10 text-6xl">🪸</div>
+            <div class="absolute top-40 right-20 text-5xl">🐚</div>
+            <div class="absolute bottom-20 left-1/4 text-7xl">🌊</div>
+            <div class="absolute bottom-40 right-1/3 text-5xl">🫧</div>
+          </div>
+
+          <div class="max-w-7xl mx-auto relative z-10">
+            ${renderHeader()}
+
+            <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
+              <div class="flex items-center gap-3 mb-6">
+                <div class="text-purple-600 text-4xl">💡</div>
+                <div>
+                  <h2 class="text-3xl font-black text-purple-800">Suggestion Box</h2>
+                  <p class="text-sm text-purple-600 font-bold">Help us improve NEYNARtodes!</p>
+                </div>
+              </div>
+
+              <!-- Submission Form -->
+              <div class="bg-purple-50 rounded-xl p-6 border-2 border-purple-200 mb-6">
+                <h3 class="text-xl font-bold text-purple-800 mb-4">📝 Submit a Suggestion</h3>
+                <p class="text-sm text-purple-700 mb-4">
+                  Your submission is <strong>completely anonymous</strong> - no wallet address or identity is stored.
+                </p>
+                <textarea
+                  id="suggestionInput"
+                  placeholder="Share your idea, feedback, or suggestion..."
+                  class="w-full px-4 py-3 border-2 border-purple-300 rounded-xl focus:border-purple-500 focus:outline-none resize-none h-32 text-gray-800"
+                  maxlength="1000"
+                >${state.suggestionText}</textarea>
+                <div class="flex items-center justify-between mt-3">
+                  <span class="text-xs text-purple-600">${state.suggestionText.length}/1000 characters</span>
+                  <button
+                    id="submitSuggestion"
+                    class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-bold transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                    ${state.suggestionText.trim().length < 10 ? 'disabled' : ''}
+                  >
+                    🚀 Submit Anonymously
+                  </button>
+                </div>
+                <p class="text-xs text-purple-500 mt-2">Minimum 10 characters required</p>
+              </div>
+
+              ${isDev ? `
+              <!-- DEV Only: View All Suggestions -->
+              <div class="bg-yellow-50 rounded-xl p-6 border-2 border-yellow-300">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-xl font-bold text-yellow-800">🔒 All Suggestions (DEV Only)</h3>
+                  <button
+                    id="refreshSuggestions"
+                    class="px-4 py-2 bg-yellow-200 hover:bg-yellow-300 text-yellow-800 rounded-lg font-semibold transition-colors"
+                  >
+                    🔄 Refresh
+                  </button>
+                </div>
+                ${suggestionsHtml}
+              </div>
+              ` : `
+              <!-- Non-DEV: Thank you message -->
+              <div class="bg-green-50 rounded-xl p-6 border-2 border-green-200 text-center">
+                <div class="text-4xl mb-3">🙏</div>
+                <h3 class="text-xl font-bold text-green-800 mb-2">Thank You!</h3>
+                <p class="text-green-700">
+                  Your anonymous suggestions help make NEYNARtodes better for everyone.
+                </p>
+              </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function renderCreateContest() {
       return `
         <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6 relative">
@@ -2668,6 +2851,39 @@
         startCountdownTimer();
         render();
       };
+
+      // Suggestions tab
+      const viewSuggestions = document.getElementById('viewSuggestions');
+      if (viewSuggestions) viewSuggestions.onclick = () => {
+        state.currentView = 'suggestions';
+        if (window.analytics?.track) window.analytics.track('View Changed', { view: 'suggestions' });
+        stopHistoryAutoRefresh();
+        stopCountdownTimer();
+        // Load suggestions for DEV
+        if (isDevWallet(state.userAddress)) {
+          loadSuggestions();
+        }
+        render();
+      };
+
+      // Suggestions form handlers
+      const suggestionInput = document.getElementById('suggestionInput');
+      if (suggestionInput) {
+        suggestionInput.oninput = (e) => {
+          state.suggestionText = e.target.value;
+          render();
+        };
+      }
+
+      const submitSuggestion = document.getElementById('submitSuggestion');
+      if (submitSuggestion) {
+        submitSuggestion.onclick = () => submitAnonymousSuggestion();
+      }
+
+      const refreshSuggestions = document.getElementById('refreshSuggestions');
+      if (refreshSuggestions) {
+        refreshSuggestions.onclick = () => loadSuggestions();
+      }
 
       // Create contest form
       const startNow = document.getElementById('startNow');
