@@ -890,11 +890,10 @@
       await loadBurnedTokens();
 
       try {
-        // Use stored provider or fallback to JsonRpcProvider for read-only calls
-        const ethProvider = window.activeEthProvider || window.ethereum;
-        const provider = ethProvider
-          ? new ethers.providers.Web3Provider(ethProvider)
-          : new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        console.log('Loading prize pools from PrizeNFT:', CONFIG.CONTRACTS.prizeNFT);
+
+        // Always use JsonRpcProvider for read-only calls (works without wallet connection)
+        const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
 
         // Load current season and prize pools from PrizeNFT contract (V2 - no devPool)
         const prizeNFTABI = [
@@ -909,16 +908,30 @@
         );
 
         // Get current season ID (latest season)
+        console.log('Calling nextSeasonId()...');
         const nextSeasonId = await prizeNFT.nextSeasonId();
+        console.log('nextSeasonId result:', nextSeasonId.toString());
         state.currentSeason = nextSeasonId.toNumber() - 1;
+        console.log('currentSeason:', state.currentSeason);
 
         if (state.currentSeason > 0) {
           // Get season data
+          console.log('Calling seasons(' + state.currentSeason + ')...');
           const season = await prizeNFT.seasons(state.currentSeason);
+          console.log('Season data:', {
+            theme: season.theme,
+            startTime: season.startTime.toString(),
+            endTime: season.endTime.toString(),
+            hostPool: season.hostPool.toString(),
+            voterPool: season.voterPool.toString(),
+            distributed: season.distributed
+          });
+
           state.hostPoolETH = parseFloat(ethers.utils.formatEther(season.hostPool));
           state.voterPoolETH = parseFloat(ethers.utils.formatEther(season.voterPool));
           state.prizePoolETH = state.hostPoolETH + state.voterPoolETH; // Total
           state.seasonEndTime = season.endTime.toNumber(); // Store season end timestamp
+          console.log('seasonEndTime set to:', state.seasonEndTime);
         }
 
         // Clanker fees now go direct to Treasury - no pending fees to track
@@ -930,16 +943,18 @@
           state.totalPrizesGiven = state.hostPoolETH + state.voterPoolETH;
         }
 
-        console.log('Prize pools loaded:', {
+        console.log('Prize pools loaded successfully:', {
           season: state.currentSeason,
           hostPool: state.hostPoolETH,
           voterPool: state.voterPoolETH,
+          seasonEndTime: state.seasonEndTime,
           pendingFees: state.pendingClankerFees,
           tokensBurned: state.totalTokensBurned,
           prizesGiven: state.totalPrizesGiven
         });
       } catch (error) {
         console.error('Failed to load prize pools:', error);
+        console.error('Error details:', error.message, error.code);
       }
     }
 

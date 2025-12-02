@@ -21,10 +21,10 @@ A Farcaster Frame that allows users to check their Season 0 Beta eligibility and
 | Contract | Address |
 |----------|---------|
 | **PrizeNFT Season 0** | `0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81` |
-| **VotingManager Season 0** | `0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99` |
+| **VotingManager Season 0 V2** | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` |
+| **Treasury V2** | `0xd4d84f3477eb482783aAB48F00e357C801c48928` |
 | **Captain Hook V2** | `0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B` |
 | **Clanker Collector V2** | `0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280` |
-| **Treasury** | `0xB5A1a3AAD5962dBF2B8DF3C5712d137c1640A176` |
 | **NEYNARTODES Token** | `0x8de1622fe07f56cda2e2273e615a513f1d828b07` |
 
 ## 🚀 Quick Start
