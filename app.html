@@ -27,6 +27,20 @@
     import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
+
+    // Try to get context
+    try {
+      const context = await sdk.context;
+      window.FarcasterContext = context;
+      console.log('Farcaster context:', context);
+      if (context?.user) {
+        window.FarcasterUser = context.user;
+        console.log('Farcaster user:', context.user);
+      }
+    } catch (e) {
+      console.log('Could not get Farcaster context:', e);
+    }
+
     // Signal that SDK is ready - main script will listen for this
     window.FarcasterSDKReady = true;
     window.dispatchEvent(new Event('farcaster-ready'));
@@ -1148,16 +1162,19 @@ Launch Your own! 👇`;
             console.log('SDK wallet methods:', sdk.wallet ? Object.keys(sdk.wallet) : 'no wallet');
             console.log('SDK context:', sdk.context);
 
-            // Try to get user FID from SDK context
-            if (sdk.context?.user?.fid) {
-              state.userFid = sdk.context.user.fid;
+            // Try to get user FID from SDK context (multiple approaches)
+            const farcasterUser = window.FarcasterUser || window.FarcasterContext?.user || sdk.context?.user;
+            if (farcasterUser?.fid) {
+              state.userFid = farcasterUser.fid;
               state.userProfile = {
-                fid: sdk.context.user.fid,
-                username: sdk.context.user.username,
-                displayName: sdk.context.user.displayName,
-                pfpUrl: sdk.context.user.pfpUrl
+                fid: farcasterUser.fid,
+                username: farcasterUser.username,
+                displayName: farcasterUser.displayName || farcasterUser.display_name,
+                pfpUrl: farcasterUser.pfpUrl || farcasterUser.pfp_url
               };
-              console.log('Got user FID from SDK context:', state.userFid);
+              console.log('Got user FID from Farcaster context:', state.userFid, state.userProfile);
+            } else {
+              console.log('No Farcaster user found in context. FarcasterUser:', window.FarcasterUser, 'FarcasterContext:', window.FarcasterContext);
             }
 
             // Get the provider - try different methods
@@ -1327,29 +1344,39 @@ Launch Your own! 👇`;
 
         state.hasTokens = true;
 
-        // Fetch user FID from Neynar API
-        try {
-          const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by-verification?address=${address}`, {
-            headers: {
-              'accept': 'application/json',
-              'api_key': CONFIG.NEYNAR_API_KEY
+        // Fetch user FID from Neynar API if not already set from Farcaster context
+        if (!state.userFid) {
+          console.log('No FID from Farcaster context, trying Neynar API lookup for address:', address);
+          try {
+            const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by-verification?address=${address}`, {
+              headers: {
+                'accept': 'application/json',
+                'api_key': CONFIG.NEYNAR_API_KEY
+              }
+            });
+            console.log('Neynar user lookup response:', response.status);
+            if (response.ok) {
+              const data = await response.json();
+              console.log('Neynar user lookup data:', data);
+              if (data && data.users && data.users.length > 0) {
+                const user = data.users[0];
+                state.userFid = user.fid;
+                state.userProfile = {
+                  fid: user.fid,
+                  username: user.username,
+                  displayName: user.display_name,
+                  pfpUrl: user.pfp_url
+                };
+                console.log('Got FID from Neynar API:', state.userFid);
+              } else {
+                console.log('No Farcaster user found for this wallet address');
+              }
             }
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data && data.users && data.users.length > 0) {
-              const user = data.users[0];
-              state.userFid = user.fid;
-              state.userProfile = {
-                fid: user.fid,
-                username: user.username,
-                displayName: user.display_name,
-                pfpUrl: user.pfp_url
-              };
-            }
+          } catch (e) {
+            console.error('Neynar API error:', e);
           }
-        } catch (e) {
-          console.error('Neynar API error:', e);
+        } else {
+          console.log('Already have FID from Farcaster context:', state.userFid);
         }
 
         state.isLoggedIn = true;
