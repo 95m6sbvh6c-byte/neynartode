@@ -1,16 +1,16 @@
 {
   "accountAssociation": {
-    "header": "eyJmaWQiOjEyMzQ1LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4Li4uIn0",
+    "header": "eyJmaWQiOjExODgxNjIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHhBQjRGMjEzMjFBN0ExNmViNTcxNzE5OTRDN0Q3RDFDODA4NTA2RTVkIn0",
     "payload": "eyJkb21haW4iOiJmcmFtZS1vcGFsLWVpZ2h0LnZlcmNlbC5hcHAifQ",
-    "signature": "placeholder_signature"
+    "signature": "BYgOMtq9XOP0/xJRhKwNdgNydtZIkHR0Acac5EtyT3o2/Pd5dXB00f0rr2FfrxJ119JbOT+9+5cyHQoMFvy7yhw="
   },
   "frame": {
     "version": "1",
     "name": "NEYNARtodes",
-    "iconUrl": "https://frame-opal-eight.vercel.app/api/image",
-    "homeUrl": "https://frame-opal-eight.vercel.app/app",
-    "splashImageUrl": "https://frame-opal-eight.vercel.app/api/image",
-    "splashBackgroundColor": "#667eea",
+    "iconUrl": "https://frame-opal-eight.vercel.app/neynartode-sticker.png",
+    "homeUrl": "https://frame-opal-eight.vercel.app/",
+    "splashImageUrl": "https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png",
+    "splashBackgroundColor": "#0f0a1e",
     "webhookUrl": "https://frame-opal-eight.vercel.app/api/webhook"
   }
 }
