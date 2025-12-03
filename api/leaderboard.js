@@ -2,30 +2,37 @@
  * Host Leaderboard API
  *
  * Fetches all completed contests, aggregates host stats, and calculates scores.
+ * Now season-aware - filters contests by season time range.
  *
  * Scoring System:
  *   Total Score = Contest Score + Vote Score
  *   Contest Score = (Social x 3) + Token
- *   Vote Score = (Upvotes - Downvotes) x 5,000
+ *   Vote Score = (Upvotes - Downvotes) x 200
  *   Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100
  *   Token = Volume Points x 50
  *
  * Usage:
- *   GET /api/leaderboard?limit=10
+ *   GET /api/leaderboard?limit=10&season=2
  */
 
 const { ethers } = require('ethers');
 
 const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-  VOTING_MANAGER: '0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99',
+  PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
+  VOTING_MANAGER: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
+  CURRENT_SEASON: 2, // Default active season
 };
 
 const CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
   'function nextContestId() external view returns (uint256)',
+];
+
+const PRIZE_NFT_ABI = [
+  'function seasons(uint256) external view returns (string theme, uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)',
 ];
 
 const VOTING_MANAGER_ABI = [
@@ -134,9 +141,33 @@ module.exports = async (req, res) => {
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
     const contestContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
+    const prizeNFTContract = new ethers.Contract(CONFIG.PRIZE_NFT, PRIZE_NFT_ABI, provider);
     const votingContract = new ethers.Contract(CONFIG.VOTING_MANAGER, VOTING_MANAGER_ABI, provider);
 
     const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+    const seasonId = parseInt(req.query.season) || CONFIG.CURRENT_SEASON;
+
+    // Get season time range for filtering
+    let seasonStartTime = 0;
+    let seasonEndTime = Infinity;
+    let seasonInfo = null;
+
+    try {
+      const season = await prizeNFTContract.seasons(seasonId);
+      seasonStartTime = Number(season.startTime);
+      seasonEndTime = Number(season.endTime);
+      seasonInfo = {
+        id: seasonId,
+        theme: season.theme,
+        startTime: seasonStartTime,
+        endTime: seasonEndTime,
+        hostPool: ethers.formatEther(season.hostPool),
+        voterPool: ethers.formatEther(season.voterPool),
+      };
+      console.log(`Filtering for Season ${seasonId}: ${new Date(seasonStartTime * 1000).toISOString()} to ${new Date(seasonEndTime * 1000).toISOString()}`);
+    } catch (e) {
+      console.error(`Error fetching season ${seasonId}:`, e.message);
+    }
 
     // Get total contest count
     const nextContestId = await contestContract.nextContestId();
@@ -146,19 +177,28 @@ module.exports = async (req, res) => {
       return res.status(200).json({
         hosts: [],
         totalContests: 0,
+        season: seasonInfo,
       });
     }
 
     // Aggregate host stats
     const hostStats = {};
+    let seasonContestCount = 0;
 
     // Fetch all contests
     for (let i = 1; i <= totalContests; i++) {
       try {
         const contestData = await contestContract.getContest(i);
-        const [host, , , , , castId, , volumeRequirement, status] = contestData;
+        const [host, , , , endTime, castId, , volumeRequirement, status] = contestData;
 
-        // Skip non-completed contests for scoring (but count all for participation)
+        const contestEndTime = Number(endTime);
+
+        // Filter by season time range - contest must END within season window
+        if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
+          continue; // Skip contests outside this season
+        }
+
+        seasonContestCount++;
         const hostLower = host.toLowerCase();
 
         if (!hostStats[hostLower]) {
@@ -246,8 +286,8 @@ module.exports = async (req, res) => {
       // Contest Score = Host Bonus + (Social x 3) + Token
       const contestScore = hostBonus + (socialScore * 3) + tokenScore;
 
-      // Vote Score = (Upvotes - Downvotes) x 5,000
-      const voteScore = (stats.upvotes - stats.downvotes) * 5000;
+      // Vote Score = (Upvotes - Downvotes) x 200
+      const voteScore = (stats.upvotes - stats.downvotes) * 200;
 
       // Total Score = Contest Score + Vote Score
       const totalScore = contestScore + voteScore;
@@ -288,13 +328,15 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({
       hosts: topHosts,
+      season: seasonInfo,
+      seasonContests: seasonContestCount,
       totalContests,
       totalHosts: hostsWithScores.length,
       scoringFormula: {
         total: 'Contest Score + Vote Score',
         contest: 'Host Bonus + (Social x 3) + Token',
         hostBonus: '100 points per completed contest',
-        vote: '(Upvotes - Downvotes) x 5,000',
+        vote: '(Upvotes - Downvotes) x 200',
         social: '(Likes x 1 + Recasts x 2 + Replies x 3) x 100',
         token: 'Volume Points x 50',
       },

@@ -267,6 +267,7 @@ Launch Your own! 👇`;
       hasTokens: false,
       userAddress: '',
       userFid: null,
+      userProfile: null, // Full Farcaster profile {fid, username, displayName, pfpUrl}
       userBalance: '0',
       currentView: 'create', // 'create', 'leaderboard', 'history', 'suggestions'
       pendingTx: null, // Pending transaction hash
@@ -1021,7 +1022,14 @@ Launch Your own! 👇`;
           if (response.ok) {
             const data = await response.json();
             if (data && data.users && data.users.length > 0) {
-              state.userFid = data.users[0].fid;
+              const user = data.users[0];
+              state.userFid = user.fid;
+              state.userProfile = {
+                fid: user.fid,
+                username: user.username,
+                displayName: user.display_name,
+                pfpUrl: user.pfp_url
+              };
             }
           }
         } catch (e) {
@@ -2132,7 +2140,7 @@ Launch Your own! 👇`;
                   <p class="font-black mb-2">🦎 How Voting Works:</p>
                   <ul class="mt-2 space-y-1 list-none font-semibold">
                     <li>💸 1000 $NEYNARTODES per vote (50% 🔥 burned, 50% → prize pool)</li>
-                    <li>👍 Upvotes add 5,000 points | 👎 Downvotes subtract 5,000 points</li>
+                    <li>👍 Upvotes add 200 points | 👎 Downvotes subtract 200 points</li>
                     <li>📊 10 votes per day - make them count!</li>
                   </ul>
                 </div>
@@ -3461,15 +3469,34 @@ Launch Your own! 👇`;
           // Add to upcoming contests
           const newContest = {
             id: Date.now(),
-            host: state.userAddress.substring(0, 6) + '...' + state.userAddress.substring(38),
-            hostFull: state.userAddress,
+            contestId: null, // Will be set after on-chain tx
+            host: state.userAddress,
+            hostUser: state.userProfile ? {
+              fid: state.userProfile.fid,
+              username: state.userProfile.username,
+              displayName: state.userProfile.displayName,
+              pfpUrl: state.userProfile.pfpUrl
+            } : null,
             prize: state.prizeType === 'token' ? `${state.prizeTokenAmount} ${state.prizeTokenTicker}` : `NFT #${state.prizeNftId}`,
             startTime: startTime,
             endTime: endTime,
             duration: `${hours}h ${minutes}m`,
             socialEnabled: state.socialEnabled,
             // Token is only enabled if tokenomics is enabled AND tokenEnabled is true
-            tokenEnabled: state.tokenomicsEnabled && state.tokenEnabled
+            tokenEnabled: state.tokenomicsEnabled && state.tokenEnabled,
+            // Entry requirements
+            requireRecast: parseInt(state.minRecasts) > 0,
+            requireLike: parseInt(state.minLikes) > 0,
+            requireReply: parseInt(state.minReplies) > 0,
+            // Volume is locked at $10 for NEYNARTODES token, otherwise use user input
+            volumeRequirement: state.tokenomicsEnabled && state.tokenEnabled ? (
+              state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase()
+                ? 10
+                : parseFloat(state.minTradeVolume) || 0
+            ) : 0,
+            tokenRequirementSymbol: state.tokenomicsEnabled && state.tokenEnabled ? state.tokenTicker : null,
+            status: 0, // Active
+            participantCount: 0
           };
 
           // Launch contest on ContestEscrow contract
@@ -3588,9 +3615,9 @@ Launch Your own! 👇`;
         let volumeRequirement = ethers.BigNumber.from(0);
         if (state.tokenomicsEnabled && state.tokenEnabled && state.minTradeVolume) {
           try {
-            // For NEYNARTODES, lock at 20
+            // For NEYNARTODES, lock at $10
             if (state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase()) {
-              volumeRequirement = ethers.utils.parseEther('20');
+              volumeRequirement = ethers.utils.parseEther('10');
             } else {
               // Clean the input - remove any invalid chars and limit decimals
               const cleanVolume = parseFloat(state.minTradeVolume).toFixed(18).replace(/\.?0+$/, '');
@@ -3981,6 +4008,7 @@ Launch Your own! 👇`;
 
         // Add contest to state ONLY after successful on-chain tx
         contest.onChainId = contestId;
+        contest.contestId = contestId !== 'Unknown' ? parseInt(contestId) : null;
         state.upcomingContests.push(contest);
         state.upcomingContests.sort((a, b) => a.startTime - b.startTime);
 

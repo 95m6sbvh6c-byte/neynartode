@@ -61,8 +61,8 @@ The Leaderboard shows the top contest hosts ranked by their total score. Vote to
 
 | Action | Effect |
 |--------|--------|
-| **Upvote** | +5,000 points to host |
-| **Downvote** | -5,000 points from host |
+| **Upvote** | +200 points to host |
+| **Downvote** | -200 points from host |
 
 ---
 
@@ -83,12 +83,12 @@ Each row shows:
 | Column | Description |
 |--------|-------------|
 | **Total** | Combined score |
-| **Contests** | Points from hosting (1000 per contest) |
+| **Contests** | Points from hosting (100 per contest) |
 | **Votes** | Net vote score (can be negative) |
 
 ### Vote Buttons
-- **Thumbs Up** - Upvote (+5000 points)
-- **Thumbs Down** - Downvote (-5000 points)
+- **Thumbs Up** - Upvote (+200 points)
+- **Thumbs Down** - Downvote (-200 points)
 
 ### Completed
 - Number of contests this host has completed
@@ -129,9 +129,9 @@ When Clanker fees are available, you'll see the "Feed the Neynartodes" button:
 
 | Action | Points |
 |--------|--------|
-| Complete a contest | +1,000 |
-| Receive upvote | +5,000 |
-| Receive downvote | -5,000 |
+| Complete a contest | +100 |
+| Receive upvote | +200 |
+| Receive downvote | -200 |
 
 ### Ranking
 

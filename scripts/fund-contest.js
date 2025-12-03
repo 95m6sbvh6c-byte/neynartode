@@ -21,7 +21,7 @@ const { ethers } = require('ethers');
 require('dotenv').config();
 
 // Contract addresses on Base
-const PRIZE_NFT = '0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81';
+const PRIZE_NFT = '0x54E3972839A79fB4D1b0F70418141723d02E56e1'; // V2 deployed 2025-12-01
 
 // ABI for devAddToPool
 const PRIZE_NFT_ABI = [
