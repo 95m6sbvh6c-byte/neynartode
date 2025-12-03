@@ -15,10 +15,14 @@ const { ethers } = require('ethers');
 
 const CONFIG = {
   NEYNARTODES: '0x8dE1622fE07f56cda2e2273e615A513F1d828B07',
+  WETH: '0x4200000000000000000000000000000000000006',
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   BASE_RPC: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
   BLOCKSCOUT_API: 'https://base.blockscout.com/api/v2',
+  CHAINLINK_ETH_USD: '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70',
+  V4_STATE_VIEW: '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71',
+  NEYNARTODES_POOL_ID: '0xfad8f807f3f300d594c5725adb8f54314d465bcb1ab8cc04e37b08c1aa80d2e7',
 };
 
 const ERC20_ABI = [
@@ -32,11 +36,113 @@ const CONTEST_ESCROW_ABI = [
   'function nextContestId() external view returns (uint256)',
 ];
 
+const V4_STATE_VIEW_ABI = [
+  'function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)',
+];
+
+const CHAINLINK_ABI = [
+  'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
+];
+
+// Price cache for historical lookups (block -> price)
+const priceCache = new Map();
+
+/**
+ * Get ETH price in USD from Chainlink (current price)
+ */
+async function getETHPriceUSD(provider) {
+  try {
+    const priceFeed = new ethers.Contract(CONFIG.CHAINLINK_ETH_USD, CHAINLINK_ABI, provider);
+    const roundData = await priceFeed.latestRoundData();
+    return Number(roundData.answer) / 1e8;
+  } catch (e) {
+    console.log('   Could not fetch ETH price, using fallback');
+    return 3500;
+  }
+}
+
+/**
+ * Get NEYNARTODES price in USD using V4 pool (current price)
+ */
+async function getTokenPriceUSD(provider) {
+  try {
+    const ethPriceUSD = await getETHPriceUSD(provider);
+    const stateView = new ethers.Contract(CONFIG.V4_STATE_VIEW, V4_STATE_VIEW_ABI, provider);
+
+    const slot0 = await stateView.getSlot0(CONFIG.NEYNARTODES_POOL_ID);
+
+    if (slot0.sqrtPriceX96 === 0n) {
+      console.log('   Pool has no liquidity');
+      return 0;
+    }
+
+    const sqrtPriceX96 = slot0.sqrtPriceX96;
+    const price = Number(sqrtPriceX96) / (2 ** 96);
+    const priceSquared = price * price;
+
+    // NEYNARTODES is currency1 (token1), WETH is currency0
+    // sqrtPrice gives us token1/token0 = NEYNARTODES/WETH
+    // We need WETH/NEYNARTODES, so invert
+    const priceInETH = 1 / priceSquared;
+    const priceInUSD = priceInETH * ethPriceUSD;
+
+    return priceInUSD;
+  } catch (e) {
+    console.log('   Could not fetch token price:', e.message?.slice(0, 50));
+    return 0;
+  }
+}
+
+/**
+ * Get historical NEYNARTODES price at a specific block
+ * Uses eth_call with block override to get pool state at that block
+ */
+async function getHistoricalTokenPriceUSD(provider, blockNumber) {
+  // Check cache first
+  const cacheKey = `${blockNumber}`;
+  if (priceCache.has(cacheKey)) {
+    return priceCache.get(cacheKey);
+  }
+
+  try {
+    // Get ETH price (use current - Chainlink historical requires archive node)
+    // ETH price doesn't swing as dramatically as meme tokens
+    const ethPriceUSD = await getETHPriceUSD(provider);
+
+    const stateView = new ethers.Contract(CONFIG.V4_STATE_VIEW, V4_STATE_VIEW_ABI, provider);
+
+    // Query pool state at historical block
+    const slot0 = await stateView.getSlot0(CONFIG.NEYNARTODES_POOL_ID, { blockTag: blockNumber });
+
+    if (slot0.sqrtPriceX96 === 0n) {
+      return 0;
+    }
+
+    const sqrtPriceX96 = slot0.sqrtPriceX96;
+    const price = Number(sqrtPriceX96) / (2 ** 96);
+    const priceSquared = price * price;
+
+    // NEYNARTODES is currency1 (token1), WETH is currency0
+    const priceInETH = 1 / priceSquared;
+    const priceInUSD = priceInETH * ethPriceUSD;
+
+    // Cache the result
+    priceCache.set(cacheKey, priceInUSD);
+
+    return priceInUSD;
+  } catch (e) {
+    // If historical query fails, fall back to current price
+    console.log(`   Historical price at block ${blockNumber} unavailable, using current`);
+    const currentPrice = await getTokenPriceUSD(provider);
+    priceCache.set(cacheKey, currentPrice);
+    return currentPrice;
+  }
+}
+
 /**
  * Get Farcaster user by username
  */
 async function getUserByUsername(username) {
-  // Remove @ if present
   const cleanUsername = username.replace(/^@/, '');
 
   try {
@@ -89,6 +195,7 @@ async function getTokenBalance(provider, address) {
 
 /**
  * Get recent NEYNARTODES transfers for addresses
+ * Includes block number for historical price lookups
  */
 async function getRecentTransfers(addresses) {
   const transfers = [];
@@ -105,7 +212,6 @@ async function getRecentTransfers(addresses) {
     const data = await response.json();
     const items = data.items || [];
 
-    // Normalize addresses for comparison
     const normalizedAddresses = addresses.map(a => a.toLowerCase());
 
     for (const item of items) {
@@ -113,7 +219,6 @@ async function getRecentTransfers(addresses) {
       const toAddr = item.to?.hash?.toLowerCase();
       const timestamp = new Date(item.timestamp).getTime();
 
-      // Check if within last 24 hours and involves user's address
       if (timestamp >= oneDayAgo) {
         if (normalizedAddresses.includes(fromAddr) || normalizedAddresses.includes(toAddr)) {
           const value = Number(item.total?.value || 0) / 1e18;
@@ -122,8 +227,10 @@ async function getRecentTransfers(addresses) {
             amount: value,
             from: fromAddr,
             to: toAddr,
-            timestamp: new Date(item.timestamp).toLocaleString(),
+            timestamp: new Date(item.timestamp).getTime(),
+            timestampStr: new Date(item.timestamp).toLocaleString(),
             txHash: item.transaction_hash,
+            blockNumber: item.block_number, // Include block for historical price lookup
           });
         }
       }
@@ -136,9 +243,34 @@ async function getRecentTransfers(addresses) {
 }
 
 /**
- * Get active contests and check if user qualifies
+ * Calculate volume during a specific time period using historical prices
+ * Returns both token volume and USD volume (calculated at time of each trade)
  */
-async function checkContestEligibility(provider, addresses) {
+async function calculateVolumeDuringPeriod(provider, transfers, startTime, endTime) {
+  let volumeTokens = 0;
+  let volumeUSD = 0;
+
+  for (const tx of transfers) {
+    const txTime = tx.timestamp / 1000; // Convert to seconds
+    if (txTime >= startTime && txTime <= endTime) {
+      volumeTokens += tx.amount;
+
+      // Get historical price at transaction block
+      if (tx.blockNumber) {
+        const historicalPrice = await getHistoricalTokenPriceUSD(provider, tx.blockNumber);
+        volumeUSD += tx.amount * historicalPrice;
+      }
+    }
+  }
+
+  return { volumeTokens, volumeUSD };
+}
+
+/**
+ * Get active contests and check if user qualifies
+ * Uses historical prices for accurate USD volume calculation
+ */
+async function checkContestEligibility(provider, addresses, transfers) {
   const contract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
   const results = [];
 
@@ -147,20 +279,25 @@ async function checkContestEligibility(provider, addresses) {
     const totalContests = Number(nextId) - 1;
     const now = Math.floor(Date.now() / 1000);
 
-    // Check last 10 contests for active ones
     for (let i = totalContests; i >= Math.max(1, totalContests - 10); i--) {
       try {
         const contest = await contract.getContest(i);
         const [host, prizeToken, prizeAmount, startTime, endTime, castId, tokenReq, volumeReq, status, winner] = contest;
 
+        const contestStartTime = Number(startTime);
         const contestEndTime = Number(endTime);
         const contestStatus = Number(status);
 
         // Only check active contests
         if (contestStatus === 0 && contestEndTime > now) {
-          const qualifiedEntries = await contract.getQualifiedEntries(i);
-          const normalizedAddresses = addresses.map(a => a.toLowerCase());
-          const isQualified = qualifiedEntries.some(e => normalizedAddresses.includes(e.toLowerCase()));
+          // Calculate user's volume during contest period with HISTORICAL prices
+          const { volumeTokens, volumeUSD } = await calculateVolumeDuringPeriod(
+            provider, transfers, contestStartTime, contestEndTime
+          );
+          const volumeRequiredUSD = Number(volumeReq) / 1e18;
+
+          // Check if volume requirement is met
+          const volumeMet = volumeUSD >= volumeRequiredUSD;
 
           // Parse requirements from castId
           let requireRecast = false, requireLike = false, requireReply = false;
@@ -182,16 +319,19 @@ async function checkContestEligibility(provider, addresses) {
 
           results.push({
             contestId: i,
-            isQualified,
+            volumeMet,
+            volumeTokens,
+            volumeUSD,
+            volumeRequiredUSD,
             timeLeft: `${hoursLeft}h ${minsLeft}m`,
-            volumeRequired: Number(volumeReq) / 1e18,
-            participantCount: qualifiedEntries.length,
             requirements: {
               recast: requireRecast,
               like: requireLike,
               reply: requireReply,
             },
             prizeAmount: Number(prizeAmount) / 1e18,
+            contestStartTime,
+            contestEndTime,
           });
         }
       } catch (e) {
@@ -241,7 +381,6 @@ Examples:
     user = await getUserByWallet(input);
     addresses = [input];
     if (user) {
-      // Add all verified addresses
       if (user.verified_addresses?.eth_addresses) {
         addresses = [...new Set([input, ...user.verified_addresses.eth_addresses])];
       }
@@ -261,8 +400,13 @@ Examples:
     process.exit(1);
   }
 
+  // Get token price
+  console.log('💵 Fetching token price...');
+  const tokenPriceUSD = await getTokenPriceUSD(provider);
+  console.log(`   NEYNARTODES: $${tokenPriceUSD.toFixed(10)}`);
+
   // Print user info
-  console.log('═'.repeat(50));
+  console.log('\n' + '═'.repeat(50));
   if (user) {
     console.log(`👤 User: @${user.username} (FID: ${user.fid})`);
     console.log(`   Display: ${user.display_name || 'N/A'}`);
@@ -277,8 +421,9 @@ Examples:
   for (const addr of addresses) {
     const balance = await getTokenBalance(provider, addr);
     const formattedBalance = balance.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    const balanceUSD = balance * tokenPriceUSD;
     console.log(`   ${addr}`);
-    console.log(`   └─ NEYNARTODES: ${formattedBalance}`);
+    console.log(`   └─ NEYNARTODES: ${formattedBalance} (~$${balanceUSD.toFixed(2)})`);
   }
 
   // Get total balance
@@ -286,47 +431,61 @@ Examples:
   for (const addr of addresses) {
     totalBalance += await getTokenBalance(provider, addr);
   }
-  console.log(`\n💰 Total NEYNARTODES: ${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+  const totalBalanceUSD = totalBalance * tokenPriceUSD;
+  console.log(`\n💰 Total NEYNARTODES: ${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} (~$${totalBalanceUSD.toFixed(2)})`);
 
   // Get recent transfers
-  console.log('\n📈 Recent Trades (24h):');
+  console.log('\n📈 Recent Trades (24h) - Using HISTORICAL prices at time of trade:');
   const transfers = await getRecentTransfers(addresses);
 
   if (transfers.length === 0) {
     console.log('   No trades in the last 24 hours');
   } else {
     let totalVolume = 0;
+    let totalVolumeUSD = 0;
     for (const tx of transfers) {
       const emoji = tx.type === 'BUY' ? '🟢' : '🔴';
-      console.log(`   ${emoji} ${tx.type}: ${tx.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} NEYNARTODES`);
-      console.log(`      Time: ${tx.timestamp}`);
+      // Get historical price at the block when this trade happened
+      const historicalPrice = tx.blockNumber
+        ? await getHistoricalTokenPriceUSD(provider, tx.blockNumber)
+        : tokenPriceUSD;
+      const volumeUSD = tx.amount * historicalPrice;
+      console.log(`   ${emoji} ${tx.type}: ${tx.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} NEYNARTODES (~$${volumeUSD.toFixed(2)} @ block ${tx.blockNumber || 'N/A'})`);
+      console.log(`      Time: ${tx.timestampStr}`);
       console.log(`      TX: ${tx.txHash.slice(0, 20)}...`);
       totalVolume += tx.amount;
+      totalVolumeUSD += volumeUSD;
     }
-    console.log(`\n   📊 24h Volume: ~${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 2 })} NEYNARTODES`);
+    console.log(`\n   📊 24h Volume: ~${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 2 })} NEYNARTODES (~$${totalVolumeUSD.toFixed(2)} historical)`);
   }
 
   // Check contest eligibility
   console.log('\n🏆 Active Contests:');
-  const contests = await checkContestEligibility(provider, addresses);
+  const contests = await checkContestEligibility(provider, addresses, transfers);
 
   if (contests.length === 0) {
     console.log('   No active contests found');
   } else {
     for (const contest of contests) {
-      const statusEmoji = contest.isQualified ? '✅' : '❌';
-      console.log(`\n   Contest #${contest.contestId} ${statusEmoji}`);
-      console.log(`   ├─ Status: ${contest.isQualified ? 'QUALIFIED' : 'NOT QUALIFIED'}`);
+      const volumeEmoji = contest.volumeMet ? '✅' : '❌';
+      console.log(`\n   Contest #${contest.contestId}`);
       console.log(`   ├─ Time Left: ${contest.timeLeft}`);
       console.log(`   ├─ Prize: ${contest.prizeAmount} ETH`);
-      console.log(`   ├─ Volume Required: $${contest.volumeRequired}`);
-      console.log(`   ├─ Participants: ${contest.participantCount}`);
+      console.log(`   ├─ Volume Required: $${contest.volumeRequiredUSD}`);
+      console.log(`   ├─ Your Volume (contest period): ${contest.volumeTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens (~$${contest.volumeUSD.toFixed(2)}) ${volumeEmoji}`);
 
       const reqs = [];
       if (contest.requirements.recast) reqs.push('Recast');
       if (contest.requirements.like) reqs.push('Like');
       if (contest.requirements.reply) reqs.push('Reply');
-      console.log(`   └─ Social: ${reqs.length > 0 ? reqs.join(', ') : 'None'}`);
+      console.log(`   └─ Social Requirements: ${reqs.length > 0 ? reqs.join(', ') : 'None'}`);
+
+      if (contest.volumeMet) {
+        console.log(`   ✅ VOLUME MET - Complete social requirements to qualify!`);
+      } else {
+        const needed = contest.volumeRequiredUSD - contest.volumeUSD;
+        console.log(`   ❌ Need ~$${needed.toFixed(2)} more volume to qualify`);
+      }
     }
   }
 

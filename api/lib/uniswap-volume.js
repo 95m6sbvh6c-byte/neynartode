@@ -178,25 +178,30 @@ function computeV4PoolId(token0, token1, fee, tickSpacing, hooks) {
  * Try to get price from known V4 pool ID
  * This is for tokens where we know the pool ID but not the hook address
  * Uses caching to reduce RPC calls
+ * @param {Object} options - Optional settings
+ * @param {number} options.blockNumber - Block number for historical price lookup
  */
-async function tryKnownV4Pool(provider, tokenAddress, ethPriceUSD) {
+async function tryKnownV4Pool(provider, tokenAddress, ethPriceUSD, options = {}) {
   const knownPool = KNOWN_V4_POOLS[tokenAddress.toLowerCase()];
   if (!knownPool) return null;
 
-  // Check cache first
-  const cacheKey = tokenAddress.toLowerCase();
+  const blockNumber = options.blockNumber;
+
+  // Check cache first (only for current price, not historical)
+  const cacheKey = blockNumber ? `${tokenAddress.toLowerCase()}_${blockNumber}` : tokenAddress.toLowerCase();
   const now = Date.now();
   const cached = v4PriceCache.get(cacheKey);
   if (cached && (now - cached.time) < V4_PRICE_CACHE_TTL) {
     const cachedUSD = cached.priceInETH * ethPriceUSD;
-    console.log(`   V4 (known pool) price: ${cached.priceInETH.toFixed(12)} ETH ($${cachedUSD.toFixed(8)})`);
     return cachedUSD;
   }
 
   const stateView = new ethers.Contract(V4_STATE_VIEW, V4_STATE_VIEW_ABI, provider);
 
   try {
-    const slot0 = await withRetry(() => stateView.getSlot0(knownPool.poolId));
+    // Query at specific block if provided (historical price)
+    const callOptions = blockNumber ? { blockTag: blockNumber } : {};
+    const slot0 = await withRetry(() => stateView.getSlot0(knownPool.poolId, callOptions));
 
     // If sqrtPriceX96 is 0, pool doesn't have liquidity
     if (slot0.sqrtPriceX96 === 0n) return null;
@@ -219,10 +224,14 @@ async function tryKnownV4Pool(provider, tokenAddress, ethPriceUSD) {
     // Cache the result
     v4PriceCache.set(cacheKey, { priceInETH, time: now });
 
-    console.log(`   V4 (known pool) price: ${priceInETH.toFixed(12)} ETH ($${(priceInETH * ethPriceUSD).toFixed(8)})`);
+    if (!blockNumber) {
+      console.log(`   V4 (known pool) price: ${priceInETH.toFixed(12)} ETH ($${(priceInETH * ethPriceUSD).toFixed(8)})`);
+    }
     return priceInETH * ethPriceUSD;
   } catch (e) {
-    console.log('   Known V4 pool error:', e.message?.slice(0, 50));
+    if (!blockNumber) {
+      console.log('   Known V4 pool error:', e.message?.slice(0, 50));
+    }
     return null;
   }
 }
@@ -527,12 +536,32 @@ async function getUniswapVolumes(tokenAddress, walletAddresses, minVolumeUSD, st
   // This catches ALL trading activity (V2, V3, V4, DEX aggregators, etc.)
   const transfers = await getTokenTransferSwaps(provider, tokenAddress, fromBlock, toBlock, walletAddresses);
 
-  // Aggregate volume per wallet (sum of all in + out transfers)
-  const volumeByWallet = new Map();
+  // Aggregate volume per wallet using HISTORICAL prices at time of each trade
+  // This prevents gaming via price manipulation
+  const volumeByWallet = new Map(); // wallet -> { volumeTokens, volumeUSD }
+
+  console.log(`   Calculating historical USD values for ${transfers.length} transfers...`);
 
   for (const transfer of transfers) {
-    const current = volumeByWallet.get(transfer.wallet) || 0n;
-    volumeByWallet.set(transfer.wallet, current + transfer.volume);
+    const current = volumeByWallet.get(transfer.wallet) || { volumeTokens: 0n, volumeUSD: 0 };
+    const volumeTokens = current.volumeTokens + transfer.volume;
+
+    // Get historical price at the block when this transfer occurred
+    let transferUSD = 0;
+    try {
+      const historicalPrice = await getHistoricalTokenPriceUSD(provider, tokenAddress, transfer.blockNumber);
+      const transferTokens = Number(transfer.volume) / Math.pow(10, tokenDecimals);
+      transferUSD = transferTokens * historicalPrice;
+    } catch (e) {
+      // Fall back to current price if historical fails
+      const transferTokens = Number(transfer.volume) / Math.pow(10, tokenDecimals);
+      transferUSD = transferTokens * tokenPriceUSD;
+    }
+
+    volumeByWallet.set(transfer.wallet, {
+      volumeTokens,
+      volumeUSD: current.volumeUSD + transferUSD
+    });
   }
 
   // Calculate USD volumes and check against minimum
@@ -540,14 +569,14 @@ async function getUniswapVolumes(tokenAddress, walletAddresses, minVolumeUSD, st
 
   for (const address of walletAddresses) {
     const addrLower = address.toLowerCase();
-    const volumeRaw = volumeByWallet.get(addrLower) || 0n;
-    const volumeTokens = Number(volumeRaw) / Math.pow(10, tokenDecimals);
-    const volumeUSD = volumeTokens * tokenPriceUSD;
+    const walletData = volumeByWallet.get(addrLower) || { volumeTokens: 0n, volumeUSD: 0 };
+    const volumeTokens = Number(walletData.volumeTokens) / Math.pow(10, tokenDecimals);
+    const volumeUSD = walletData.volumeUSD;
 
     const passed = skipVolumeCheck ? true : volumeUSD >= minVolumeUSD;
 
     if (volumeUSD > 0) {
-      console.log(`   ${addrLower.slice(0,10)}... volume: $${volumeUSD.toFixed(4)} (${volumeTokens.toFixed(2)} tokens) ${passed ? '✅' : '❌'}`);
+      console.log(`   ${addrLower.slice(0,10)}... volume: $${volumeUSD.toFixed(4)} (${volumeTokens.toFixed(2)} tokens, historical) ${passed ? '✅' : '❌'}`);
     }
 
     results.push({
@@ -562,6 +591,23 @@ async function getUniswapVolumes(tokenAddress, walletAddresses, minVolumeUSD, st
   console.log(`\n   Volume check: ${passedCount}/${walletAddresses.length} passed`);
 
   return results;
+}
+
+/**
+ * Get historical token price at a specific block
+ * Uses the V4 pool state at that block for accurate historical pricing
+ */
+async function getHistoricalTokenPriceUSD(provider, tokenAddress, blockNumber) {
+  const ethPriceUSD = await getETHPrice(provider);
+
+  // Use historical lookup for known V4 pool
+  const knownV4Price = await tryKnownV4Pool(provider, tokenAddress, ethPriceUSD, { blockNumber });
+  if (knownV4Price) {
+    return knownV4Price;
+  }
+
+  // Fall back to current price if historical lookup fails
+  return await getTokenPriceUSD(provider, tokenAddress);
 }
 
 /**
@@ -734,6 +780,7 @@ module.exports = {
   findV2Pools,
   findV3Pools,
   getTokenPriceUSD,
+  getHistoricalTokenPriceUSD,
   getETHPrice,
   CONFIG,
   KNOWN_V4_POOLS
