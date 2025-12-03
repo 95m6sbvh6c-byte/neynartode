@@ -64,18 +64,70 @@ async function getCastEngagement(castId) {
 
     if (!castResponse.ok) {
       console.error('Failed to fetch cast:', await castResponse.text());
-      return { recasters: [], repliers: [], likers: [], error: 'Cast not found' };
+      return { recasters: [], repliers: [], likers: [], usersByFid: new Map(), error: 'Cast not found' };
     }
 
     const castData = await castResponse.json();
     const cast = castData.cast;
 
+    // Track users by FID to ensure 1 entry per user
+    // Map: FID -> { addresses: [], liked: bool, recasted: bool, replied: bool, wordCount: number }
+    const usersByFid = new Map();
+
+    // Helper to add/update user data
+    const addUserEngagement = (user, engagementType, wordCount = 0) => {
+      const fid = user?.fid;
+      if (!fid) return;
+
+      const neynarScore = user?.experimental?.neynar_user_score || 0;
+      if (neynarScore < 0.30) return; // Filter bots
+
+      // Collect ALL addresses for volume checks
+      const addresses = [];
+      if (user?.custody_address) {
+        addresses.push(user.custody_address.toLowerCase());
+      }
+      if (user?.verified_addresses?.eth_addresses) {
+        addresses.push(...user.verified_addresses.eth_addresses.map(a => a.toLowerCase()));
+      }
+
+      if (addresses.length === 0) return;
+
+      // Get or create user entry
+      let userData = usersByFid.get(fid);
+      if (!userData) {
+        userData = {
+          fid,
+          addresses: [],
+          username: user?.username || '',
+          liked: false,
+          recasted: false,
+          replied: false,
+          wordCount: 0
+        };
+        usersByFid.set(fid, userData);
+      }
+
+      // Add any new addresses
+      for (const addr of addresses) {
+        if (!userData.addresses.includes(addr)) {
+          userData.addresses.push(addr);
+        }
+      }
+
+      // Update engagement flags
+      if (engagementType === 'like') userData.liked = true;
+      if (engagementType === 'recast') userData.recasted = true;
+      if (engagementType === 'reply') {
+        userData.replied = true;
+        userData.wordCount = Math.max(userData.wordCount, wordCount);
+      }
+    };
+
     // Get reactions (likes and recasts) with pagination
-    let likers = [];
-    let recasters = [];
     let cursor = null;
     let pageCount = 0;
-    const maxPages = 50; // Safety limit: 50 pages * 100 = 5000 max reactions
+    const maxPages = 50;
 
     do {
       const url = cursor
@@ -90,39 +142,13 @@ async function getCastEngagement(castId) {
 
       const reactionsData = await reactionsResponse.json();
 
-      // Extract ALL addresses per user (custody + verified)
-      // Filter by Neynar score >= 0.30 to reduce bots
-      const MIN_NEYNAR_SCORE = 0.30;
-
       for (const reaction of reactionsData.reactions || []) {
-        const user = reaction.user;
-        const neynarScore = user?.experimental?.neynar_user_score || 0;
-
-        if (neynarScore >= MIN_NEYNAR_SCORE) {
-          // Collect ALL addresses: custody address + verified addresses
-          const allAddresses = [];
-          if (user?.custody_address) {
-            allAddresses.push(user.custody_address);
-          }
-          if (user?.verified_addresses?.eth_addresses) {
-            allAddresses.push(...user.verified_addresses.eth_addresses);
-          }
-
-          // Add all addresses for this user
-          for (const addr of allAddresses) {
-            if (reaction.reaction_type === 'like') {
-              likers.push(addr);
-            } else if (reaction.reaction_type === 'recast') {
-              recasters.push(addr);
-            }
-          }
-        }
+        addUserEngagement(reaction.user, reaction.reaction_type);
       }
 
       cursor = reactionsData.cursor;
       pageCount++;
 
-      // Small delay to avoid rate limiting
       if (cursor) await new Promise(r => setTimeout(r, 100));
 
     } while (cursor && pageCount < maxPages);
@@ -130,7 +156,6 @@ async function getCastEngagement(castId) {
     console.log(`   Fetched ${pageCount} pages of reactions`);
 
     // Get replies with pagination
-    let repliers = [];
     let replyCursor = null;
     let replyPageCount = 0;
 
@@ -148,34 +173,10 @@ async function getCastEngagement(castId) {
       const repliesData = await repliesResponse.json();
       const replies = repliesData.conversation?.cast?.direct_replies || [];
 
-      // Filter replies by Neynar score >= 0.30 to reduce bots
-      const MIN_REPLY_SCORE = 0.30;
-
       for (const reply of replies) {
-        // Check reply has at least 4 words
         const wordCount = (reply.text || '').trim().split(/\s+/).length;
         if (wordCount >= 4) {
-          const author = reply.author;
-          const neynarScore = author?.experimental?.neynar_user_score || 0;
-
-          if (neynarScore >= MIN_REPLY_SCORE) {
-            // Collect ALL addresses: custody address + verified addresses
-            const allAddresses = [];
-            if (author?.custody_address) {
-              allAddresses.push(author.custody_address);
-            }
-            if (author?.verified_addresses?.eth_addresses) {
-              allAddresses.push(...author.verified_addresses.eth_addresses);
-            }
-
-            // Add all addresses for this user
-            for (const addr of allAddresses) {
-              repliers.push({
-                address: addr.toLowerCase(),
-                wordCount
-              });
-            }
-          }
+          addUserEngagement(reply.author, 'reply', wordCount);
         }
       }
 
@@ -188,7 +189,8 @@ async function getCastEngagement(castId) {
 
     console.log(`   Fetched ${replyPageCount} pages of replies`);
 
-    // Get all addresses for the cast author (to exclude from winning their own contest)
+    // Get cast author FID to exclude from winning
+    const castAuthorFid = cast.author?.fid;
     const castAuthorAddresses = [];
     if (cast.author?.custody_address) {
       castAuthorAddresses.push(cast.author.custody_address.toLowerCase());
@@ -197,16 +199,38 @@ async function getCastEngagement(castId) {
       castAuthorAddresses.push(...cast.author.verified_addresses.eth_addresses.map(a => a.toLowerCase()));
     }
 
+    // Build legacy arrays for backward compatibility (addresses only)
+    // These are used for logging but raffle uses usersByFid
+    const likers = [];
+    const recasters = [];
+    const repliers = [];
+
+    for (const [fid, userData] of usersByFid) {
+      if (userData.liked) {
+        likers.push(...userData.addresses);
+      }
+      if (userData.recasted) {
+        recasters.push(...userData.addresses);
+      }
+      if (userData.replied) {
+        for (const addr of userData.addresses) {
+          repliers.push({ address: addr, wordCount: userData.wordCount });
+        }
+      }
+    }
+
     return {
-      recasters: [...new Set(recasters.map(a => a.toLowerCase()))],
-      likers: [...new Set(likers.map(a => a.toLowerCase()))],
-      repliers: repliers, // Keep word count info
-      castAuthorAddresses: castAuthorAddresses // All author addresses (to exclude from winning)
+      recasters: [...new Set(recasters)],
+      likers: [...new Set(likers)],
+      repliers: repliers,
+      usersByFid: usersByFid, // NEW: Map of FID -> user data for 1 entry per user
+      castAuthorFid: castAuthorFid, // NEW: Author FID to exclude
+      castAuthorAddresses: castAuthorAddresses
     };
 
   } catch (error) {
     console.error('Error fetching cast engagement:', error);
-    return { recasters: [], repliers: [], likers: [], error: error.message };
+    return { recasters: [], repliers: [], likers: [], usersByFid: new Map(), error: error.message };
   }
 }
 
@@ -372,9 +396,16 @@ async function checkAndFinalizeContest(contestId) {
     };
   }
 
-  console.log(`   Recasters: ${engagement.recasters.length}`);
-  console.log(`   Repliers (4+ words): ${engagement.repliers.length}`);
-  console.log(`   Likers: ${engagement.likers.length}`);
+  // Count unique users (by FID)
+  const uniqueUsers = engagement.usersByFid ? engagement.usersByFid.size : 0;
+  const likerCount = engagement.usersByFid ? [...engagement.usersByFid.values()].filter(u => u.liked).length : 0;
+  const recasterCount = engagement.usersByFid ? [...engagement.usersByFid.values()].filter(u => u.recasted).length : 0;
+  const replierCount = engagement.usersByFid ? [...engagement.usersByFid.values()].filter(u => u.replied).length : 0;
+
+  console.log(`   Unique users: ${uniqueUsers}`);
+  console.log(`   Recasters: ${recasterCount} users (${engagement.recasters.length} addresses)`);
+  console.log(`   Repliers (4+ words): ${replierCount} users`);
+  console.log(`   Likers: ${likerCount} users (${engagement.likers.length} addresses)`);
 
   // ═══════════════════════════════════════════════════════════════════
   // SOCIAL REQUIREMENTS - Parse from castId
@@ -406,62 +437,52 @@ async function checkAndFinalizeContest(contestId) {
 
   console.log(`   Requirements: Recast=${socialRequirements.requireRecast}, Like=${socialRequirements.requireLike}, Reply=${socialRequirements.requireReply}`);
 
-  // Determine potential participants based on requirements
-  // Build a set of qualifying addresses based on which requirements are enabled
+  // ═══════════════════════════════════════════════════════════════════
+  // FILTER QUALIFIED USERS BY FID (1 entry per user)
+  // Each user gets 1 raffle entry, but we check ALL their addresses for volume
+  // ═══════════════════════════════════════════════════════════════════
+  const qualifiedUsers = []; // Array of { fid, addresses, primaryAddress }
+
+  for (const [fid, userData] of engagement.usersByFid || new Map()) {
+    // Skip the contest host
+    if (fid === engagement.castAuthorFid) continue;
+
+    // Check if user meets social requirements
+    let meetsRequirements = true;
+
+    if (socialRequirements.requireRecast && !userData.recasted) {
+      meetsRequirements = false;
+    }
+    if (socialRequirements.requireLike && !userData.liked) {
+      meetsRequirements = false;
+    }
+    if (socialRequirements.requireReply && !userData.replied) {
+      meetsRequirements = false;
+    }
+
+    // If no requirements set, any engagement qualifies
+    if (!socialRequirements.requireRecast && !socialRequirements.requireLike && !socialRequirements.requireReply) {
+      meetsRequirements = userData.liked || userData.recasted || userData.replied;
+    }
+
+    if (meetsRequirements && userData.addresses.length > 0) {
+      qualifiedUsers.push({
+        fid: userData.fid,
+        username: userData.username,
+        addresses: userData.addresses, // All addresses for volume check
+        primaryAddress: userData.addresses[0] // First address for raffle entry
+      });
+    }
+  }
+
+  console.log(`\n✅ Qualified users: ${qualifiedUsers.length} (1 entry per FID)`);
+
+  // Build flat list of all addresses for volume checking
   let potentialParticipants = [];
-
-  // Get all unique addresses that meet ANY enabled requirement first
-  const recastSet = new Set(engagement.recasters);
-  const likeSet = new Set(engagement.likers);
-  const replySet = new Set(engagement.repliers.map(r => r.address));
-
-  // If ALL requirements are disabled, use everyone who engaged
-  if (!socialRequirements.requireRecast && !socialRequirements.requireLike && !socialRequirements.requireReply) {
-    const allEngagers = new Set([...recastSet, ...likeSet, ...replySet]);
-    potentialParticipants = [...allEngagers];
-    console.log(`   Filter: Any engagement (no requirements set)`);
-  } else {
-    // Start with all addresses from the first enabled requirement
-    let candidateSets = [];
-
-    if (socialRequirements.requireRecast) {
-      candidateSets.push({ name: 'Recast', set: recastSet });
-    }
-    if (socialRequirements.requireLike) {
-      candidateSets.push({ name: 'Like', set: likeSet });
-    }
-    if (socialRequirements.requireReply) {
-      candidateSets.push({ name: 'Reply (4+ words)', set: replySet });
-    }
-
-    if (candidateSets.length === 1) {
-      // Only one requirement - use that set
-      potentialParticipants = [...candidateSets[0].set];
-      console.log(`   Filter: ${candidateSets[0].name} only`);
-    } else {
-      // Multiple requirements - find intersection (must meet ALL)
-      let intersection = new Set(candidateSets[0].set);
-      for (let i = 1; i < candidateSets.length; i++) {
-        intersection = new Set([...intersection].filter(addr => candidateSets[i].set.has(addr)));
-      }
-      potentialParticipants = [...intersection];
-      console.log(`   Filter: ${candidateSets.map(s => s.name).join(' + ')}`);
-    }
+  for (const user of qualifiedUsers) {
+    potentialParticipants.push(...user.addresses);
   }
-
-  // Deduplicate
   potentialParticipants = [...new Set(potentialParticipants)];
-
-  // Remove the host from participants (contest creator shouldn't win their own contest)
-  // Filter out ALL of the host's addresses (custody + verified)
-  if (engagement.castAuthorAddresses && engagement.castAuthorAddresses.length > 0) {
-    const authorAddressSet = new Set(engagement.castAuthorAddresses);
-    potentialParticipants = potentialParticipants.filter(
-      addr => !authorAddressSet.has(addr)
-    );
-  }
-
-  console.log(`\n✅ Qualified participants: ${potentialParticipants.length}`);
 
   if (potentialParticipants.length === 0) {
     // No qualified participants - auto-cancel and refund host
@@ -489,27 +510,40 @@ async function checkAndFinalizeContest(contestId) {
   }
 
   // Check trading volume if required
-  let qualifiedAddresses = potentialParticipants;
+  // Volume check uses ALL addresses from each user, but raffle entry is 1 per FID
+  let finalQualifiedUsers = [...qualifiedUsers]; // Users who pass all requirements
 
   if (volumeRequirement > 0n) {
     console.log('\n💰 Checking trading volumes...');
     const volumeResults = await getTraderVolumes(
       tokenRequirement,
-      potentialParticipants,
+      potentialParticipants, // All addresses from all users
       Number(ethers.formatEther(volumeRequirement)),
       Number(startTime),
       Number(endTime),
       contestId  // Pass contestId to use stored price from contest creation
     );
 
-    qualifiedAddresses = volumeResults
-      .filter(r => r.passed)
-      .map(r => r.address);
+    // Build set of addresses that passed volume check
+    const passedAddresses = new Set(
+      volumeResults.filter(r => r.passed).map(r => r.address)
+    );
 
-    console.log(`   Passed volume check: ${qualifiedAddresses.length}/${potentialParticipants.length}`);
+    // Filter users: a user passes if ANY of their addresses passed volume check
+    finalQualifiedUsers = qualifiedUsers.filter(user => {
+      const hasPassingAddress = user.addresses.some(addr => passedAddresses.has(addr));
+      if (hasPassingAddress) {
+        // Update primary address to one that passed (for potential auditing)
+        const passingAddr = user.addresses.find(addr => passedAddresses.has(addr));
+        if (passingAddr) user.primaryAddress = passingAddr;
+      }
+      return hasPassingAddress;
+    });
+
+    console.log(`   Passed volume check: ${finalQualifiedUsers.length}/${qualifiedUsers.length} users`);
   }
 
-  if (qualifiedAddresses.length === 0) {
+  if (finalQualifiedUsers.length === 0) {
     // No one met volume requirement - auto-cancel and refund host
     console.log('\n❌ No participants met volume requirement - cancelling contest and refunding host...');
     try {
@@ -534,6 +568,9 @@ async function checkAndFinalizeContest(contestId) {
     }
   }
 
+  // Build final entries: 1 primary address per qualified user (1 entry per FID)
+  const qualifiedAddresses = finalQualifiedUsers.map(user => user.primaryAddress);
+
   // Finalize contest on-chain
   // Limit entries to avoid gas limit errors
   // Each address uses ~2100 gas for storage, limit to 1000 to stay under 30M gas limit
@@ -547,7 +584,7 @@ async function checkAndFinalizeContest(contestId) {
     finalEntries = shuffled.slice(0, MAX_ENTRIES);
   }
 
-  console.log(`\n🎲 Finalizing contest with ${finalEntries.length} qualified entries...`);
+  console.log(`\n🎲 Finalizing contest with ${finalEntries.length} entries (1 per user)...`);
 
   try {
     const tx = await contestEscrow.finalizeContest(contestId, finalEntries);
