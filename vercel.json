@@ -25,6 +25,10 @@
   ],
   "routes": [
     {
+      "src": "/neynartode-sticker.png",
+      "dest": "/public/neynartode-sticker.png"
+    },
+    {
       "src": "/Neynartodes_1200x638_splash.png",
       "dest": "/public/Neynartodes_1200x638_splash.png"
     },
