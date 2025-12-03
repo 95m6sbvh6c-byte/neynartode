@@ -14,7 +14,7 @@ Enter your **contract owner's private key** when prompted.
 ## Method 2: Manual Cast Command
 
 ```bash
-cast send 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
+cast send 0x54E3972839A79fB4D1b0F70418141723d02E56e1 \
   "addToWhitelist(address)" \
   0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
   --rpc-url https://mainnet.base.org \
@@ -28,7 +28,7 @@ Replace `YOUR_OWNER_PRIVATE_KEY` with the private key of the wallet that deploye
 ```bash
 export PRIVATE_KEY="your_owner_private_key_here"
 
-cast send 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
+cast send 0x54E3972839A79fB4D1b0F70418141723d02E56e1 \
   "addToWhitelist(address)" \
   0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
   --rpc-url https://mainnet.base.org \
@@ -44,7 +44,7 @@ cast send 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
 
 ## Contract Info
 
-- **PrizeNFT Address**: `0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81`
+- **PrizeNFT Address**: `0x54E3972839A79fB4D1b0F70418141723d02E56e1` (V2)
 - **Network**: Base Mainnet (Chain ID: 8453)
 - **Function**: `addToWhitelist(address)`
 - **Your Dev Wallet**: `0x78EeAA6F014667A339fCF8b4eCd74743366603fb`
@@ -54,8 +54,8 @@ cast send 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
 After the transaction confirms, you can verify with:
 
 ```bash
-cast call 0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81 \
-  "whitelist(address)(bool)" \
+cast call 0x54E3972839A79fB4D1b0F70418141723d02E56e1 \
+  "whitelisted(address)(bool)" \
   0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
   --rpc-url https://mainnet.base.org
 ```

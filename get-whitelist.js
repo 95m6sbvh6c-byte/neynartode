@@ -3,7 +3,7 @@
 
 const ethers = require('ethers');
 
-const PRIZE_NFT = '0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81';
+const PRIZE_NFT = '0x54E3972839A79fB4D1b0F70418141723d02E56e1'; // V2
 const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
 const NEYNAR_API_KEY = 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D';
 

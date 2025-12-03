@@ -5,7 +5,7 @@ import { ethers } from 'ethers';
 
 const CONTRACTS = {
   neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
-  prizeNFT: '0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81',
+  prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
 };
 
 const BASE_RPC = process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
