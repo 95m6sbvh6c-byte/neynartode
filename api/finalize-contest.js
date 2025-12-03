@@ -90,21 +90,31 @@ async function getCastEngagement(castId) {
 
       const reactionsData = await reactionsResponse.json();
 
-      // Extract ONE address per user (first verified address only)
+      // Extract ALL addresses per user (custody + verified)
       // Filter by Neynar score >= 0.30 to reduce bots
       const MIN_NEYNAR_SCORE = 0.30;
 
       for (const reaction of reactionsData.reactions || []) {
         const user = reaction.user;
-        const addresses = user?.verified_addresses?.eth_addresses || [];
         const neynarScore = user?.experimental?.neynar_user_score || 0;
 
-        if (addresses.length > 0 && neynarScore >= MIN_NEYNAR_SCORE) {
-          const primaryAddress = addresses[0]; // Use first/primary wallet only
-          if (reaction.reaction_type === 'like') {
-            likers.push(primaryAddress);
-          } else if (reaction.reaction_type === 'recast') {
-            recasters.push(primaryAddress);
+        if (neynarScore >= MIN_NEYNAR_SCORE) {
+          // Collect ALL addresses: custody address + verified addresses
+          const allAddresses = [];
+          if (user?.custody_address) {
+            allAddresses.push(user.custody_address);
+          }
+          if (user?.verified_addresses?.eth_addresses) {
+            allAddresses.push(...user.verified_addresses.eth_addresses);
+          }
+
+          // Add all addresses for this user
+          for (const addr of allAddresses) {
+            if (reaction.reaction_type === 'like') {
+              likers.push(addr);
+            } else if (reaction.reaction_type === 'recast') {
+              recasters.push(addr);
+            }
           }
         }
       }
@@ -146,15 +156,25 @@ async function getCastEngagement(castId) {
         const wordCount = (reply.text || '').trim().split(/\s+/).length;
         if (wordCount >= 4) {
           const author = reply.author;
-          const addresses = author?.verified_addresses?.eth_addresses || [];
           const neynarScore = author?.experimental?.neynar_user_score || 0;
 
-          if (addresses.length > 0 && neynarScore >= MIN_REPLY_SCORE) {
-            // Use first/primary wallet only - one entry per user
-            repliers.push({
-              address: addresses[0].toLowerCase(),
-              wordCount
-            });
+          if (neynarScore >= MIN_REPLY_SCORE) {
+            // Collect ALL addresses: custody address + verified addresses
+            const allAddresses = [];
+            if (author?.custody_address) {
+              allAddresses.push(author.custody_address);
+            }
+            if (author?.verified_addresses?.eth_addresses) {
+              allAddresses.push(...author.verified_addresses.eth_addresses);
+            }
+
+            // Add all addresses for this user
+            for (const addr of allAddresses) {
+              repliers.push({
+                address: addr.toLowerCase(),
+                wordCount
+              });
+            }
           }
         }
       }
@@ -168,11 +188,20 @@ async function getCastEngagement(castId) {
 
     console.log(`   Fetched ${replyPageCount} pages of replies`);
 
+    // Get all addresses for the cast author (to exclude from winning their own contest)
+    const castAuthorAddresses = [];
+    if (cast.author?.custody_address) {
+      castAuthorAddresses.push(cast.author.custody_address.toLowerCase());
+    }
+    if (cast.author?.verified_addresses?.eth_addresses) {
+      castAuthorAddresses.push(...cast.author.verified_addresses.eth_addresses.map(a => a.toLowerCase()));
+    }
+
     return {
       recasters: [...new Set(recasters.map(a => a.toLowerCase()))],
       likers: [...new Set(likers.map(a => a.toLowerCase()))],
       repliers: repliers, // Keep word count info
-      castAuthor: cast.author?.verified_addresses?.eth_addresses?.[0]?.toLowerCase()
+      castAuthorAddresses: castAuthorAddresses // All author addresses (to exclude from winning)
     };
 
   } catch (error) {
@@ -424,9 +453,11 @@ async function checkAndFinalizeContest(contestId) {
   potentialParticipants = [...new Set(potentialParticipants)];
 
   // Remove the host from participants (contest creator shouldn't win their own contest)
-  if (engagement.castAuthor) {
+  // Filter out ALL of the host's addresses (custody + verified)
+  if (engagement.castAuthorAddresses && engagement.castAuthorAddresses.length > 0) {
+    const authorAddressSet = new Set(engagement.castAuthorAddresses);
     potentialParticipants = potentialParticipants.filter(
-      addr => addr !== engagement.castAuthor
+      addr => !authorAddressSet.has(addr)
     );
   }
 
