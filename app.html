@@ -2439,8 +2439,28 @@ Launch Your own! 👇`;
             ${renderHeader()}
 
             <div class="space-y-4">
+              <!-- Current Leader - Full Width Row -->
+              <div class="stat-card">
+                <div class="stat-label text-center">Current Leader</div>
+                ${state.leaderboardData.length > 0 ? `
+                  <a href="https://warpcast.com/${state.leaderboardData[0].username}" target="_blank" class="flex flex-col items-center hover:opacity-80 transition-opacity mt-2">
+                    ${state.leaderboardData[0].pfpUrl
+                      ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="" class="w-12 h-12 rounded-full object-cover mb-2" onerror="this.style.display='none';" />`
+                      : `<span class="w-12 h-12 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xl mb-2">${state.leaderboardData[0].pfp}</span>`
+                    }
+                    <span class="stat-value stat-value-sm">@${state.leaderboardData[0].username}</span>
+                    <div class="stat-subtitle">${state.leaderboardData[0].totalScore.toLocaleString()} points</div>
+                  </a>
+                ` : `
+                  <div class="text-center mt-2">
+                    <div class="stat-value stat-value-sm">TBA</div>
+                    <div class="stat-subtitle">Be the first!</div>
+                  </div>
+                `}
+              </div>
+
               <!-- Stats Grid -->
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div class="grid grid-cols-3 gap-3">
                 <!-- Season Countdown -->
                 <div class="stat-card">
                   <div class="stat-label">Season Ends</div>
@@ -2459,34 +2479,14 @@ Launch Your own! 👇`;
                 <div class="stat-card">
                   <div class="stat-label">Prize Pool</div>
                   <div class="stat-value stat-value-sm">${state.hostPoolETH.toFixed(4)} <span class="text-[var(--text-muted)] text-lg">ETH</span></div>
-                  <div class="stat-subtitle">For contest hosts</div>
+                  <div class="stat-subtitle">For hosts</div>
                 </div>
 
                 <!-- Tokens Burned -->
                 <div class="stat-card">
                   <div class="stat-label">Tokens Burned</div>
                   <div class="stat-value stat-value-sm">${Number(state.totalTokensBurned).toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
-                  <div class="stat-subtitle">Removed from supply</div>
-                </div>
-
-                <!-- Leader -->
-                <div class="stat-card">
-                  <div class="stat-label">Current Leader</div>
-                  ${state.leaderboardData.length > 0 ? `
-                    <a href="https://warpcast.com/${state.leaderboardData[0].username}" target="_blank" class="block hover:opacity-80 transition-opacity">
-                      <div class="flex items-center gap-2 mt-1">
-                        ${state.leaderboardData[0].pfpUrl
-                          ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="" class="w-8 h-8 rounded-full object-cover" onerror="this.style.display='none';" />`
-                          : `<span class="w-8 h-8 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-sm">${state.leaderboardData[0].pfp}</span>`
-                        }
-                        <span class="stat-value stat-value-sm">@${state.leaderboardData[0].username}</span>
-                      </div>
-                      <div class="stat-subtitle">${state.leaderboardData[0].totalScore.toLocaleString()} points</div>
-                    </a>
-                  ` : `
-                    <div class="stat-value stat-value-sm">TBA</div>
-                    <div class="stat-subtitle">Be the first!</div>
-                  `}
+                  <div class="stat-subtitle">From supply</div>
                 </div>
               </div>
 
@@ -2596,16 +2596,14 @@ Launch Your own! 👇`;
                             </div>
                           </td>
                           <td class="py-4 px-2">
-                            <a href="https://warpcast.com/${host.username}" target="_blank" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                            <a href="https://warpcast.com/${host.username}" target="_blank" class="flex flex-col items-center hover:opacity-80 transition-opacity">
                               ${host.pfpUrl
-                                ? `<img src="${host.pfpUrl}" alt="" class="w-9 h-9 rounded-full object-cover" onerror="this.style.display='none';" />`
-                                : `<span class="w-9 h-9 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-sm">${host.pfp}</span>`
+                                ? `<img src="${host.pfpUrl}" alt="" class="w-8 h-8 rounded-full object-cover mb-1" onerror="this.style.display='none';" />`
+                                : `<span class="w-8 h-8 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-sm mb-1">${host.pfp}</span>`
                               }
-                              <div>
-                                <div class="font-medium text-[var(--text-primary)] flex items-center gap-1">
-                                  @${host.username}
-                                  ${host.badges.map(badge => `<span title="${getBadgeTitle(badge)}">${getBadgeEmoji(badge)}</span>`).join('')}
-                                </div>
+                              <div class="text-xs font-medium text-[var(--text-primary)] text-center">
+                                @${host.username}
+                                ${host.badges.map(badge => `<span title="${getBadgeTitle(badge)}">${getBadgeEmoji(badge)}</span>`).join('')}
                               </div>
                             </a>
                           </td>
@@ -2853,19 +2851,17 @@ Launch Your own! 👇`;
                             <div class="font-medium text-[var(--accent-light)]">${contest.contestId}</div>
                           </td>
                           <td class="py-4 px-2">
-                            <div class="flex items-center gap-2">
-                              ${contest.hostUser ? `
-                                <a href="https://warpcast.com/${contest.hostUser.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                                  ${contest.hostUser.pfpUrl
-                                    ? `<img src="${contest.hostUser.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover" onerror="this.style.display='none';" />`
-                                    : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs">👤</span>`
-                                  }
-                                  <span class="font-medium text-[var(--text-primary)]">@${contest.hostUser.username}</span>
-                                </a>
-                              ` : `
-                                <span class="font-mono text-sm text-[var(--text-muted)]">${contest.host.slice(0, 10)}...</span>
-                              `}
-                            </div>
+                            ${contest.hostUser ? `
+                              <a href="https://warpcast.com/${contest.hostUser.username}" target="_blank" class="flex flex-col items-center hover:opacity-80 transition-opacity">
+                                ${contest.hostUser.pfpUrl
+                                  ? `<img src="${contest.hostUser.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover mb-1" onerror="this.style.display='none';" />`
+                                  : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs mb-1">👤</span>`
+                                }
+                                <span class="text-xs font-medium text-[var(--text-primary)]">@${contest.hostUser.username}</span>
+                              </a>
+                            ` : `
+                              <span class="font-mono text-xs text-[var(--text-muted)]">${contest.host.slice(0, 8)}...</span>
+                            `}
                           </td>
                           <td class="py-4 px-2">
                             <div class="font-medium text-[var(--success)]">
@@ -2892,19 +2888,17 @@ Launch Your own! 👇`;
                           </td>
                           <td class="py-4 px-2">
                             ${contest.status === 2 && contest.winner !== '0x0000000000000000000000000000000000000000' ? `
-                              <div class="flex items-center gap-2">
-                                ${contest.winnerUser ? `
-                                  <a href="https://warpcast.com/${contest.winnerUser.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                                    ${contest.winnerUser.pfpUrl
-                                      ? `<img src="${contest.winnerUser.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover" onerror="this.style.display='none';" />`
-                                      : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs">🏆</span>`
-                                    }
-                                    <span class="font-medium text-yellow-400">@${contest.winnerUser.username}</span>
-                                  </a>
-                                ` : `
-                                  <span class="font-mono text-sm text-[var(--text-muted)]">${contest.winner.slice(0, 10)}...</span>
-                                `}
-                              </div>
+                              ${contest.winnerUser ? `
+                                <a href="https://warpcast.com/${contest.winnerUser.username}" target="_blank" class="flex flex-col items-center hover:opacity-80 transition-opacity">
+                                  ${contest.winnerUser.pfpUrl
+                                    ? `<img src="${contest.winnerUser.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover mb-1" onerror="this.style.display='none';" />`
+                                    : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs mb-1">🏆</span>`
+                                  }
+                                  <span class="text-xs font-medium text-yellow-400">@${contest.winnerUser.username}</span>
+                                </a>
+                              ` : `
+                                <span class="font-mono text-xs text-[var(--text-muted)]">${contest.winner.slice(0, 8)}...</span>
+                              `}
                             ` : `
                               <span class="text-[var(--text-muted)]">—</span>
                             `}
