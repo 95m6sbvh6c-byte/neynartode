@@ -2323,6 +2323,24 @@ Launch Your own! 👇`;
                                 </div>
                               </div>
 
+                              <!-- Cast It Button -->
+                              <div class="mt-4 flex gap-2">
+                                <button
+                                  onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}', '${(contest.hostUser?.username || '').replace(/'/g, "\\'")}', ${contest.requireRecast || false}, ${contest.requireLike || false}, ${contest.requireReply || false})"
+                                  class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-4 rounded-xl text-center text-sm transition-all transform hover:scale-105 shadow-lg cursor-pointer"
+                                >
+                                  📣 Cast It!
+                                </button>
+                                ${contest.castId ? `
+                                  <a
+                                    href="https://warpcast.com/~/conversations/${contest.castId}"
+                                    target="_blank"
+                                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-xl text-center text-sm transition-all"
+                                  >
+                                    👀 View
+                                  </a>
+                                ` : ''}
+                              </div>
                             </div>
                           </div>
                         </div>
