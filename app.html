@@ -33,14 +33,298 @@
     console.log('Farcaster Mini App SDK ready');
   </script>
   <style>
-    @keyframes bubble {
-      0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; }
-      50% { transform: translateY(-20px) scale(1.1); opacity: 0.8; }
-    }
-    .bubble { animation: bubble 3s ease-in-out infinite; }
-    body { font-family: system-ui, -apple-system, sans-serif; }
+    /* ===== MODERN DARK THEME FOUNDATION ===== */
+    :root {
+      /* Base colors */
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-tertiary: #1a1a24;
+      --bg-card: rgba(26, 26, 36, 0.8);
 
-    /* Toast notifications (replacement for alert) */
+      /* Text colors */
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+
+      /* Accent - Violet/Purple */
+      --accent: #8b5cf6;
+      --accent-light: #a78bfa;
+      --accent-dark: #7c3aed;
+      --accent-glow: rgba(139, 92, 246, 0.3);
+
+      /* Status colors */
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --warning-glow: rgba(245, 158, 11, 0.2);
+      --error: #ef4444;
+      --error-glow: rgba(239, 68, 68, 0.2);
+      --info: #3b82f6;
+
+      /* Borders */
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-light: rgba(255, 255, 255, 0.1);
+      --border-accent: rgba(139, 92, 246, 0.3);
+
+      /* Shadows */
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+      --shadow-glow: 0 0 40px var(--accent-glow);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== GLASSMORPHISM CARDS ===== */
+    .glass-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      transition: all 0.3s ease;
+    }
+
+    .glass-card:hover {
+      border-color: var(--border-light);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .glass-card-accent {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-accent);
+      border-radius: 16px;
+    }
+
+    /* ===== BUTTONS ===== */
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+      color: white;
+      font-weight: 600;
+      padding: 12px 24px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px var(--accent-glow);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-weight: 500;
+      padding: 12px 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-accent);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      font-weight: 500;
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+    }
+
+    .btn-ghost.active {
+      background: rgba(139, 92, 246, 0.15);
+      color: var(--accent-light);
+    }
+
+    /* ===== INPUTS ===== */
+    .input-modern {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 16px;
+      color: var(--text-primary);
+      font-size: 14px;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    .input-modern:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .input-modern::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* ===== STAT CARDS ===== */
+    .stat-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .stat-card:hover::before {
+      opacity: 1;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--accent-light);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+
+    .stat-value-sm {
+      font-size: 20px;
+    }
+
+    .stat-subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* ===== TAGS/BADGES ===== */
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .tag-accent {
+      background: rgba(139, 92, 246, 0.15);
+      color: var(--accent-light);
+    }
+
+    .tag-success {
+      background: var(--success-glow);
+      color: var(--success);
+    }
+
+    .tag-warning {
+      background: var(--warning-glow);
+      color: var(--warning);
+    }
+
+    .tag-error {
+      background: var(--error-glow);
+      color: var(--error);
+    }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 20px var(--accent-glow); }
+      50% { box-shadow: 0 0 40px var(--accent-glow); }
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    .animate-fade-in {
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    .animate-pulse-glow {
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    /* ===== SKELETON LOADING ===== */
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 50%, var(--bg-tertiary) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 8px;
+    }
+
+    /* ===== SCROLLBAR ===== */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* ===== TOAST NOTIFICATIONS ===== */
     #toast-container {
       position: fixed;
       top: 20px;
@@ -53,31 +337,54 @@
       max-width: 90vw;
       pointer-events: none;
     }
+
     .toast {
-      background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-      color: white;
-      padding: 16px 20px;
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      color: var(--text-primary);
+      padding: 14px 18px;
       border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      box-shadow: var(--shadow-lg);
       font-size: 14px;
       line-height: 1.5;
       white-space: pre-line;
       animation: toastIn 0.3s ease-out;
       pointer-events: auto;
-      max-width: 350px;
-      border: 1px solid rgba(255,255,255,0.1);
+      max-width: 380px;
+      border: 1px solid var(--border-subtle);
     }
-    .toast.success { border-left: 4px solid #10b981; }
-    .toast.error { border-left: 4px solid #ef4444; }
-    .toast.info { border-left: 4px solid #3b82f6; }
-    .toast.warning { border-left: 4px solid #f59e0b; }
+
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.error { border-left: 3px solid var(--error); }
+    .toast.info { border-left: 3px solid var(--info); }
+    .toast.warning { border-left: 3px solid var(--warning); }
+
     @keyframes toastIn {
       from { opacity: 0; transform: translateY(-20px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
     @keyframes toastOut {
       from { opacity: 1; transform: translateY(0); }
       to { opacity: 0; transform: translateY(-20px); }
+    }
+
+    /* ===== UTILITY CLASSES ===== */
+    .text-gradient {
+      background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent) 50%, #ec4899 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .glow-accent {
+      box-shadow: var(--shadow-glow);
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: 16px 0;
     }
   </style>
 </head>
@@ -87,40 +394,34 @@
   <!-- Cast Share Modal -->
   <div id="cast-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
     <!-- Backdrop -->
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeCastModal()"></div>
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeCastModal()"></div>
 
     <!-- Modal Content -->
-    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-4 border-purple-300">
+    <div class="relative glass-card w-full max-w-md p-6 animate-fade-in" style="background: var(--bg-secondary); border: 1px solid var(--border-light);">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-black text-purple-800">📣 Share Contest</h3>
-        <button onclick="closeCastModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        <h3 class="text-lg font-semibold text-[var(--text-primary)]">Share Contest</h3>
+        <button onclick="closeCastModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-2xl transition-colors">&times;</button>
       </div>
 
-      <p class="text-sm text-gray-600 mb-3">Customize your message before casting:</p>
+      <p class="text-sm text-[var(--text-secondary)] mb-3">Customize your message before casting:</p>
 
       <textarea
         id="cast-modal-text"
         rows="8"
-        class="w-full p-3 border-2 border-purple-200 rounded-xl focus:border-purple-400 focus:outline-none resize-none text-sm"
+        class="input-modern resize-none text-sm"
         placeholder="Enter your cast message..."
       ></textarea>
 
-      <p class="text-xs text-gray-500 mt-2 mb-4">
-        💡 The NEYNARtodes app link will be automatically added
+      <p class="text-xs text-[var(--text-muted)] mt-2 mb-4">
+        The NEYNARtodes app link will be automatically added
       </p>
 
       <div class="flex gap-3">
-        <button
-          onclick="closeCastModal()"
-          class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-xl transition-all"
-        >
+        <button onclick="closeCastModal()" class="btn-secondary flex-1">
           Cancel
         </button>
-        <button
-          onclick="submitCastModal()"
-          class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-3 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg"
-        >
-          🚀 Cast Now
+        <button onclick="submitCastModal()" class="btn-primary flex-1">
+          Cast Now
         </button>
       </div>
     </div>
@@ -305,6 +606,9 @@ Launch Your own! 👇`;
       socialEnabled: true,
       castHash: '',
       minLikes: '0',
+      showRecentCasts: false, // Toggle for recent casts dropdown
+      recentCasts: [], // User's last 3 casts
+      loadingRecentCasts: false,
       minRecasts: '0',
       minReplies: '0',
 
@@ -1567,6 +1871,56 @@ Launch Your own! 👇`;
       return `${hours}h ${minutes}m`;
     }
 
+    // Fetch user's recent casts from Neynar
+    async function fetchRecentCasts() {
+      if (!state.userFid) return;
+      state.loadingRecentCasts = true;
+      render();
+
+      try {
+        const response = await fetch(`https://api.neynar.com/v2/farcaster/feed/user/${state.userFid}/casts?limit=3&include_replies=false`, {
+          headers: {
+            'accept': 'application/json',
+            'api_key': CONFIG.NEYNAR_API_KEY
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          state.recentCasts = (data.casts || []).map(cast => ({
+            hash: cast.hash,
+            text: cast.text?.substring(0, 80) + (cast.text?.length > 80 ? '...' : '') || '',
+            timestamp: new Date(cast.timestamp).toLocaleDateString(),
+            url: `https://warpcast.com/${state.userProfile?.username || 'user'}/${cast.hash.substring(0, 10)}`
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching recent casts:', error);
+        state.recentCasts = [];
+      }
+
+      state.loadingRecentCasts = false;
+      state.showRecentCasts = true;
+      render();
+    }
+
+    // Copy cast hash to input and close dropdown
+    function selectRecentCast(url) {
+      state.castHash = url;
+      state.showRecentCasts = false;
+      render();
+    }
+
+    // Copy text to clipboard
+    async function copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Copied to clipboard!', 'success', 2000);
+      } catch (err) {
+        showToast('Failed to copy', 'error');
+      }
+    }
+
     // Get status color class
     function getStatusColor(status) {
       switch (status) {
@@ -1846,35 +2200,33 @@ Launch Your own! 👇`;
     function renderLaunchSuccess() {
       const { contestId, castHash, txHash, txUrl } = state.launchSuccess;
       return `
-        <div class="min-h-screen bg-gradient-to-b from-green-400 via-emerald-500 to-green-900 flex items-center justify-center p-6 relative overflow-hidden">
-          <div class="absolute inset-0 opacity-20">
-            <div class="absolute bottom-0 left-1/4 w-4 h-4 bg-white rounded-full bubble" style="animation-duration: 3s"></div>
-            <div class="absolute bottom-0 left-1/2 w-6 h-6 bg-white rounded-full bubble" style="animation-duration: 4s; animation-delay: 1s"></div>
-            <div class="absolute bottom-0 right-1/3 w-3 h-3 bg-white rounded-full bubble" style="animation-duration: 5s; animation-delay: 2s"></div>
-          </div>
+        <div class="min-h-screen flex items-center justify-center p-6" style="background: var(--bg-primary);">
+          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.15) 0%, transparent 60%);"></div>
 
-          <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center relative z-10 border-4 border-green-400">
-            <div class="text-7xl mb-4 animate-bounce">🎉</div>
-            <h1 class="text-3xl font-black mb-4 text-green-600">
-              CONTEST LAUNCHED!
+          <div class="glass-card p-8 max-w-sm w-full text-center relative z-10 animate-fade-in">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--success-glow)] flex items-center justify-center text-3xl">
+              🎉
+            </div>
+            <h1 class="text-2xl font-bold text-[var(--success)] mb-6">
+              Contest Launched!
             </h1>
 
-            <div class="bg-green-50 rounded-xl p-4 mb-6 border-2 border-green-200 text-left">
-              <div class="mb-3">
-                <p class="text-xs text-green-600 font-bold">CONTEST ID</p>
-                <p class="text-lg font-black text-green-800">#${contestId}</p>
-              </div>
-              <div class="mb-3">
-                <p class="text-xs text-green-600 font-bold">STATUS</p>
-                <p class="text-sm font-bold text-green-700">✅ Prize Locked in Escrow</p>
-              </div>
-              <div class="mb-3">
-                <p class="text-xs text-green-600 font-bold">WINNER SELECTION</p>
-                <p class="text-sm font-bold text-green-700">🎲 Chainlink VRF (when contest ends)</p>
+            <div class="bg-[var(--bg-secondary)] rounded-xl p-4 mb-6 text-left space-y-3">
+              <div>
+                <p class="text-xs text-[var(--text-muted)]">Contest ID</p>
+                <p class="text-lg font-bold text-[var(--text-primary)]">#${contestId}</p>
               </div>
               <div>
-                <p class="text-xs text-green-600 font-bold">TRANSACTION</p>
-                <a href="${txUrl}" target="_blank" class="text-sm font-bold text-blue-600 underline break-all">
+                <p class="text-xs text-[var(--text-muted)]">Status</p>
+                <p class="text-sm text-[var(--success)]">Prize locked in escrow</p>
+              </div>
+              <div>
+                <p class="text-xs text-[var(--text-muted)]">Winner Selection</p>
+                <p class="text-sm text-[var(--text-secondary)]">Chainlink VRF at contest end</p>
+              </div>
+              <div>
+                <p class="text-xs text-[var(--text-muted)]">Transaction</p>
+                <a href="${txUrl}" target="_blank" class="text-sm text-[var(--accent-light)] hover:underline break-all">
                   ${txHash.slice(0, 20)}...
                 </a>
               </div>
@@ -1882,17 +2234,17 @@ Launch Your own! 👇`;
 
             <button
               onclick="state.launchSuccess = null; render();"
-              class="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-4 rounded-2xl font-black text-lg transition-all shadow-lg transform hover:scale-105 border-2 border-green-300"
+              class="btn-primary w-full py-3"
             >
-              🦎 Launch Another Contest
+              Launch Another
             </button>
 
             <a
               href="${txUrl}"
               target="_blank"
-              class="block mt-4 text-green-600 font-bold text-sm underline"
+              class="block mt-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-sm transition-colors"
             >
-              View on BaseScan →
+              View on BaseScan
             </a>
           </div>
         </div>
@@ -1901,73 +2253,64 @@ Launch Your own! 👇`;
 
     function renderLoginPage() {
       return `
-        <div class="min-h-screen bg-gradient-to-b from-blue-400 via-purple-500 to-blue-900 flex items-center justify-center p-6 relative overflow-hidden">
-          <div class="absolute inset-0 opacity-20">
-            <div class="absolute bottom-0 left-1/4 w-4 h-4 bg-white rounded-full bubble" style="animation-duration: 3s"></div>
-            <div class="absolute bottom-0 left-1/2 w-6 h-6 bg-white rounded-full bubble" style="animation-duration: 4s; animation-delay: 1s"></div>
-            <div class="absolute bottom-0 right-1/3 w-3 h-3 bg-white rounded-full bubble" style="animation-duration: 5s; animation-delay: 2s"></div>
-          </div>
+        <div class="min-h-screen flex flex-col items-center justify-center p-6" style="background: var(--bg-primary);">
+          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.12) 0%, transparent 50%);"></div>
 
-          <div class="bg-white rounded-3xl shadow-2xl p-12 max-w-md w-full text-center relative z-10 border-4 border-purple-400">
-            <div class="mb-6">
-              <div class="text-7xl mb-4 animate-bounce">🦎</div>
-              <h1 class="text-5xl font-black mb-3" style="background: linear-gradient(45deg, #9333ea, #ec4899, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 2px 2px 4px rgba(147, 51, 234, 0.3); letter-spacing: -0.02em">
-                Danng<br/>Neynartodes!!
-              </h1>
-              <p class="text-purple-600 font-bold text-sm">🌊 Season 0 Beta 🌊</p>
+          <div class="max-w-md w-full text-center relative z-10 animate-fade-in">
+            <!-- Logo -->
+            <div class="w-28 h-28 mx-auto mb-6">
+              <img src="neynartode-sticker.png" alt="Neynartode" class="w-full h-full object-contain" style="filter: drop-shadow(0 0 30px rgba(139, 92, 246, 0.6)) drop-shadow(0 0 60px rgba(139, 92, 246, 0.4));" />
             </div>
 
-            <div class="mb-6 p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl border-2 border-purple-300">
-              <div class="text-2xl mb-2">🔒</div>
-              <p class="text-sm font-black text-purple-800 mb-1">SEASON 0 BETA</p>
-              <p class="text-xs text-purple-700 font-semibold">
-                ✅ Whitelist Required<br/>
-                💎 Hold 20K+ $NEYNARTODES
-              </p>
+            <!-- Header -->
+            <h1 class="text-4xl font-bold text-gradient mb-2">Neynartodes</h1>
+            <p class="text-xl text-[var(--text-primary)] font-medium mb-8">Trustless Onchain Gamified Raffle</p>
+
+            <!-- Subheading list -->
+            <div class="space-y-2 mb-10">
+              <p class="text-[var(--text-secondary)]">Bless Your Followers</p>
+              <p class="text-[var(--text-secondary)]">Promote Your Project</p>
+              <p class="text-[var(--text-secondary)]">Claim the Leaderboard</p>
+              <p class="text-[var(--accent-light)]">Feed The Neynartodes</p>
             </div>
 
             ${state.isCheckingWhitelist ? `
-              <div class="mb-4 p-4 bg-blue-100 rounded-xl border-2 border-blue-300">
-                <div class="animate-spin text-3xl mb-2">🌀</div>
-                <p class="text-sm font-bold text-blue-800">${state.walletStatus || 'Checking whitelist & balance...'}</p>
-                <p class="text-xs text-blue-600 mt-1">Unlock your wallet if prompted</p>
+              <div class="mb-4 p-4 glass-card">
+                <div class="animate-spin text-2xl mb-2">🌀</div>
+                <p class="text-sm font-medium text-[var(--text-primary)]">${state.walletStatus || 'Checking access...'}</p>
+                <p class="text-xs text-[var(--text-muted)] mt-1">Unlock wallet if prompted</p>
               </div>
             ` : ''}
 
+            <!-- Enter Button -->
             <button
               id="connectButton"
               ${state.isCheckingWhitelist ? 'disabled' : ''}
-              class="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-500 via-pink-500 to-purple-600 hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-5 rounded-2xl font-black text-xl transition-all shadow-lg transform hover:scale-105 border-2 border-purple-300"
-              style="text-shadow: 1px 1px 2px rgba(0,0,0,0.3)"
+              class="btn-primary w-full py-4 text-xl font-semibold disabled:opacity-50 mb-4"
             >
-              🔥 ${state.isCheckingWhitelist ? (state.walletStatus ? 'Waiting...' : 'Checking...') : 'Connect Wallet'}
+              ${state.isCheckingWhitelist ? 'Connecting...' : 'Enter'}
             </button>
 
-            <p class="mt-2 text-xs text-gray-500">
-              SDK: ${window.FarcasterSDK ? '✅' : '❌'} | Wallet: ${window.FarcasterSDK?.wallet ? '✅' : '❌'} | ETH: ${window.ethereum ? '✅' : '❌'}
-            </p>
-
-            <div class="mt-8 p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
-              <p class="text-sm text-purple-800 mb-2 font-semibold">🌊 Powered by the Colony 🌊</p>
+            <!-- Powered by -->
+            <div class="mt-10 pt-6 border-t border-[var(--border-subtle)]">
+              <p class="text-xs text-[var(--text-muted)] mb-2">Powered by</p>
               <a
                 href="https://dexscreener.com/base/0x8de1622fe07f56cda2e2273e615a513f1d828b07"
                 target="_blank"
-                rel="noopener noreferrer"
-                class="text-purple-600 hover:text-pink-600 font-black text-lg transition-colors"
+                class="text-[var(--accent-light)] hover:text-[var(--accent)] font-semibold text-lg transition-colors"
               >
                 $NEYNARTODES
               </a>
-              <p class="font-mono text-xs text-gray-600 mt-2 break-all">CA: 0x8de1622fe07f56cda2e2273e615a513f1d828b07</p>
+              <p class="font-mono text-xs text-[var(--text-muted)] mt-2 break-all">0x8de1622fe07f56cda2e2273e615a513f1d828b07</p>
             </div>
 
+            <!-- How to use -->
             <a
               href="https://github.com/95m6sbvh6c-byte/neynartode#readme"
               target="_blank"
-              rel="noopener noreferrer"
-              class="mt-4 inline-flex items-center gap-2 text-purple-600 hover:text-pink-600 font-semibold text-sm transition-colors"
+              class="mt-6 inline-block text-[var(--text-muted)] hover:text-[var(--text-secondary)] text-sm transition-colors"
             >
-              <span class="w-5 h-5 rounded-full bg-purple-200 flex items-center justify-center text-xs">?</span>
-              How to Use NEYNARtodes
+              How to Use
             </a>
           </div>
         </div>
@@ -1976,235 +2319,225 @@ Launch Your own! 👇`;
 
     function renderHeader() {
       return `
-        <div class="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-500 rounded-2xl shadow-2xl p-5 mb-6 border-4 border-purple-300">
-          <div class="text-center mb-4">
-            <h1 class="text-3xl font-black text-white flex items-center justify-center gap-3 drop-shadow-lg" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.3)">
-              <svg width="40" height="40" viewBox="0 0 100 100" class="drop-shadow-lg">
-                <defs>
-                  <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#fbbf24"/>
-                    <stop offset="100%" style="stop-color:#f59e0b"/>
-                  </linearGradient>
-                </defs>
-                <circle cx="50" cy="50" r="45" fill="url(#logoGrad)" stroke="white" stroke-width="4"/>
-                <text x="50" y="65" font-size="50" text-anchor="middle" fill="white">🦎</text>
-              </svg>
-              <span>NEYNARtodes</span>
-              <svg width="40" height="40" viewBox="0 0 100 100" class="drop-shadow-lg">
-                <circle cx="50" cy="50" r="45" fill="url(#logoGrad)" stroke="white" stroke-width="4"/>
-                <text x="50" y="65" font-size="50" text-anchor="middle" fill="white">🌊</text>
-              </svg>
-            </h1>
-            <p class="text-sm text-purple-100 font-semibold">
-              Season 0 Beta • ${state.userAddress.substring(0, 6)}...${state.userAddress.substring(38)}
-              ${state.userBadges.length > 0 ? `<span class="ml-2">${state.userBadges.map(b => getBadgeEmoji(b)).join('')}</span>` : ''}
-            </p>
-            <p class="text-xs text-white font-bold mt-1 bg-purple-600 bg-opacity-50 inline-block px-3 py-1 rounded-full">
-              Provider: ${window.activeEthProvider ? '✅' : '❌'} |
-              🦎 ${parseFloat(state.userBalance).toLocaleString()} $NEYNARTODES
-            </p>
+        <header class="glass-card p-4 mb-6 animate-fade-in">
+          <!-- Top bar with logo and user info -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl overflow-hidden">
+                <img src="neynartode-sticker.png" alt="Neynartode" class="w-full h-full object-cover" style="filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6));" />
+              </div>
+              <div>
+                <h1 class="text-xl font-bold text-gradient">NEYNARtodes</h1>
+                <p class="text-xs text-[var(--text-muted)]">Season 0 Beta</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-right">
+                <p class="text-sm font-medium text-[var(--text-primary)]">
+                  ${parseFloat(state.userBalance).toLocaleString()} <span class="text-[var(--accent-light)]">$NEYNARTODES</span>
+                </p>
+                <p class="text-xs text-[var(--text-muted)]">
+                  ${state.userAddress.substring(0, 6)}...${state.userAddress.substring(38)}
+                  ${state.userBadges.length > 0 ? `<span class="ml-1">${state.userBadges.map(b => getBadgeEmoji(b)).join('')}</span>` : ''}
+                </p>
+              </div>
+              <div class="w-2 h-2 rounded-full ${window.activeEthProvider ? 'bg-[var(--success)]' : 'bg-[var(--error)]'}"></div>
+            </div>
           </div>
-          <div class="flex justify-center gap-2 flex-wrap">
-            <button id="viewCreate" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'create' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
-              ✨ Create
+
+          <!-- Navigation tabs -->
+          <nav class="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-xl">
+            <button id="viewCreate" class="btn-ghost flex-1 text-sm ${state.currentView === 'create' ? 'active' : ''}">
+              Create
             </button>
-            <button id="viewHistory" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'history' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
-              📜 History
+            <button id="viewHistory" class="btn-ghost flex-1 text-sm ${state.currentView === 'history' ? 'active' : ''}">
+              History
             </button>
-            <button id="viewLeaderboard" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'leaderboard' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
-              🏆 Leaderboard
+            <button id="viewLeaderboard" class="btn-ghost flex-1 text-sm ${state.currentView === 'leaderboard' ? 'active' : ''}">
+              Leaderboard
             </button>
-            <button id="viewSuggestions" class="px-4 py-2 rounded-xl font-bold transition-all transform hover:scale-105 ${state.currentView === 'suggestions' ? 'bg-white text-purple-600 shadow-lg' : 'bg-purple-300 text-purple-800 hover:bg-purple-200'}">
-              💡 Suggestions
+            <button id="viewSuggestions" class="btn-ghost flex-1 text-sm ${state.currentView === 'suggestions' ? 'active' : ''}">
+              Suggestions
             </button>
-          </div>
-        </div>
+          </nav>
+        </header>
       `;
     }
 
     function renderLeaderboard() {
       return `
-        <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6 relative">
-          <div class="fixed inset-0 pointer-events-none opacity-10 overflow-hidden">
-            <div class="absolute top-10 left-10 text-6xl">🪸</div>
-            <div class="absolute top-40 right-20 text-5xl">🐚</div>
-            <div class="absolute bottom-20 left-1/4 text-7xl">🌊</div>
-            <div class="absolute bottom-40 right-1/3 text-5xl">🫧</div>
-          </div>
+        <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+          <!-- Subtle background gradient -->
+          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
 
-          <div class="max-w-7xl mx-auto relative z-10">
+          <div class="max-w-6xl mx-auto relative z-10">
             ${renderHeader()}
 
-            <div class="space-y-6">
-              <!-- Season Info -->
-              <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl shadow-2xl p-6 text-white border-4 border-purple-400 transform hover:scale-105 transition-transform">
-                  <div class="text-sm font-bold mb-2 opacity-90">⏰ Season Ends In ⏰</div>
+            <div class="space-y-4">
+              <!-- Stats Grid -->
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <!-- Season Countdown -->
+                <div class="stat-card">
+                  <div class="stat-label">Season Ends</div>
                   ${(() => {
                     const countdown = getSeasonCountdown();
-                    if (!countdown) return '<div id="countdown-text" class="text-3xl font-black mb-2">Loading...</div>';
-                    if (countdown.ended) return '<div id="countdown-text" class="text-3xl font-black mb-2">Season Ended!</div>';
+                    if (!countdown) return '<div id="countdown-text" class="stat-value stat-value-sm">Loading...</div>';
+                    if (countdown.ended) return '<div id="countdown-text" class="stat-value stat-value-sm">Ended</div>';
                     return `
-                      <div id="countdown-text" class="text-3xl font-black mb-2">${countdown.text}</div>
-                      <div class="text-xs opacity-90 font-semibold">Season #${state.currentSeason} Beta</div>
+                      <div id="countdown-text" class="stat-value stat-value-sm">${countdown.text}</div>
+                      <div class="stat-subtitle">Season ${state.currentSeason}</div>
                     `;
                   })()}
                 </div>
 
-                <div class="bg-gradient-to-br from-green-400 to-emerald-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-green-300 transform hover:scale-105 transition-transform">
-                  <div class="text-sm font-bold mb-2 opacity-90">🏆 Host Prize Pool 🏆</div>
-                  <div class="text-4xl font-black mb-2">${state.hostPoolETH.toFixed(4)} ETH</div>
-                  <div class="text-xs opacity-90 font-semibold">For Contest Creators</div>
+                <!-- Host Prize Pool -->
+                <div class="stat-card">
+                  <div class="stat-label">Prize Pool</div>
+                  <div class="stat-value stat-value-sm">${state.hostPoolETH.toFixed(4)} <span class="text-[var(--text-muted)] text-lg">ETH</span></div>
+                  <div class="stat-subtitle">For contest hosts</div>
                 </div>
 
-                <div class="bg-gradient-to-br from-red-400 to-orange-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-red-300 transform hover:scale-105 transition-transform">
-                  <div class="text-sm font-bold mb-2 opacity-90">🔥 ALL-TIME BURNED 🔥</div>
-                  <div class="text-4xl font-black mb-2">${Number(state.totalTokensBurned).toLocaleString(undefined, {maximumFractionDigits: 0})} $NEYNARTODES</div>
-                  <div class="text-xs opacity-90 font-semibold">Permanently removed from supply</div>
+                <!-- Tokens Burned -->
+                <div class="stat-card">
+                  <div class="stat-label">Tokens Burned</div>
+                  <div class="stat-value stat-value-sm">${Number(state.totalTokensBurned).toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
+                  <div class="stat-subtitle">Removed from supply</div>
                 </div>
 
-                <div class="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-2xl p-6 text-white border-4 border-yellow-300 transform hover:scale-105 transition-transform">
-                  <div class="text-sm font-bold mb-2 opacity-90">👑 Leader 👑</div>
+                <!-- Leader -->
+                <div class="stat-card">
+                  <div class="stat-label">Current Leader</div>
                   ${state.leaderboardData.length > 0 ? `
-                    <a href="https://warpcast.com/${state.leaderboardData[0].username}" target="_blank" class="block hover:opacity-90 transition-opacity cursor-pointer">
-                      <div class="flex items-center gap-2 mb-2">
+                    <a href="https://warpcast.com/${state.leaderboardData[0].username}" target="_blank" class="block hover:opacity-80 transition-opacity">
+                      <div class="flex items-center gap-2 mt-1">
                         ${state.leaderboardData[0].pfpUrl
-                          ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="@${state.leaderboardData[0].username}" class="w-10 h-10 rounded-full object-cover border-2 border-yellow-200" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-10 h-10 rounded-full bg-yellow-200 items-center justify-center text-lg text-yellow-800 hidden">${state.leaderboardData[0].pfp}</span>`
-                          : `<span class="w-10 h-10 rounded-full bg-yellow-200 flex items-center justify-center text-lg text-yellow-800">${state.leaderboardData[0].pfp}</span>`
+                          ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="" class="w-8 h-8 rounded-full object-cover" onerror="this.style.display='none';" />`
+                          : `<span class="w-8 h-8 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-sm">${state.leaderboardData[0].pfp}</span>`
                         }
-                        <span class="text-2xl font-black">@${state.leaderboardData[0].username}</span>
+                        <span class="stat-value stat-value-sm">@${state.leaderboardData[0].username}</span>
                       </div>
-                      <div class="text-xs opacity-90 font-semibold">
-                        ${state.leaderboardData[0].totalScore.toLocaleString()} points
-                      </div>
+                      <div class="stat-subtitle">${state.leaderboardData[0].totalScore.toLocaleString()} points</div>
                     </a>
                   ` : `
-                    <div class="flex items-center gap-2 mb-2">
-                      <span class="text-3xl font-black">TBA</span>
-                    </div>
-                    <div class="text-xs opacity-90 font-semibold">
-                      Launch contests to compete!
-                    </div>
+                    <div class="stat-value stat-value-sm">TBA</div>
+                    <div class="stat-subtitle">Be the first!</div>
                   `}
                 </div>
               </div>
 
-              <!-- All-Time Stats -->
-              <div class="grid grid-cols-1 gap-4">
-                <div class="bg-gradient-to-br from-emerald-400 to-green-600 rounded-2xl shadow-2xl p-6 text-white border-4 border-emerald-300">
-                  <div class="text-sm font-bold mb-2 opacity-90">💎 ALL-TIME PRIZES 💎</div>
-                  <div class="text-4xl font-black mb-2">${state.totalPrizesGiven.toFixed(4)} ETH</div>
-                  <div class="text-xs opacity-90 font-semibold">Given to hosts & voters</div>
+              <!-- All-Time Prizes - Full Width -->
+              <div class="stat-card">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="stat-label">All-Time Prizes Distributed</div>
+                    <div class="stat-value">${state.totalPrizesGiven.toFixed(4)} <span class="text-[var(--text-muted)] text-xl">ETH</span></div>
+                  </div>
+                  <div class="text-4xl opacity-20">💎</div>
                 </div>
               </div>
 
-              <!-- Feed the Neynartodes Button -->
+              <!-- Feed the Neynartodes -->
               ${parseFloat(state.pendingClankerFees) > 0 ? `
-                <div class="bg-gradient-to-r from-orange-100 to-red-100 rounded-2xl shadow-xl p-6 border-4 border-orange-300">
-                  <div class="flex items-center justify-between">
+                <div class="glass-card-accent p-5">
+                  <div class="flex items-center justify-between gap-4">
                     <div class="flex-1">
-                      <h3 class="text-2xl font-black text-orange-800 mb-2">🦎 Feed the Neynartodes! 🦎</h3>
-                      <p class="text-sm text-orange-700 font-semibold mb-2">
-                        ${parseFloat(state.pendingClankerFees).toFixed(2)} $NEYNARTODES available from Clanker fees!
-                      </p>
-                      <p class="text-xs text-orange-600">
-                        Click to collect fees and compound liquidity. 50% goes to treasury, 50% to recipient, then triggers Captain Hook!
+                      <h3 class="text-lg font-semibold text-[var(--text-primary)] mb-1">Feed the Neynartodes</h3>
+                      <p class="text-sm text-[var(--text-secondary)]">
+                        ${parseFloat(state.pendingClankerFees).toFixed(2)} tokens available from Clanker fees
                       </p>
                     </div>
-                    <button
-                      onclick="feedTheNeynartodes()"
-                      class="ml-4 px-8 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white rounded-2xl font-black text-xl transition-all shadow-lg transform hover:scale-105 border-2 border-orange-300"
-                    >
-                      🍖 FEED NOW
+                    <button onclick="feedTheNeynartodes()" class="btn-primary whitespace-nowrap">
+                      Feed Now
                     </button>
                   </div>
                 </div>
               ` : ''}
 
-              <!-- Voting Info -->
-              <div class="bg-gradient-to-r from-pink-100 to-purple-100 rounded-2xl shadow-xl p-6 border-4 border-purple-300">
-                <div class="flex items-center justify-between">
+              <!-- Voting Power -->
+              <div class="glass-card p-5">
+                <div class="flex items-center justify-between mb-4">
                   <div>
-                    <h3 class="text-xl font-black text-purple-800 mb-1">⚡ Your Voting Power ⚡</h3>
-                    <p class="text-sm text-purple-700 font-semibold">
-                      1000 $NEYNARTODES per vote • Resets daily 🔄
-                    </p>
+                    <h3 class="text-lg font-semibold text-[var(--accent-light)]">Your Voting Power</h3>
+                    <p class="text-sm text-[var(--text-secondary)]">1000 tokens per vote • Resets daily</p>
                   </div>
                   <div class="text-right">
-                    <div class="text-4xl font-black text-purple-600">${state.votesRemaining}/10</div>
-                    <div class="text-xs text-purple-700 font-bold">Votes Left Today</div>
+                    <div class="text-3xl font-bold text-[var(--accent-light)]">${state.votesRemaining}<span class="text-[var(--text-muted)] text-lg">/10</span></div>
+                    <div class="text-xs text-[var(--text-muted)]">votes remaining</div>
                   </div>
                 </div>
-                <div class="mt-4 bg-white p-4 rounded-xl border-2 border-purple-200 text-sm text-purple-800">
-                  <p class="font-black mb-2">🦎 How Voting Works:</p>
-                  <ul class="mt-2 space-y-1 list-none font-semibold">
-                    <li>💸 1000 $NEYNARTODES per vote (50% 🔥 burned, 50% → prize pool)</li>
-                    <li>👍 Upvotes add 200 points | 👎 Downvotes subtract 200 points</li>
-                    <li>📊 10 votes per day - make them count!</li>
-                  </ul>
+                <div class="divider"></div>
+                <div class="grid grid-cols-3 gap-4 text-center text-sm">
+                  <div>
+                    <div class="text-[var(--text-muted)] mb-1">Cost</div>
+                    <div class="text-[var(--text-primary)] font-medium">1000 tokens</div>
+                  </div>
+                  <div>
+                    <div class="text-[var(--text-muted)] mb-1">Upvote</div>
+                    <div class="text-[var(--success)] font-medium">+200 pts</div>
+                  </div>
+                  <div>
+                    <div class="text-[var(--text-muted)] mb-1">Downvote</div>
+                    <div class="text-[var(--error)] font-medium">-200 pts</div>
+                  </div>
                 </div>
               </div>
 
               <!-- Leaderboard Table -->
-              <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
-                <div class="flex items-center justify-between mb-6">
-                  <div class="flex items-center gap-3">
-                    <div class="text-purple-600 text-4xl">📈</div>
-                    <div>
-                      <h2 class="text-3xl font-black text-purple-800">🦎 Colony Leaderboard 🦎</h2>
-                      <p class="text-sm text-purple-600 font-bold">Top Neynartode Feeders - Season ${state.currentSeason}</p>
-                    </div>
+              <div class="glass-card p-5">
+                <div class="flex items-center justify-between mb-5">
+                  <div>
+                    <h2 class="text-xl font-bold"><span class="text-gradient">NEYNARtodes</span> <span class="text-[var(--text-primary)]">Leaderboard</span></h2>
+                    <p class="text-sm text-[var(--text-muted)]">Season ${state.currentSeason} Rankings</p>
                   </div>
                   <a
                     href="https://github.com/95m6sbvh6c-byte/neynartode/blob/main/docs/GUIDE_LEADERBOARD.md"
                     target="_blank"
-                    rel="noopener noreferrer"
-                    class="w-8 h-8 rounded-full bg-purple-200 hover:bg-purple-300 flex items-center justify-center text-purple-700 font-bold text-sm transition-colors"
-                    title="Leaderboard Guide"
-                  >?</a>
+                    class="btn-ghost text-sm"
+                  >Guide</a>
                 </div>
 
                 <div class="overflow-x-auto">
                   ${state.leaderboardData.length === 0 ? `
                     <div class="text-center py-12">
-                      <div class="text-6xl mb-4">🦎</div>
-                      <h3 class="text-2xl font-black text-purple-800 mb-2">No Hosts Yet!</h3>
-                      <p class="text-purple-600 font-semibold">Be the first to launch a contest and claim the top spot!</p>
-                      <p class="text-sm text-purple-500 mt-2">Top 10 hosts will be displayed here</p>
+                      <div class="w-16 h-16 mx-auto mb-4">
+                        <img src="neynartode-sticker.png" alt="Neynartode" class="w-full h-full object-contain" style="filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.5));" />
+                      </div>
+                      <h3 class="text-lg font-semibold text-[var(--text-primary)] mb-2">No Hosts Yet</h3>
+                      <p class="text-[var(--text-secondary)] text-sm">Be the first to launch a contest!</p>
                     </div>
                   ` : `
                   <table class="w-full">
                     <thead>
-                      <tr class="border-b-2 border-gray-200">
-                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Rank</th>
-                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Host</th>
-                        <th class="text-right py-3 px-2 font-semibold text-gray-700">Score</th>
-                        <th class="text-center py-3 px-2 font-semibold text-gray-700">Vote</th>
-                        <th class="text-right py-3 px-2 font-semibold text-gray-700">Completed</th>
-                        <th class="text-right py-3 px-2 font-semibold text-gray-700">Neynar</th>
+                      <tr class="border-b border-[var(--border-subtle)]">
+                        <th class="text-left py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Rank</th>
+                        <th class="text-left py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Host</th>
+                        <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Score</th>
+                        <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Vote</th>
+                        <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Contests</th>
+                        <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Neynar</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${state.leaderboardData.map(host => `
-                        <tr class="border-b-2 border-purple-100 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 transition-all">
+                        <tr class="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-secondary)] transition-colors">
                           <td class="py-4 px-2">
-                            <div class="font-black text-xl ${
-                              host.rank === 1 ? 'text-yellow-500 text-2xl' :
-                              host.rank === 2 ? 'text-gray-400 text-xl' :
-                              host.rank === 3 ? 'text-orange-500 text-xl' :
-                              'text-purple-600'
+                            <div class="font-bold text-lg ${
+                              host.rank === 1 ? 'text-yellow-400' :
+                              host.rank === 2 ? 'text-gray-400' :
+                              host.rank === 3 ? 'text-orange-400' :
+                              'text-[var(--text-muted)]'
                             }">
-                              ${host.rank === 1 ? '👑' : host.rank === 2 ? '🥈' : host.rank === 3 ? '🥉' : `#${host.rank}`}
+                              ${host.rank <= 3 ? ['🥇', '🥈', '🥉'][host.rank - 1] : host.rank}
                             </div>
                           </td>
                           <td class="py-4 px-2">
-                            <a href="https://warpcast.com/${host.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
+                            <a href="https://warpcast.com/${host.username}" target="_blank" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
                               ${host.pfpUrl
-                                ? `<img src="${host.pfpUrl}" alt="@${host.username}" class="w-10 h-10 rounded-full object-cover border-2 border-purple-300" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-10 h-10 rounded-full bg-purple-200 items-center justify-center text-lg hidden">${host.pfp}</span>`
-                                : `<span class="w-10 h-10 rounded-full bg-purple-200 flex items-center justify-center text-lg">${host.pfp}</span>`
+                                ? `<img src="${host.pfpUrl}" alt="" class="w-9 h-9 rounded-full object-cover" onerror="this.style.display='none';" />`
+                                : `<span class="w-9 h-9 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-sm">${host.pfp}</span>`
                               }
                               <div>
-                                <div class="font-semibold text-gray-800 flex items-center gap-1 hover:text-purple-600">
+                                <div class="font-medium text-[var(--text-primary)] flex items-center gap-1">
                                   @${host.username}
                                   ${host.badges.map(badge => `<span title="${getBadgeTitle(badge)}">${getBadgeEmoji(badge)}</span>`).join('')}
                                 </div>
@@ -2212,13 +2545,11 @@ Launch Your own! 👇`;
                             </a>
                           </td>
                           <td class="py-4 px-2 text-right">
-                            <div class="font-bold text-purple-600 text-lg" title="Contest: ${(host.contestScore || 0).toLocaleString()} | Votes: ${(host.voteScore || 0).toLocaleString()}">
+                            <div class="font-semibold text-[var(--accent-light)]" title="Contest: ${(host.contestScore || 0).toLocaleString()} | Votes: ${(host.voteScore || 0).toLocaleString()}">
                               ${(host.totalScore || 0).toLocaleString()}
                             </div>
-                            <div class="text-xs text-gray-500">
-                              <span title="Social Score">💬${(host.socialScore || 0).toLocaleString()}</span>
-                              <span class="ml-1" title="Token Score">💰${(host.tokenScore || 0).toLocaleString()}</span>
-                              <span class="ml-1" title="Vote Score (${host.upvotes || 0}👍 - ${host.downvotes || 0}👎)">🗳️${(host.voteScore || 0).toLocaleString()}</span>
+                            <div class="text-xs text-[var(--text-muted)] mt-0.5">
+                              ${(host.socialScore || 0).toLocaleString()} social · ${(host.tokenScore || 0).toLocaleString()} token
                             </div>
                           </td>
                           <td class="py-4 px-2">
@@ -2226,29 +2557,23 @@ Launch Your own! 👇`;
                               <button
                                 onclick="voteForHost(${host.fid}, true)"
                                 ${state.votesRemaining <= 0 ? 'disabled' : ''}
-                                class="p-2 bg-green-100 hover:bg-green-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-green-600 rounded transition-colors"
+                                class="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--success-glow)] hover:bg-[var(--success)] hover:bg-opacity-30 disabled:opacity-30 disabled:cursor-not-allowed text-[var(--success)] transition-colors text-sm"
                                 title="Upvote (+200 pts)"
-                              >
-                                👍
-                              </button>
+                              >▲</button>
                               <button
                                 onclick="voteForHost(${host.fid}, false)"
                                 ${state.votesRemaining <= 0 ? 'disabled' : ''}
-                                class="p-2 bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-red-600 rounded transition-colors"
+                                class="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--error-glow)] hover:bg-[var(--error)] hover:bg-opacity-30 disabled:opacity-30 disabled:cursor-not-allowed text-[var(--error)] transition-colors text-sm"
                                 title="Downvote (-200 pts)"
-                              >
-                                👎
-                              </button>
+                              >▼</button>
                             </div>
                           </td>
-                          <td class="py-4 px-2 text-right text-gray-700">
-                            <div class="font-semibold">${host.completedContests || host.contests || 0}</div>
-                            <div class="text-xs text-gray-400">${host.contests || 0} total</div>
+                          <td class="py-4 px-2 text-right">
+                            <div class="font-medium text-[var(--text-primary)]">${host.completedContests || host.contests || 0}</div>
+                            <div class="text-xs text-[var(--text-muted)]">${host.contests || 0} total</div>
                           </td>
                           <td class="py-4 px-2 text-right">
-                            <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm font-semibold">
-                              ${host.neynarScore}
-                            </span>
+                            <span class="tag tag-accent">${host.neynarScore}</span>
                           </td>
                         </tr>
                       `).join('')}
@@ -2257,30 +2582,31 @@ Launch Your own! 👇`;
                   `}
                 </div>
 
-                <div class="mt-6 p-6 bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl border-4 border-purple-300">
-                  <h3 class="font-black text-purple-900 mb-3 text-xl">🦎 Scoring System 🦎</h3>
-                  <div class="text-sm text-purple-800 space-y-2 font-semibold">
-                    <div>🎯 <strong>Total Score = Contest Score + Vote Score</strong></div>
-                    <div>📊 Contest Score = (Social×3) + Token</div>
-                    <div>🗳️ Vote Score = (Upvotes - Downvotes) × 200</div>
-                    <div>💬 Social = (Likes×1 + Recasts×2 + Replies×3) × 100</div>
-                    <div>💰 Token = Volume Points × 50</div>
+                <!-- Scoring Info - Collapsed by default -->
+                <details class="mt-4">
+                  <summary class="text-sm text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors">
+                    How scoring works
+                  </summary>
+                  <div class="mt-3 p-4 bg-[var(--bg-secondary)] rounded-xl text-sm text-[var(--text-secondary)] space-y-1">
+                    <div><span class="text-[var(--text-primary)]">Total Score</span> = Contest Score + Vote Score</div>
+                    <div><span class="text-[var(--text-primary)]">Contest Score</span> = (Social × 3) + Token</div>
+                    <div><span class="text-[var(--text-primary)]">Vote Score</span> = (Upvotes - Downvotes) × 200</div>
                   </div>
-                </div>
+                </details>
               </div>
 
               <!-- Active Contests Section -->
               ${state.upcomingContests.length > 0 ? `
-                <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-green-300 mt-6">
-                  <div class="flex items-center gap-3 mb-6">
-                    <div class="text-green-600 text-4xl">🔥</div>
+                <div class="glass-card p-5 mt-4">
+                  <div class="flex items-center justify-between mb-4">
                     <div>
-                      <h2 class="text-3xl font-black text-green-700">🔴 Active Contests 🔴</h2>
-                      <p class="text-sm text-green-600 font-bold">${state.upcomingContests.length} contest${state.upcomingContests.length > 1 ? 's' : ''} live now!</p>
+                      <h2 class="text-xl font-bold"><span class="text-[var(--text-primary)]">Active</span> <span class="text-gradient">Contests</span></h2>
+                      <p class="text-sm text-[var(--text-muted)]">${state.upcomingContests.length} live now</p>
                     </div>
+                    <div class="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse"></div>
                   </div>
 
-                  <div class="space-y-4">
+                  <div class="space-y-3">
                     ${state.upcomingContests.filter(c => new Date(c.endTime) > new Date()).slice(0, 10).map(contest => {
                       const now = new Date();
                       const isLive = new Date(contest.startTime) <= now && new Date(contest.endTime) > now;
@@ -2290,55 +2616,61 @@ Launch Your own! 👇`;
                       const minutesLeft = Math.floor((timeLeft % 3600) / 60);
 
                       return `
-                        <div class="border-2 ${isLive ? 'border-green-400 bg-green-50' : isPending ? 'border-yellow-400 bg-yellow-50' : 'border-purple-200 bg-purple-50'} rounded-xl p-4">
-                          <div class="flex items-start justify-between">
-                            <div class="flex-1">
-                              <div class="flex items-center gap-2 mb-2">
-                                ${isLive ? '<span class="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">🔴 LIVE NOW</span>' : isPending ? '<span class="bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-bold">🎲 PENDING VRF</span>' : '<span class="bg-purple-500 text-white px-3 py-1 rounded-full text-xs font-bold">⏰ UPCOMING</span>'}
-                                <span class="text-sm font-semibold text-gray-700">Contest #${contest.contestId}</span>
-                              </div>
-
+                        <div class="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-[var(--border-light)] transition-all">
+                          <div class="flex items-start justify-between gap-4">
+                            <div class="flex-1 min-w-0">
+                              <!-- Header row -->
                               <div class="flex items-center gap-2 mb-3">
-                                ${contest.hostUser?.pfpUrl ? `<img src="${contest.hostUser.pfpUrl}" class="w-8 h-8 rounded-full border-2 border-purple-300" onerror="this.style.display='none'" />` : ''}
-                                <span class="font-bold text-purple-700">${contest.hostUser?.username ? '@' + contest.hostUser.username : contest.host.slice(0, 10) + '...'}</span>
+                                ${isLive
+                                  ? '<span class="tag tag-success"><span class="w-1.5 h-1.5 rounded-full bg-[var(--success)] animate-pulse"></span>Live</span>'
+                                  : isPending
+                                  ? '<span class="tag tag-warning">Pending</span>'
+                                  : '<span class="tag tag-accent">Upcoming</span>'}
+                                <span class="text-sm text-[var(--text-muted)]">#${contest.contestId}</span>
                               </div>
 
-                              <div class="grid grid-cols-2 gap-3 mt-3">
-                                <div class="bg-white p-2 rounded-lg">
-                                  <div class="text-xs text-gray-600">🎁 Prize</div>
-                                  <div class="text-sm font-bold text-green-600">${contest.prize}</div>
+                              <!-- Host info -->
+                              <div class="flex items-center gap-2 mb-3">
+                                ${contest.hostUser?.pfpUrl ? `<img src="${contest.hostUser.pfpUrl}" class="w-7 h-7 rounded-full" onerror="this.style.display='none'" />` : ''}
+                                <span class="font-medium text-[var(--text-primary)]">${contest.hostUser?.username ? '@' + contest.hostUser.username : contest.host.slice(0, 10) + '...'}</span>
+                              </div>
+
+                              <!-- Info grid -->
+                              <div class="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                  <div class="text-xs text-[var(--text-muted)] mb-0.5">Prize</div>
+                                  <div class="text-sm font-semibold text-[var(--success)]">${contest.prize}</div>
                                 </div>
-                                <div class="bg-white p-2 rounded-lg">
-                                  <div class="text-xs text-gray-600">⏱️ Time Left</div>
-                                  <div class="text-sm font-bold text-blue-600">${hoursLeft}h ${minutesLeft}m</div>
-                                </div>
-                                <div class="bg-white p-2 rounded-lg col-span-2">
-                                  <div class="text-xs text-gray-600 mb-1">📊 Entry Requirements</div>
-                                  <div class="flex flex-wrap gap-1">
-                                    ${contest.requireRecast ? '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-semibold">🔄 Recast</span>' : ''}
-                                    ${contest.requireLike ? '<span class="bg-pink-100 text-pink-700 px-2 py-0.5 rounded text-xs font-semibold">❤️ Like</span>' : ''}
-                                    ${contest.requireReply ? '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-semibold">💬 Reply</span>' : ''}
-                                    ${contest.volumeRequirement > 0 ? `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-semibold">💰 $${contest.volumeRequirement} ${contest.tokenRequirementSymbol || ''}</span>` : ''}
-                                    ${!contest.requireRecast && !contest.requireLike && !contest.requireReply && !contest.volumeRequirement ? '<span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-semibold">🎁 Open to all</span>' : ''}
-                                  </div>
+                                <div>
+                                  <div class="text-xs text-[var(--text-muted)] mb-0.5">Time Left</div>
+                                  <div class="text-sm font-semibold text-[var(--text-primary)]">${hoursLeft}h ${minutesLeft}m</div>
                                 </div>
                               </div>
 
-                              <!-- Cast It Button -->
-                              <div class="mt-4 flex gap-2">
+                              <!-- Requirements -->
+                              <div class="flex flex-wrap gap-1.5 mb-3">
+                                ${contest.requireRecast ? '<span class="tag tag-accent">Recast</span>' : ''}
+                                ${contest.requireLike ? '<span class="tag tag-accent">Like</span>' : ''}
+                                ${contest.requireReply ? '<span class="tag tag-accent">Reply</span>' : ''}
+                                ${contest.volumeRequirement > 0 ? `<span class="tag tag-warning">$${contest.volumeRequirement} vol</span>` : ''}
+                                ${!contest.requireRecast && !contest.requireLike && !contest.requireReply && !contest.volumeRequirement ? '<span class="tag" style="background: var(--bg-tertiary); color: var(--text-secondary);">Open to all</span>' : ''}
+                              </div>
+
+                              <!-- Actions -->
+                              <div class="flex gap-2">
                                 <button
                                   onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}', '${(contest.hostUser?.username || '').replace(/'/g, "\\'")}', ${contest.requireRecast || false}, ${contest.requireLike || false}, ${contest.requireReply || false}, '${contest.castId || ''}')"
-                                  class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-4 rounded-xl text-center text-sm transition-all transform hover:scale-105 shadow-lg cursor-pointer"
+                                  class="btn-primary text-sm py-2 px-4"
                                 >
-                                  📣 Cast It!
+                                  Share
                                 </button>
                                 ${contest.castId ? `
                                   <a
                                     href="https://warpcast.com/~/conversations/${contest.castId}"
                                     target="_blank"
-                                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-xl text-center text-sm transition-all"
+                                    class="btn-secondary text-sm py-2 px-4"
                                   >
-                                    👀 View
+                                    View
                                   </a>
                                 ` : ''}
                               </div>
@@ -2350,8 +2682,8 @@ Launch Your own! 👇`;
                   </div>
 
                   ${state.upcomingContests.length > 10 ? `
-                    <div class="mt-4 text-center text-sm text-purple-600 font-semibold">
-                      + ${state.upcomingContests.length - 10} more contests scheduled
+                    <div class="mt-4 text-center text-sm text-[var(--text-muted)]">
+                      + ${state.upcomingContests.length - 10} more contests
                     </div>
                   ` : ''}
                 </div>
@@ -2364,179 +2696,158 @@ Launch Your own! 👇`;
 
     function renderHistory() {
       return `
-        <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6 relative">
-          <div class="fixed inset-0 pointer-events-none opacity-10 overflow-hidden">
-            <div class="absolute top-10 left-10 text-6xl">🪸</div>
-            <div class="absolute top-40 right-20 text-5xl">🐚</div>
-            <div class="absolute bottom-20 left-1/4 text-7xl">🌊</div>
-            <div class="absolute bottom-40 right-1/3 text-5xl">🫧</div>
-          </div>
+        <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
 
-          <div class="max-w-7xl mx-auto relative z-10">
+          <div class="max-w-6xl mx-auto relative z-10">
             ${renderHeader()}
 
             <!-- Stats Summary -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl shadow-xl p-4 text-white border-4 border-purple-400">
-                <div class="text-sm font-bold opacity-90">📊 Total Contests</div>
-                <div class="text-3xl font-black">${state.historyTotal || 0}</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div class="stat-card">
+                <div class="stat-label">Total Contests</div>
+                <div class="stat-value stat-value-sm">${state.historyTotal || 0}</div>
               </div>
-              <div class="bg-gradient-to-br from-green-400 to-emerald-600 rounded-2xl shadow-xl p-4 text-white border-4 border-green-300">
-                <div class="text-sm font-bold opacity-90">✅ Completed</div>
-                <div class="text-3xl font-black">${(state.historyData || []).filter(c => c.status === 2).length}</div>
+              <div class="stat-card">
+                <div class="stat-label">Completed</div>
+                <div class="stat-value stat-value-sm text-[var(--success)]">${(state.historyData || []).filter(c => c.status === 2).length}</div>
               </div>
-              <div class="bg-gradient-to-br from-blue-400 to-cyan-600 rounded-2xl shadow-xl p-4 text-white border-4 border-blue-300">
-                <div class="text-sm font-bold opacity-90">🔵 Active</div>
-                <div class="text-3xl font-black">${(state.historyData || []).filter(c => c.status === 0).length}</div>
+              <div class="stat-card">
+                <div class="stat-label">Active</div>
+                <div class="stat-value stat-value-sm text-[var(--info)]">${(state.historyData || []).filter(c => c.status === 0).length}</div>
               </div>
-              <div class="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-xl p-4 text-white border-4 border-yellow-300">
-                <div class="text-sm font-bold opacity-90">🎲 Pending VRF</div>
-                <div class="text-3xl font-black">${(state.historyData || []).filter(c => c.status === 1).length}</div>
+              <div class="stat-card">
+                <div class="stat-label">Pending VRF</div>
+                <div class="stat-value stat-value-sm text-[var(--warning)]">${(state.historyData || []).filter(c => c.status === 1).length}</div>
               </div>
             </div>
 
             <!-- Contest History Table -->
-            <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
-              <div class="flex items-center justify-between mb-6">
-                <div class="flex items-center gap-3">
-                  <div class="text-purple-600 text-4xl">📜</div>
-                  <div>
-                    <h2 class="text-3xl font-black text-purple-800">Contest History</h2>
-                    <p class="text-sm text-purple-600 font-bold">Last 20 contests on NEYNARtodes</p>
-                  </div>
+            <div class="glass-card p-5">
+              <div class="flex items-center justify-between mb-5">
+                <div>
+                  <h2 class="text-xl font-bold text-[var(--text-primary)]">Contest History</h2>
+                  <p class="text-sm text-[var(--text-muted)]">Last 20 contests</p>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2">
                   <a
                     href="https://github.com/95m6sbvh6c-byte/neynartode/blob/main/docs/GUIDE_HISTORY.md"
                     target="_blank"
-                    rel="noopener noreferrer"
-                    class="w-8 h-8 rounded-full bg-purple-200 hover:bg-purple-300 flex items-center justify-center text-purple-700 font-bold text-sm transition-colors"
-                    title="History Guide"
-                  >?</a>
-                  <button
-                    onclick="loadHistory()"
-                    class="px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg font-semibold transition-colors"
-                  >
-                    🔄 Refresh
+                    class="btn-ghost text-sm"
+                  >Guide</a>
+                  <button onclick="loadHistory()" class="btn-secondary text-sm py-2 px-3">
+                    Refresh
                   </button>
                 </div>
               </div>
 
               ${state.historyLoading ? `
                 <div class="text-center py-12">
-                  <div class="text-6xl mb-4 animate-bounce">🦎</div>
-                  <h3 class="text-2xl font-black text-purple-800 mb-2">Loading Contests...</h3>
-                  <p class="text-purple-600 font-semibold">Fetching on-chain data</p>
+                  <div class="w-16 h-16 mx-auto mb-4 animate-bounce">
+                    <img src="neynartode-sticker.png" alt="Neynartode" class="w-full h-full object-contain" style="filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.5));" />
+                  </div>
+                  <h3 class="text-lg font-semibold text-[var(--text-primary)] mb-2">Loading Contests...</h3>
+                  <p class="text-[var(--text-muted)] text-sm">Fetching on-chain data</p>
                 </div>
               ` : state.historyError ? `
                 <div class="text-center py-12">
-                  <div class="text-6xl mb-4">❌</div>
-                  <h3 class="text-2xl font-black text-red-800 mb-2">Error Loading History</h3>
-                  <p class="text-red-600 font-semibold">${state.historyError}</p>
-                  <button
-                    onclick="loadHistory()"
-                    class="mt-4 px-6 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition-colors"
-                  >
+                  <div class="text-5xl mb-4 opacity-50">❌</div>
+                  <h3 class="text-lg font-semibold text-[var(--error)] mb-2">Error Loading History</h3>
+                  <p class="text-[var(--text-muted)] text-sm mb-4">${state.historyError}</p>
+                  <button onclick="loadHistory()" class="btn-secondary text-sm">
                     Try Again
                   </button>
                 </div>
               ` : state.historyData.length === 0 ? `
                 <div class="text-center py-12">
-                  <div class="text-6xl mb-4">🦎</div>
-                  <h3 class="text-2xl font-black text-purple-800 mb-2">No Contests Yet!</h3>
-                  <p class="text-purple-600 font-semibold">Be the first to launch a contest!</p>
+                  <div class="w-16 h-16 mx-auto mb-4">
+                    <img src="neynartode-sticker.png" alt="Neynartode" class="w-full h-full object-contain" style="filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.5));" />
+                  </div>
+                  <h3 class="text-lg font-semibold text-[var(--text-primary)] mb-2">No Contests Yet</h3>
+                  <p class="text-[var(--text-secondary)] text-sm">Be the first to launch a contest!</p>
                 </div>
               ` : `
                 <div class="overflow-x-auto">
                   <table class="w-full">
                     <thead>
-                      <tr class="border-b-2 border-gray-200">
-                        <th class="text-left py-3 px-2 font-semibold text-gray-700">#</th>
-                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Host</th>
-                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Prize</th>
-                        <th class="text-center py-3 px-2 font-semibold text-gray-700">Duration</th>
-                        <th class="text-center py-3 px-2 font-semibold text-gray-700">Participants</th>
-                        <th class="text-center py-3 px-2 font-semibold text-gray-700">Status</th>
-                        <th class="text-left py-3 px-2 font-semibold text-gray-700">Winner</th>
-                        <th class="text-right py-3 px-2 font-semibold text-gray-700">Ended</th>
+                      <tr class="border-b border-[var(--border-subtle)]">
+                        <th class="text-left py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">#</th>
+                        <th class="text-left py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Host</th>
+                        <th class="text-left py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Prize</th>
+                        <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Duration</th>
+                        <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Entries</th>
+                        <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Status</th>
+                        <th class="text-left py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Winner</th>
+                        <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Ended</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${state.historyData.map(contest => `
-                        <tr class="border-b-2 border-purple-100 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 transition-all">
+                        <tr class="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-secondary)] transition-colors">
                           <td class="py-4 px-2">
-                            <div class="font-black text-purple-600">#${contest.contestId}</div>
+                            <div class="font-medium text-[var(--accent-light)]">${contest.contestId}</div>
                           </td>
                           <td class="py-4 px-2">
                             <div class="flex items-center gap-2">
                               ${contest.hostUser ? `
                                 <a href="https://warpcast.com/${contest.hostUser.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
                                   ${contest.hostUser.pfpUrl
-                                    ? `<img src="${contest.hostUser.pfpUrl}" alt="@${contest.hostUser.username}" class="w-8 h-8 rounded-full object-cover border-2 border-purple-300" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-8 h-8 rounded-full bg-purple-200 items-center justify-center text-sm hidden">👤</span>`
-                                    : `<span class="w-8 h-8 rounded-full bg-purple-200 flex items-center justify-center text-sm">👤</span>`
+                                    ? `<img src="${contest.hostUser.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover" onerror="this.style.display='none';" />`
+                                    : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs">👤</span>`
                                   }
-                                  <div>
-                                    <div class="font-semibold text-gray-800 hover:text-purple-600">@${contest.hostUser.username}</div>
-                                    <div class="text-xs text-gray-500">${contest.host.slice(0, 8)}...</div>
-                                  </div>
+                                  <span class="font-medium text-[var(--text-primary)]">@${contest.hostUser.username}</span>
                                 </a>
                               ` : `
-                                <div class="font-mono text-sm text-gray-600">${contest.host.slice(0, 10)}...</div>
+                                <span class="font-mono text-sm text-[var(--text-muted)]">${contest.host.slice(0, 10)}...</span>
                               `}
                             </div>
                           </td>
                           <td class="py-4 px-2">
-                            <div class="font-bold text-green-600">
+                            <div class="font-medium text-[var(--success)]">
                               ${contest.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${contest.prizeTokenSymbol}
                             </div>
                             ${contest.volumeRequirement > 0 ? `
-                              <div class="text-xs text-gray-500">
-                                Min: $${contest.volumeRequirement} ${contest.tokenRequirementSymbol || ''}
+                              <div class="text-xs text-[var(--text-muted)]">
+                                Min: $${contest.volumeRequirement}
                               </div>
                             ` : ''}
                           </td>
                           <td class="py-4 px-2 text-center">
-                            <div class="text-gray-700 font-semibold">
+                            <span class="text-[var(--text-secondary)]">
                               ${formatDuration(contest.durationHours, contest.durationMinutes)}
-                            </div>
+                            </span>
                           </td>
                           <td class="py-4 px-2 text-center">
-                            <div class="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-bold inline-block">
-                              👥 ${contest.participantCount}
-                            </div>
+                            <span class="tag tag-accent">${contest.participantCount}</span>
                           </td>
                           <td class="py-4 px-2 text-center">
-                            <span class="${getStatusColor(contest.status)} px-3 py-1 rounded-full text-sm font-bold">
-                              ${getStatusEmoji(contest.status)} ${contest.statusText}
+                            <span class="tag ${contest.status === 0 ? 'tag-accent' : contest.status === 1 ? 'tag-warning' : contest.status === 2 ? 'tag-success' : 'tag-error'}">
+                              ${contest.statusText}
                             </span>
                           </td>
                           <td class="py-4 px-2">
                             ${contest.status === 2 && contest.winner !== '0x0000000000000000000000000000000000000000' ? `
                               <div class="flex items-center gap-2">
-                                <span class="text-lg">🏆</span>
                                 ${contest.winnerUser ? `
                                   <a href="https://warpcast.com/${contest.winnerUser.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
                                     ${contest.winnerUser.pfpUrl
-                                      ? `<img src="${contest.winnerUser.pfpUrl}" alt="@${contest.winnerUser.username}" class="w-8 h-8 rounded-full object-cover border-2 border-yellow-400" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="w-8 h-8 rounded-full bg-yellow-200 items-center justify-center text-sm hidden">👤</span>`
-                                      : `<span class="w-8 h-8 rounded-full bg-yellow-200 flex items-center justify-center text-sm">👤</span>`
+                                      ? `<img src="${contest.winnerUser.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover" onerror="this.style.display='none';" />`
+                                      : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs">🏆</span>`
                                     }
-                                    <div>
-                                      <div class="font-semibold text-yellow-700 hover:text-yellow-600">@${contest.winnerUser.username}</div>
-                                      <div class="text-xs text-gray-500">${contest.winner.slice(0, 8)}...</div>
-                                    </div>
+                                    <span class="font-medium text-yellow-400">@${contest.winnerUser.username}</span>
                                   </a>
                                 ` : `
-                                  <div class="font-mono text-sm text-gray-600">${contest.winner.slice(0, 10)}...</div>
+                                  <span class="font-mono text-sm text-[var(--text-muted)]">${contest.winner.slice(0, 10)}...</span>
                                 `}
                               </div>
                             ` : `
-                              <span class="text-gray-400 text-sm">-</span>
+                              <span class="text-[var(--text-muted)]">—</span>
                             `}
                           </td>
                           <td class="py-4 px-2 text-right">
-                            <div class="text-sm text-gray-600">
+                            <span class="text-sm text-[var(--text-muted)]">
                               ${formatDate(contest.endTime)}
-                            </div>
+                            </span>
                           </td>
                         </tr>
                       `).join('')}
@@ -2544,16 +2855,18 @@ Launch Your own! 👇`;
                   </table>
                 </div>
 
-                <!-- Legend -->
-                <div class="mt-6 p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
-                  <p class="text-sm font-semibold text-gray-700 mb-2">Status Legend:</p>
-                  <div class="flex flex-wrap gap-4 text-sm">
-                    <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded">🔵 Active - Contest running</span>
-                    <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded">🎲 PendingVRF - Awaiting random winner</span>
-                    <span class="bg-green-100 text-green-700 px-2 py-1 rounded">✅ Completed - Winner selected</span>
-                    <span class="bg-red-100 text-red-700 px-2 py-1 rounded">❌ Cancelled - Contest cancelled</span>
+                <!-- Legend - collapsed -->
+                <details class="mt-4">
+                  <summary class="text-sm text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors">
+                    Status legend
+                  </summary>
+                  <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span class="tag tag-accent">Active</span>
+                    <span class="tag tag-warning">PendingVRF</span>
+                    <span class="tag tag-success">Completed</span>
+                    <span class="tag tag-error">Cancelled</span>
                   </div>
-                </div>
+                </details>
               `}
             </div>
           </div>
@@ -2570,101 +2883,86 @@ Launch Your own! 👇`;
         if (state.suggestionsLoading) {
           suggestionsHtml = `
             <div class="text-center py-8">
-              <div class="text-4xl mb-2 animate-bounce">💡</div>
-              <p class="text-yellow-700 font-semibold">Loading suggestions...</p>
+              <div class="text-3xl mb-2 animate-bounce opacity-50">💡</div>
+              <p class="text-[var(--text-muted)]">Loading...</p>
             </div>
           `;
         } else if (state.suggestions.length === 0) {
           suggestionsHtml = `
             <div class="text-center py-8">
-              <div class="text-4xl mb-2">📭</div>
-              <p class="text-yellow-700 font-semibold">No suggestions yet</p>
+              <div class="text-3xl mb-2 opacity-50">📭</div>
+              <p class="text-[var(--text-muted)]">No suggestions yet</p>
             </div>
           `;
         } else {
           suggestionsHtml = `
-            <div class="space-y-3 max-h-96 overflow-y-auto">
+            <div class="space-y-3 max-h-80 overflow-y-auto">
               ${state.suggestions.map(s => `
-                <div class="bg-white rounded-lg p-4 border border-yellow-200">
+                <div class="bg-[var(--bg-tertiary)] rounded-lg p-4">
                   <div class="flex items-start justify-between gap-3">
-                    <p class="text-gray-800 flex-1">${s.text}</p>
-                    <span class="text-xs text-gray-400 whitespace-nowrap">${new Date(s.timestamp).toLocaleDateString()}</span>
+                    <p class="text-[var(--text-primary)] flex-1 text-sm">${s.text}</p>
+                    <span class="text-xs text-[var(--text-muted)] whitespace-nowrap">${new Date(s.timestamp).toLocaleDateString()}</span>
                   </div>
                 </div>
               `).join('')}
             </div>
-            <p class="text-xs text-yellow-600 mt-4">Total: ${state.suggestions.length} suggestions</p>
+            <p class="text-xs text-[var(--text-muted)] mt-4">${state.suggestions.length} total</p>
           `;
         }
       }
 
       return `
-        <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6 relative">
-          <div class="fixed inset-0 pointer-events-none opacity-10 overflow-hidden">
-            <div class="absolute top-10 left-10 text-6xl">🪸</div>
-            <div class="absolute top-40 right-20 text-5xl">🐚</div>
-            <div class="absolute bottom-20 left-1/4 text-7xl">🌊</div>
-            <div class="absolute bottom-40 right-1/3 text-5xl">🫧</div>
-          </div>
+        <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
 
-          <div class="max-w-7xl mx-auto relative z-10">
+          <div class="max-w-2xl mx-auto relative z-10">
             ${renderHeader()}
 
-            <div class="bg-white rounded-2xl shadow-2xl p-6 border-4 border-purple-300">
-              <div class="flex items-center gap-3 mb-6">
-                <div class="text-purple-600 text-4xl">💡</div>
-                <div>
-                  <h2 class="text-3xl font-black text-purple-800">Suggestion Box</h2>
-                  <p class="text-sm text-purple-600 font-bold">Help us improve NEYNARtodes!</p>
-                </div>
+            <div class="glass-card p-5">
+              <div class="mb-6">
+                <h2 class="text-xl font-bold text-[var(--text-primary)]">Suggestion Box</h2>
+                <p class="text-sm text-[var(--text-muted)]">Help us improve NEYNARtodes</p>
               </div>
 
               <!-- Submission Form -->
-              <div class="bg-purple-50 rounded-xl p-6 border-2 border-purple-200 mb-6">
-                <h3 class="text-xl font-bold text-purple-800 mb-4">📝 Submit a Suggestion</h3>
-                <p class="text-sm text-purple-700 mb-4">
-                  Your submission is <strong>completely anonymous</strong> - no wallet address or identity is stored.
+              <div class="space-y-4 mb-6">
+                <p class="text-sm text-[var(--text-secondary)]">
+                  Submissions are <span class="text-[var(--accent-light)]">completely anonymous</span>
                 </p>
                 <textarea
                   id="suggestionInput"
                   placeholder="Share your idea, feedback, or suggestion..."
-                  class="w-full px-4 py-3 border-2 border-purple-300 rounded-xl focus:border-purple-500 focus:outline-none resize-none h-32 text-gray-800"
+                  class="input-modern resize-none h-28"
                   maxlength="1000"
                 >${state.suggestionText}</textarea>
-                <div class="flex items-center justify-between mt-3">
-                  <span class="text-xs text-purple-600">${state.suggestionText.length}/1000 characters</span>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-[var(--text-muted)]">${state.suggestionText.length}/1000</span>
                   <button
                     id="submitSuggestion"
-                    class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-bold transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="btn-primary py-2 px-5 text-sm disabled:opacity-50"
                     ${state.suggestionText.trim().length < 10 ? 'disabled' : ''}
                   >
-                    🚀 Submit Anonymously
+                    Submit
                   </button>
                 </div>
-                <p class="text-xs text-purple-500 mt-2">Minimum 10 characters required</p>
               </div>
 
               ${isDev ? `
               <!-- DEV Only: View All Suggestions -->
-              <div class="bg-yellow-50 rounded-xl p-6 border-2 border-yellow-300">
+              <div class="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--warning)] border-opacity-30">
                 <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-xl font-bold text-yellow-800">🔒 All Suggestions (DEV Only)</h3>
-                  <button
-                    id="refreshSuggestions"
-                    class="px-4 py-2 bg-yellow-200 hover:bg-yellow-300 text-yellow-800 rounded-lg font-semibold transition-colors"
-                  >
-                    🔄 Refresh
+                  <h3 class="text-sm font-medium text-[var(--warning)]">Dev: All Suggestions</h3>
+                  <button id="refreshSuggestions" class="btn-ghost text-xs">
+                    Refresh
                   </button>
                 </div>
                 ${suggestionsHtml}
               </div>
               ` : `
               <!-- Non-DEV: Thank you message -->
-              <div class="bg-green-50 rounded-xl p-6 border-2 border-green-200 text-center">
-                <div class="text-4xl mb-3">🙏</div>
-                <h3 class="text-xl font-bold text-green-800 mb-2">Thank You!</h3>
-                <p class="text-green-700">
-                  Your anonymous suggestions help make NEYNARtodes better for everyone.
+              <div class="p-4 bg-[var(--bg-secondary)] rounded-xl text-center">
+                <p class="text-[var(--text-secondary)] text-sm">
+                  Thank you for helping improve NEYNARtodes
                 </p>
               </div>
               `}
@@ -2676,246 +2974,253 @@ Launch Your own! 👇`;
 
     function renderCreateContest() {
       return `
-        <div class="min-h-screen bg-gradient-to-b from-blue-100 via-purple-100 to-pink-100 p-6 relative">
-          <div class="fixed inset-0 pointer-events-none opacity-10 overflow-hidden">
-            <div class="absolute top-10 left-10 text-6xl">🪸</div>
-            <div class="absolute top-40 right-20 text-5xl">🐚</div>
-            <div class="absolute bottom-20 left-1/4 text-7xl">🌊</div>
-          </div>
+        <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
 
-          <div class="max-w-7xl mx-auto relative z-10">
+          <div class="max-w-2xl mx-auto relative z-10">
             ${renderHeader()}
 
-            <!-- Safeguards Notice -->
-            <div class="bg-blue-50 border-2 border-blue-300 rounded-lg p-4 mb-6">
-              <h3 class="font-bold text-blue-900 mb-2">🛡️ Season 0 Safeguards Active</h3>
-              <div class="text-sm text-blue-800 space-y-1">
-                <p>• <strong>Whitelist Required:</strong> Only whitelisted addresses can participate</p>
-                <p>• <strong>Token Gate:</strong> Minimum 20,000 $NEYNARTODES required</p>
-                <p>• <strong>Reply Quality:</strong> Minimum 4 words per reply to prevent spam</p>
-                <p>• <strong>Trade Volume Cap:</strong> $10 max for NEYNARTODES, or ≤ prize for custom token</p>
+            <!-- Safeguards Notice - collapsible -->
+            <details class="glass-card p-4 mb-4">
+              <summary class="font-medium text-[var(--text-primary)] cursor-pointer flex items-center justify-between">
+                <span>Season 0 Safeguards</span>
+                <span class="tag tag-accent">Active</span>
+              </summary>
+              <div class="mt-3 text-sm text-[var(--text-secondary)] space-y-1">
+                <p>• Whitelist required for participation</p>
+                <p>• Minimum 20,000 $NEYNARTODES token gate</p>
+                <p>• 4+ words required per reply</p>
+                <p>• $10 max volume for NEYNARTODES</p>
               </div>
-            </div>
+            </details>
 
-            <div class="bg-white rounded-2xl shadow-2xl p-8 border-4 border-purple-300">
+            <div class="glass-card p-5">
               <div class="flex items-center justify-between mb-6">
-                <h2 class="text-3xl font-black text-purple-800">🎉 Create New Contest 🎉</h2>
+                <h2 class="text-xl font-bold text-[var(--text-primary)]">Create Contest</h2>
                 <a
                   href="https://github.com/95m6sbvh6c-byte/neynartode/blob/main/docs/GUIDE_CREATE.md"
                   target="_blank"
-                  rel="noopener noreferrer"
-                  class="w-8 h-8 rounded-full bg-purple-200 hover:bg-purple-300 flex items-center justify-center text-purple-700 font-bold text-sm transition-colors"
-                  title="Create Contest Guide"
-                >?</a>
+                  class="btn-ghost text-sm"
+                >Guide</a>
               </div>
 
               <div class="space-y-6">
                 <!-- Contest Period -->
-                <div class="p-6 bg-purple-50 rounded-xl border-2 border-purple-200">
-                  <h3 class="text-xl font-bold text-purple-800 mb-4">📅 Contest Period</h3>
+                <div class="space-y-4">
+                  <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Duration</h3>
 
-                  <div class="mb-4">
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">Start Mode</label>
-                    <div class="flex gap-3">
-                      <button id="startNow" class="flex-1 py-2 rounded-lg font-semibold transition-colors ${state.startMode === 'now' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'}">
+                  <div>
+                    <label class="block text-sm text-[var(--text-secondary)] mb-2">Start Mode</label>
+                    <div class="flex gap-2">
+                      <button id="startNow" class="flex-1 py-2.5 rounded-xl font-medium transition-all ${state.startMode === 'now' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}">
                         Start Now
                       </button>
-                      <button id="startScheduled" class="flex-1 py-2 rounded-lg font-semibold transition-colors ${state.startMode === 'scheduled' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'}">
+                      <button id="startScheduled" class="flex-1 py-2.5 rounded-xl font-medium transition-all ${state.startMode === 'scheduled' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}">
                         Schedule
                       </button>
                     </div>
                   </div>
 
                   ${state.startMode === 'scheduled' ? `
-                    <div class="mb-4">
-                      <label class="block text-sm font-semibold text-gray-700 mb-2">Start Date & Time</label>
-                      <input type="datetime-local" id="startDate" value="${state.startDate}" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                    <div>
+                      <label class="block text-sm text-[var(--text-secondary)] mb-2">Start Date & Time</label>
+                      <input type="datetime-local" id="startDate" value="${state.startDate}" class="input-modern" />
                     </div>
                   ` : ''}
 
-                  <div class="mb-4">
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">Contest Duration</label>
+                  <div>
+                    <label class="block text-sm text-[var(--text-secondary)] mb-2">Contest Duration</label>
                     <div class="grid grid-cols-2 gap-3">
                       <div>
-                        <label class="block text-xs text-gray-600 mb-1">Hours</label>
-                        <input type="number" id="durationHours" value="${state.durationHours}" min="0" max="720" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                        <label class="block text-xs text-[var(--text-muted)] mb-1">Hours</label>
+                        <input type="number" id="durationHours" value="${state.durationHours}" min="0" max="720" class="input-modern" />
                       </div>
                       <div>
-                        <label class="block text-xs text-gray-600 mb-1">Minutes</label>
-                        <input type="number" id="durationMinutes" value="${state.durationMinutes}" min="0" max="59" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                        <label class="block text-xs text-[var(--text-muted)] mb-1">Minutes</label>
+                        <input type="number" id="durationMinutes" value="${state.durationMinutes}" min="0" max="59" class="input-modern" />
                       </div>
                     </div>
-                    <p class="text-xs text-gray-600 mt-2">⏱️ Minimum duration: 1 minute</p>
                   </div>
 
                   ${state.startMode === 'scheduled' && state.startDate && state.durationHours !== '' && state.durationMinutes !== '' ? `
-                    <div class="bg-purple-100 p-3 rounded-lg">
-                      <p class="text-xs text-purple-800 font-semibold mb-1">📅 Contest Timeline:</p>
-                      <p class="text-sm text-purple-900">
-                        <strong>Starts:</strong> ${new Date(state.startDate).toLocaleString()}<br/>
-                        <strong>Duration:</strong> ${state.durationHours}h ${state.durationMinutes}m<br/>
-                        <strong>Ends:</strong> ${(() => {
+                    <div class="p-3 bg-[var(--bg-secondary)] rounded-xl text-sm">
+                      <div class="text-[var(--text-muted)] mb-1">Timeline</div>
+                      <div class="text-[var(--text-primary)]">
+                        Starts: ${new Date(state.startDate).toLocaleString()}<br/>
+                        Duration: ${state.durationHours}h ${state.durationMinutes}m<br/>
+                        Ends: ${(() => {
                           const start = new Date(state.startDate);
                           const hours = parseInt(state.durationHours) || 0;
                           const minutes = parseInt(state.durationMinutes) || 0;
                           const end = new Date(start.getTime() + (hours * 60 + minutes) * 60 * 1000);
                           return end.toLocaleString();
                         })()}
-                      </p>
+                      </div>
                     </div>
                   ` : state.startMode === 'now' && state.durationHours !== '' && state.durationMinutes !== '' ? `
-                    <div class="bg-purple-100 p-3 rounded-lg">
-                      <p class="text-xs text-purple-800 font-semibold mb-1">📅 Contest Duration:</p>
-                      <p class="text-sm text-purple-900">
-                        <strong>Starts:</strong> Immediately upon launch<br/>
-                        <strong>Duration:</strong> ${state.durationHours}h ${state.durationMinutes}m
-                      </p>
+                    <div class="p-3 bg-[var(--bg-secondary)] rounded-xl text-sm">
+                      <div class="text-[var(--text-muted)] mb-1">Timeline</div>
+                      <div class="text-[var(--text-primary)]">
+                        Starts immediately • Duration: ${state.durationHours}h ${state.durationMinutes}m
+                      </div>
                     </div>
                   ` : ''}
                 </div>
 
+                <div class="divider"></div>
+
                 <!-- Prize Settings -->
-                <div class="p-6 bg-green-50 rounded-xl border-2 border-green-200">
-                  <h3 class="text-xl font-bold text-green-800 mb-4">🎁 Prize (Token Only)</h3>
+                <div class="space-y-4">
+                  <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Prize Token</h3>
 
-                  <div class="space-y-4">
-                    <div class="relative">
-                      <label class="block text-sm font-semibold text-gray-700 mb-2">Search Token</label>
-                      <input type="text" id="prizeTokenSearch" value="${state.prizeTokenSearch}" placeholder="USDC, ETH, NEYNARTODES..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                      ${state.showPrizeTokenSuggestions ? `
-                        <div class="absolute z-10 w-full mt-1 bg-white border-2 border-purple-300 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
-                          ${searchTokens(state.prizeTokenSearch).map((token, idx) => `
-                            <button onclick="selectPrizeToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-purple-50 border-b border-gray-100 transition-colors flex items-center gap-3">
-                              <img src="${token.image}" alt="${token.ticker}" class="w-10 h-10 rounded-full object-cover border-2 border-purple-200" onerror="this.src='https://via.placeholder.com/40/9333ea/ffffff?text=${token.ticker[0]}'" />
-                              <div class="flex-1">
-                                <div class="font-semibold text-gray-800">${token.name} <span class="text-purple-600">(${token.ticker})</span></div>
-                                <div class="text-xs text-gray-500 font-mono">${token.address.substring(0, 10)}...${token.address.substring(38)}</div>
-                              </div>
-                              <div class="text-right">
-                                <div class="text-xs text-gray-600">Market Cap</div>
-                                <div class="text-sm font-bold text-green-600">$${(token.mcap / 1000000).toFixed(1)}M</div>
-                              </div>
-                            </button>
-                          `).join('')}
-                        </div>
-                      ` : ''}
+                  <div class="relative">
+                    <label class="block text-sm text-[var(--text-secondary)] mb-2">Search Token</label>
+                    <input type="text" id="prizeTokenSearch" value="${state.prizeTokenSearch}" placeholder="USDC, ETH, NEYNARTODES..." class="input-modern" />
+                    ${state.showPrizeTokenSuggestions ? `
+                      <div class="absolute z-10 w-full mt-1 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                        ${searchTokens(state.prizeTokenSearch).map((token, idx) => `
+                          <button onclick="selectPrizeToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-[var(--bg-tertiary)] border-b border-[var(--border-subtle)] transition-colors flex items-center gap-3">
+                            <img src="${token.image}" alt="${token.ticker}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/32/8b5cf6/ffffff?text=${token.ticker[0]}'" />
+                            <div class="flex-1 min-w-0">
+                              <div class="font-medium text-[var(--text-primary)]">${token.ticker}</div>
+                              <div class="text-xs text-[var(--text-muted)] truncate">${token.name}</div>
+                            </div>
+                            <div class="text-right">
+                              <div class="text-sm font-medium text-[var(--success)]">$${(token.mcap / 1000000).toFixed(1)}M</div>
+                            </div>
+                          </button>
+                        `).join('')}
+                      </div>
+                    ` : ''}
+                  </div>
+
+                  ${state.prizeTokenAddress ? `
+                    <div class="p-4 bg-[var(--bg-secondary)] rounded-xl flex items-center gap-3">
+                      <img src="${state.prizeTokenImage}" alt="${state.prizeTokenTicker}" class="w-10 h-10 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/40/8b5cf6/ffffff?text=${state.prizeTokenTicker[0]}'" />
+                      <div class="flex-1">
+                        <div class="text-xs text-[var(--success)] mb-0.5">Selected</div>
+                        <div class="font-medium text-[var(--text-primary)]">${state.prizeTokenTicker}</div>
+                      </div>
                     </div>
+                  ` : ''}
 
-                    ${state.prizeTokenAddress ? `
-                      <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-lg border-2 border-purple-200 flex items-center gap-3">
-                        <img src="${state.prizeTokenImage}" alt="${state.prizeTokenTicker}" class="w-12 h-12 rounded-full object-cover border-2 border-purple-400 shadow-lg" onerror="this.src='https://via.placeholder.com/48/9333ea/ffffff?text=${state.prizeTokenTicker[0]}'" />
-                        <div class="flex-1">
-                          <div class="text-xs text-purple-600 font-semibold mb-1">✓ Selected Prize Token</div>
-                          <div class="font-bold text-purple-900 text-lg">${state.prizeTokenTicker}</div>
-                          <div class="text-xs text-gray-500 font-mono">${state.prizeTokenAddress.substring(0, 10)}...${state.prizeTokenAddress.substring(38)}</div>
+                  <div>
+                    <label class="block text-sm text-[var(--text-secondary)] mb-2">Prize Amount</label>
+                    <input type="number" id="prizeTokenAmount" value="${state.prizeTokenAmount}" placeholder="1000" class="input-modern" />
+                  </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Social Dynamics -->
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Social Requirements</h3>
+                    <span class="tag tag-accent">Required</span>
+                  </div>
+
+                  <!-- Cast URL/Hash -->
+                  <div class="p-4 bg-[var(--warning-glow)] rounded-xl border border-[var(--warning)] relative">
+                    <div class="flex items-center justify-between mb-2">
+                      <label class="text-sm font-medium text-[var(--warning)]">Contest Cast URL</label>
+                      <button onclick="fetchRecentCasts()" class="text-xs px-3 py-1 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-dark)] transition-colors flex items-center gap-1">
+                        ${state.loadingRecentCasts ? '<span class="animate-spin">⏳</span>' : '📋'} My Recent Casts
+                      </button>
+                    </div>
+                    <input type="text" id="castHash" value="${state.castHash}" placeholder="https://warpcast.com/username/0x1234abcd" class="input-modern" />
+
+                    ${state.showRecentCasts ? `
+                      <div class="absolute z-20 left-4 right-4 mt-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-lg overflow-hidden">
+                        <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)]">
+                          <span class="text-xs font-medium text-[var(--text-secondary)]">Select a cast</span>
+                          <button onclick="state.showRecentCasts = false; render();" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg">&times;</button>
                         </div>
+                        ${state.recentCasts.length > 0 ? state.recentCasts.map(cast => `
+                          <div class="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-tertiary)] transition-colors">
+                            <div class="flex items-start justify-between gap-2 mb-2">
+                              <p class="text-sm text-[var(--text-primary)] flex-1">${cast.text || '(No text)'}</p>
+                              <span class="text-xs text-[var(--text-muted)] whitespace-nowrap">${cast.timestamp}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                              <code class="text-xs text-[var(--accent-light)] bg-[var(--bg-tertiary)] px-2 py-1 rounded flex-1 truncate">${cast.hash}</code>
+                              <button onclick="copyToClipboard('${cast.hash}')" class="text-xs px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors" title="Copy hash">📋</button>
+                              <button onclick="selectRecentCast('${cast.url}')" class="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-dark)] transition-colors">Use</button>
+                            </div>
+                          </div>
+                        `).join('') : `
+                          <div class="p-4 text-center text-[var(--text-muted)] text-sm">No recent casts found</div>
+                        `}
                       </div>
                     ` : ''}
 
+                    <p class="text-xs text-[var(--text-muted)] mt-2">Post your contest on Warpcast first, then paste the URL here</p>
+                  </div>
+
+                  <div class="grid grid-cols-3 gap-3">
                     <div>
-                      <label class="block text-sm font-semibold text-gray-700 mb-2">Prize Amount</label>
-                      <input type="number" id="prizeTokenAmount" value="${state.prizeTokenAmount}" placeholder="1000" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                      <label class="block text-xs text-[var(--text-muted)] mb-2">Min Likes</label>
+                      <input type="number" id="minLikes" value="${state.minLikes}" min="0" max="1" class="input-modern text-center" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-[var(--text-muted)] mb-2">Min Recasts</label>
+                      <input type="number" id="minRecasts" value="${state.minRecasts}" min="0" max="1" class="input-modern text-center" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-[var(--text-muted)] mb-2">Min Replies</label>
+                      <input type="number" id="minReplies" value="${state.minReplies}" min="0" class="input-modern text-center" />
                     </div>
                   </div>
+                  <p class="text-xs text-[var(--text-muted)]">Replies require 4+ words</p>
                 </div>
 
-                <!-- Social Dynamics (Always ON) -->
-                <div class="p-6 bg-pink-50 rounded-xl border-2 border-pink-200">
-                  <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-bold text-pink-800">👥 Social Dynamics</h3>
-                    <span class="px-4 py-2 rounded-lg font-semibold bg-purple-600 text-white">REQUIRED</span>
-                  </div>
+                <div class="divider"></div>
 
-                  <div class="space-y-4">
-                    <!-- Cast URL/Hash - REQUIRED -->
-                    <div class="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-300">
-                      <label class="block text-sm font-semibold text-gray-700 mb-2">📢 Contest Cast URL <span class="text-red-500">*</span></label>
-                      <input type="text" id="castHash" value="${state.castHash}" placeholder="https://warpcast.com/username/0x1234abcd or 0x1234abcd" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                      <p class="text-xs text-yellow-700 mt-2">⚠️ <strong>Post your contest announcement on Warpcast first!</strong> Then paste the cast URL or hash here. Engagement (recasts, replies) on this cast determines eligible participants.</p>
-                    </div>
-
-                    <div class="grid grid-cols-3 gap-3">
-                      <div>
-                        <label class="block text-xs font-semibold text-gray-700 mb-2">Min Likes (0-1)</label>
-                        <input type="number" id="minLikes" value="${state.minLikes}" min="0" max="1" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                <!-- Tokenomics -->
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Volume Requirement</h3>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <span class="text-sm text-[var(--text-secondary)]">Enable</span>
+                      <div class="relative">
+                        <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
+                        <div class="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--accent)]"></div>
                       </div>
-                      <div>
-                        <label class="block text-xs font-semibold text-gray-700 mb-2">Min Recasts (0-1)</label>
-                        <input type="number" id="minRecasts" value="${state.minRecasts}" min="0" max="1" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-semibold text-gray-700 mb-2">Min Replies</label>
-                        <input type="number" id="minReplies" value="${state.minReplies}" min="0" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                      </div>
-                    </div>
-                    <p class="text-xs text-pink-700 font-semibold">📝 Replies must have at least 4 words to count</p>
-                  </div>
-                </div>
-
-                <!-- Tokenomics (Can be toggled off for 0.001 ETH) -->
-                <div class="p-6 bg-green-50 rounded-xl border-2 border-green-200">
-                  <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-bold text-green-800">💰 Trading Volume Requirement</h3>
-                    ${isDevWallet(state.userAddress) ? `
-                      <label class="flex items-center gap-3 cursor-pointer">
-                        <span class="text-sm font-semibold text-gray-700">Enable Tokenomics</span>
-                        <div class="relative">
-                          <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
-                          <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
-                        </div>
-                        <span class="text-xs text-gray-500">(Dev: FREE)</span>
-                      </label>
-                    ` : `
-                      <label class="flex items-center gap-3 cursor-pointer">
-                        <span class="text-sm font-semibold text-gray-700">Enable Tokenomics</span>
-                        <div class="relative">
-                          <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
-                          <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
-                        </div>
-                        <span class="text-xs ${state.tokenomicsEnabled ? 'text-green-600 font-semibold' : 'text-orange-600 font-semibold'}">${state.tokenomicsEnabled ? '(Enabled)' : '(-0.001 ETH to disable)'}</span>
-                      </label>
-                    `}
+                      ${!isDevWallet(state.userAddress) && !state.tokenomicsEnabled ? `<span class="text-xs text-[var(--warning)]">-0.001 ETH</span>` : ''}
+                    </label>
                   </div>
 
                   ${state.tokenomicsEnabled ? `
-
                   <div class="space-y-4">
-                    <!-- Default Token Info -->
-                    <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-200">
-                      <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-full bg-purple-600 flex items-center justify-center text-white text-xl font-bold border-2 border-green-400 shadow-lg">🦎</div>
-                        <div class="flex-1">
-                          <div class="text-xs text-green-600 font-semibold mb-1">Default Token (FREE)</div>
-                          <div class="font-bold text-green-900 text-lg">NEYNARTODES</div>
-                          <div class="text-xs text-gray-500 font-mono">${CONFIG.CONTRACTS.neynartodes.substring(0, 10)}...${CONFIG.CONTRACTS.neynartodes.substring(38)}</div>
-                        </div>
+                    <!-- Default Token -->
+                    <div class="p-4 bg-[var(--bg-secondary)] rounded-xl flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-full overflow-hidden">
+                        <img src="neynartode-sticker.png" alt="Neynartode" class="w-full h-full object-cover" style="filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6));" />
+                      </div>
+                      <div class="flex-1">
+                        <div class="text-xs text-[var(--success)] mb-0.5">Default (Free)</div>
+                        <div class="font-medium text-[var(--text-primary)]">NEYNARTODES</div>
                       </div>
                     </div>
 
                     <!-- Custom Token Option -->
-                    <div class="border-2 border-dashed border-green-300 rounded-lg p-4">
+                    <div class="p-4 border border-dashed border-[var(--border-light)] rounded-xl">
                       <div class="flex items-center gap-2 mb-3">
-                        <input type="checkbox" id="useCustomToken" ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? 'checked' : ''} class="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
-                        <label for="useCustomToken" class="text-sm font-semibold text-gray-700">Use Custom Token (+0.001 ETH fee)</label>
+                        <input type="checkbox" id="useCustomToken" ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? 'checked' : ''} class="w-4 h-4 rounded border-[var(--border-light)] text-[var(--accent)] focus:ring-[var(--accent)]" />
+                        <label for="useCustomToken" class="text-sm text-[var(--text-secondary)]">Custom token <span class="text-[var(--warning)]">(+0.001 ETH)</span></label>
                       </div>
 
                       <div id="customTokenSection" class="${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? '' : 'hidden'}">
                         <div class="relative mb-3">
-                          <label class="block text-sm font-semibold text-gray-700 mb-2">Search Token</label>
-                          <input type="text" id="tokenSearch" value="${state.tokenSearch}" placeholder="Search: USDC, ETH, BRETT..." class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
+                          <input type="text" id="tokenSearch" value="${state.tokenSearch}" placeholder="Search token..." class="input-modern" />
                           ${state.showTokenSuggestions ? `
-                            <div class="absolute z-10 w-full mt-1 bg-white border-2 border-green-300 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
+                            <div class="absolute z-10 w-full mt-1 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-lg max-h-64 overflow-y-auto">
                               ${searchTokens(state.tokenSearch).map((token, idx) => `
-                                <button onclick="selectToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-green-50 border-b border-gray-100 transition-colors flex items-center gap-3">
-                                  <img src="${token.image}" alt="${token.ticker}" class="w-10 h-10 rounded-full object-cover border-2 border-green-200" onerror="this.src='https://via.placeholder.com/40/22c55e/ffffff?text=${token.ticker[0]}'" />
-                                  <div class="flex-1">
-                                    <div class="font-semibold text-gray-800">${token.name} <span class="text-green-600">(${token.ticker})</span></div>
-                                    <div class="text-xs text-gray-500 font-mono">${token.address.substring(0, 10)}...${token.address.substring(38)}</div>
+                                <button onclick="selectToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-[var(--bg-tertiary)] border-b border-[var(--border-subtle)] transition-colors flex items-center gap-3">
+                                  <img src="${token.image}" alt="${token.ticker}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/32/8b5cf6/ffffff?text=${token.ticker[0]}'" />
+                                  <div class="flex-1 min-w-0">
+                                    <div class="font-medium text-[var(--text-primary)]">${token.ticker}</div>
                                   </div>
-                                  <div class="text-right">
-                                    <div class="text-xs text-gray-600">Market Cap</div>
-                                    <div class="text-sm font-bold text-green-600">$${(token.mcap / 1000000).toFixed(1)}M</div>
-                                  </div>
+                                  <div class="text-sm text-[var(--success)]">$${(token.mcap / 1000000).toFixed(1)}M</div>
                                 </button>
                               `).join('')}
                             </div>
@@ -2923,71 +3228,64 @@ Launch Your own! 👇`;
                         </div>
 
                         ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
-                          <div class="bg-gradient-to-r from-orange-50 to-yellow-50 p-4 rounded-lg border-2 border-orange-200 flex items-center gap-3">
-                            <img src="${state.tokenImage}" alt="${state.tokenTicker}" class="w-12 h-12 rounded-full object-cover border-2 border-orange-400 shadow-lg" onerror="this.src='https://via.placeholder.com/48/22c55e/ffffff?text=${state.tokenTicker[0]}'" />
+                          <div class="p-3 bg-[var(--bg-tertiary)] rounded-lg flex items-center gap-3">
+                            <img src="${state.tokenImage}" alt="${state.tokenTicker}" class="w-8 h-8 rounded-full" onerror="this.style.display='none'" />
                             <div class="flex-1">
-                              <div class="text-xs text-orange-600 font-semibold mb-1">✓ Custom Token (+0.001 ETH)</div>
-                              <div class="font-bold text-orange-900 text-lg">${state.tokenTicker}</div>
-                              <div class="text-xs text-gray-500 font-mono">${state.tokenAddress.substring(0, 10)}...${state.tokenAddress.substring(38)}</div>
+                              <div class="text-xs text-[var(--warning)] mb-0.5">Custom (+0.001 ETH)</div>
+                              <div class="font-medium text-[var(--text-primary)]">${state.tokenTicker}</div>
                             </div>
                           </div>
                         ` : ''}
                       </div>
                     </div>
 
-                    <!-- Trade Volume Input -->
+                    <!-- Volume Input -->
                     <div>
-                      <label class="block text-sm font-semibold text-gray-700 mb-2">Min Trade Volume ($)</label>
+                      <label class="block text-sm text-[var(--text-secondary)] mb-2">Min Volume ($)</label>
                       ${state.tokenAddress && state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
-                        <input type="number" id="minTradeVolume" value="10" readonly class="w-full px-4 py-2 border-2 border-green-300 rounded-lg bg-green-50 text-green-800 font-bold cursor-not-allowed" />
-                        <p class="text-xs text-green-600 mt-1 font-semibold">🔒 NEYNARTODES volume is locked at $10</p>
+                        <input type="number" id="minTradeVolume" value="10" readonly class="input-modern opacity-60 cursor-not-allowed" />
+                        <p class="text-xs text-[var(--text-muted)] mt-1">NEYNARTODES locked at $10</p>
                       ` : `
-                        <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none" />
-                        <p class="text-xs text-gray-600 mt-1">Custom token: max volume = prize amount</p>
+                        <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="input-modern" />
+                        <p class="text-xs text-[var(--text-muted)] mt-1">Max = prize amount</p>
                       `}
-                    </div>
-
-                    <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-                      <p class="text-xs text-blue-800 font-semibold">
-                        💡 <strong>NEYNARTODES:</strong> Locked at $10 (FREE) | <strong>Custom token:</strong> Volume ≤ prize amount (+0.001 ETH fee)
-                      </p>
                     </div>
                   </div>
                   ` : `
-                  <div class="bg-gray-100 p-4 rounded-lg text-center">
-                    <p class="text-gray-600 font-semibold">Tokenomics disabled - No volume requirements</p>
-                    <p class="text-xs text-gray-500 mt-1">Toggle ON to enable trading volume requirements</p>
+                  <div class="p-4 bg-[var(--bg-secondary)] rounded-xl text-center">
+                    <p class="text-[var(--text-secondary)] text-sm">No volume requirements</p>
                   </div>
                   `}
                 </div>
 
+                <div class="divider"></div>
+
                 <!-- Winner Announcement -->
-                <div class="p-6 bg-yellow-50 rounded-xl border-2 border-yellow-200">
-                  <h3 class="text-xl font-bold text-yellow-800 mb-4">💬 Winner Announcement</h3>
-                  <label class="block text-sm font-semibold text-gray-700 mb-2">Custom Message</label>
-                  <textarea id="customMessage" rows="3" placeholder="You just won our amazing contest!" class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none">${state.customMessage}</textarea>
+                <div class="space-y-3">
+                  <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Winner Message</h3>
+                  <textarea id="customMessage" rows="2" placeholder="You just won our amazing contest!" class="input-modern resize-none">${state.customMessage}</textarea>
                 </div>
 
-                <!-- Pending Transaction Banner -->
+                <!-- Pending Transaction -->
                 ${state.pendingTx ? `
-                  <div class="mb-4 p-4 bg-yellow-100 border-2 border-yellow-400 rounded-xl animate-pulse">
-                    <div class="flex items-center justify-center gap-3 text-yellow-800 font-bold">
+                  <div class="p-4 bg-[var(--warning-glow)] border border-[var(--warning)] rounded-xl">
+                    <div class="flex items-center justify-center gap-2 text-[var(--warning)] font-medium">
                       <span class="animate-spin">⏳</span>
-                      <span>Transaction Pending...</span>
+                      <span>Transaction pending...</span>
                     </div>
-                    <a href="https://basescan.org/tx/${state.pendingTx}" target="_blank" class="block text-center text-sm text-blue-600 underline mt-2">
-                      View on BaseScan →
+                    <a href="https://basescan.org/tx/${state.pendingTx}" target="_blank" class="block text-center text-sm text-[var(--accent-light)] mt-2 hover:underline">
+                      View on BaseScan
                     </a>
                   </div>
                 ` : ''}
 
                 <!-- Launch Button -->
-                <button id="launchButton" class="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-8 py-6 rounded-2xl font-bold text-2xl transition-all shadow-2xl transform hover:scale-105 ${state.pendingTx ? 'opacity-50 cursor-not-allowed' : ''}" ${state.pendingTx ? 'disabled' : ''}>
-                  ${state.pendingTx ? '⏳ LAUNCHING...' : '▶️ LAUNCH CONTEST'}
+                <button id="launchButton" class="btn-primary w-full py-4 text-lg font-semibold ${state.pendingTx ? 'opacity-50 cursor-not-allowed' : ''}" ${state.pendingTx ? 'disabled' : ''}>
+                  ${state.pendingTx ? 'Launching...' : 'Launch Contest'}
                 </button>
-                <p id="launchStatus" class="text-center text-sm text-blue-600 font-bold mt-2"></p>
-                <p class="text-center text-sm text-gray-600">
-                  ⚠️ Prize will be locked in escrow smart contract
+                <p id="launchStatus" class="text-center text-sm text-[var(--accent-light)] mt-2"></p>
+                <p class="text-center text-xs text-[var(--text-muted)]">
+                  Prize will be locked in escrow
                 </p>
               </div>
             </div>
