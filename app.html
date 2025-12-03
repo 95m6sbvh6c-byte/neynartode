@@ -1146,6 +1146,19 @@ Launch Your own! 👇`;
             console.log('Farcaster SDK found');
             console.log('SDK wallet object:', sdk.wallet);
             console.log('SDK wallet methods:', sdk.wallet ? Object.keys(sdk.wallet) : 'no wallet');
+            console.log('SDK context:', sdk.context);
+
+            // Try to get user FID from SDK context
+            if (sdk.context?.user?.fid) {
+              state.userFid = sdk.context.user.fid;
+              state.userProfile = {
+                fid: sdk.context.user.fid,
+                username: sdk.context.user.username,
+                displayName: sdk.context.user.displayName,
+                pfpUrl: sdk.context.user.pfpUrl
+              };
+              console.log('Got user FID from SDK context:', state.userFid);
+            }
 
             // Get the provider - try different methods
             if (typeof sdk.wallet?.getEthereumProvider === 'function') {
@@ -2360,30 +2373,30 @@ Launch Your own! 👇`;
             </div>
           </div>
 
-          <!-- Active page indicator -->
-          <div class="mb-3 p-3 bg-[var(--accent)] bg-opacity-20 rounded-xl border border-[var(--accent)] border-opacity-30">
-            <p class="text-center text-[var(--accent-light)] font-semibold text-lg">
+          <!-- Active page title -->
+          <div class="mb-2 py-3 text-center">
+            <h2 class="text-xl font-bold text-gradient">
               ${state.currentView === 'create' ? 'Create Contest' :
                 state.currentView === 'history' ? 'Contest History' :
                 state.currentView === 'leaderboard' ? 'Leaderboard' :
                 'Suggestions'}
-            </p>
+            </h2>
           </div>
 
-          <!-- Navigation tabs -->
+          <!-- Other navigation tabs (excluding current page) -->
           <nav class="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-xl">
-            <button id="viewCreate" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'create' ? 'active' : ''}">
-              Create
-            </button>
-            <button id="viewHistory" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'history' ? 'active' : ''}">
-              History
-            </button>
-            <button id="viewLeaderboard" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'leaderboard' ? 'active' : ''}">
-              Leaderboard
-            </button>
-            <button id="viewSuggestions" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'suggestions' ? 'active' : ''}">
-              Suggestions
-            </button>
+            ${state.currentView !== 'create' ? `
+              <button id="viewCreate" class="btn-ghost flex-1 text-xs py-2">Create</button>
+            ` : ''}
+            ${state.currentView !== 'history' ? `
+              <button id="viewHistory" class="btn-ghost flex-1 text-xs py-2">History</button>
+            ` : ''}
+            ${state.currentView !== 'leaderboard' ? `
+              <button id="viewLeaderboard" class="btn-ghost flex-1 text-xs py-2">Leaderboard</button>
+            ` : ''}
+            ${state.currentView !== 'suggestions' ? `
+              <button id="viewSuggestions" class="btn-ghost flex-1 text-xs py-2">Suggestions</button>
+            ` : ''}
           </nav>
         </header>
       `;
