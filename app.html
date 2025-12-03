@@ -1291,29 +1291,8 @@ Launch Your own! 👇`;
         }
 
         // Uses shared rpcProvider for read operations
-        console.log('Checking whitelist for:', address);
-
-        // Check whitelist with timeout
-        const prizeNFTContract = new ethers.Contract(
-          CONFIG.CONTRACTS.prizeNFT,
-          ['function whitelisted(address) external view returns (bool)'],
-          rpcProvider
-        );
-
-        try {
-          state.isWhitelisted = await withTimeout(prizeNFTContract.whitelisted(address), 10000, 'Whitelist check timed out');
-        } catch (e) {
-          console.error('Whitelist check failed:', e);
-          // Default to true if check fails (let them try)
-          state.isWhitelisted = true;
-        }
-
-        if (!state.isWhitelisted) {
-          state.isCheckingWhitelist = false;
-          render();
-          showToast('Season 0 Access Denied! You are not on the whitelist. Stay tuned for public launch!', 'error');
-          return false;
-        }
+        // Whitelist removed - app is now open to everyone!
+        state.isWhitelisted = true;
 
         console.log('Checking token balance...');
 
@@ -2070,7 +2049,7 @@ Launch Your own! 👇`;
         if (!isDev) {
           const canVoteResult = await votingManagerRead.canVote(state.userAddress);
           if (!canVoteResult) {
-            showToast('Cannot vote! You may have used all votes today, have insufficient tokens, or not be whitelisted.', 'error');
+            showToast('Cannot vote! You may have used all votes today or have insufficient tokens.', 'error');
             return;
           }
         }
@@ -2223,8 +2202,6 @@ Launch Your own! 👇`;
           showToast('Daily vote limit reached! Come back tomorrow.', 'error');
         } else if (error.message && error.message.includes('Already voted')) {
           showToast('Already voted for this host!', 'error');
-        } else if (error.message && error.message.includes('Not whitelisted')) {
-          showToast('Not whitelisted for Season 0 Beta.', 'error');
         } else {
           showToast('Vote failed: ' + (error.reason || error.message || 'Unknown error'), 'error');
         }
