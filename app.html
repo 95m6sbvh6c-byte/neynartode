@@ -1873,29 +1873,44 @@ Launch Your own! 👇`;
 
     // Fetch user's recent casts from Neynar
     async function fetchRecentCasts() {
-      if (!state.userFid) return;
+      if (!state.userFid) {
+        showToast('Unable to fetch casts - no Farcaster ID found', 'error');
+        console.log('fetchRecentCasts: No userFid available, userFid =', state.userFid);
+        return;
+      }
+
       state.loadingRecentCasts = true;
       render();
 
       try {
-        const response = await fetch(`https://api.neynar.com/v2/farcaster/feed/user/${state.userFid}/casts?limit=3&include_replies=false`, {
+        console.log('Fetching casts for FID:', state.userFid);
+        const response = await fetch(`https://api.neynar.com/v2/farcaster/feed/user/casts?fid=${state.userFid}&limit=3&include_replies=false`, {
           headers: {
             'accept': 'application/json',
             'api_key': CONFIG.NEYNAR_API_KEY
           }
         });
 
+        console.log('Neynar API response status:', response.status);
+
         if (response.ok) {
           const data = await response.json();
+          console.log('Casts data:', data);
           state.recentCasts = (data.casts || []).map(cast => ({
             hash: cast.hash,
             text: cast.text?.substring(0, 80) + (cast.text?.length > 80 ? '...' : '') || '',
             timestamp: new Date(cast.timestamp).toLocaleDateString(),
             url: `https://warpcast.com/${state.userProfile?.username || 'user'}/${cast.hash.substring(0, 10)}`
           }));
+        } else {
+          const errorText = await response.text();
+          console.error('Neynar API error:', response.status, errorText);
+          showToast('Failed to fetch casts', 'error');
+          state.recentCasts = [];
         }
       } catch (error) {
         console.error('Error fetching recent casts:', error);
+        showToast('Error fetching casts', 'error');
         state.recentCasts = [];
       }
 
@@ -2345,18 +2360,28 @@ Launch Your own! 👇`;
             </div>
           </div>
 
+          <!-- Active page indicator -->
+          <div class="mb-3 p-3 bg-[var(--accent)] bg-opacity-20 rounded-xl border border-[var(--accent)] border-opacity-30">
+            <p class="text-center text-[var(--accent-light)] font-semibold text-lg">
+              ${state.currentView === 'create' ? 'Create Contest' :
+                state.currentView === 'history' ? 'Contest History' :
+                state.currentView === 'leaderboard' ? 'Leaderboard' :
+                'Suggestions'}
+            </p>
+          </div>
+
           <!-- Navigation tabs -->
           <nav class="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-xl">
-            <button id="viewCreate" class="btn-ghost flex-1 text-sm ${state.currentView === 'create' ? 'active' : ''}">
+            <button id="viewCreate" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'create' ? 'active' : ''}">
               Create
             </button>
-            <button id="viewHistory" class="btn-ghost flex-1 text-sm ${state.currentView === 'history' ? 'active' : ''}">
+            <button id="viewHistory" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'history' ? 'active' : ''}">
               History
             </button>
-            <button id="viewLeaderboard" class="btn-ghost flex-1 text-sm ${state.currentView === 'leaderboard' ? 'active' : ''}">
+            <button id="viewLeaderboard" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'leaderboard' ? 'active' : ''}">
               Leaderboard
             </button>
-            <button id="viewSuggestions" class="btn-ghost flex-1 text-sm ${state.currentView === 'suggestions' ? 'active' : ''}">
+            <button id="viewSuggestions" class="btn-ghost flex-1 text-xs py-2 ${state.currentView === 'suggestions' ? 'active' : ''}">
               Suggestions
             </button>
           </nav>
