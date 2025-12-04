@@ -3451,31 +3451,25 @@ Launch Your own! 👇`;
         connectButton.onclick = connectWallet;
       }
 
-      // Buy token button - opens Warpcast wallet swap
+      // Buy token button - opens Warpcast wallet swap directly in-app
       const buyTokenButton = document.getElementById('buyTokenButton');
       if (buyTokenButton) {
         buyTokenButton.onclick = async () => {
           const tokenAddress = '0x8de1622fe07f56cda2e2273e615a513f1d828b07';
           const sdk = window.FarcasterSDK;
 
-          if (sdk && sdk.wallet && sdk.wallet.ethProvider) {
+          if (sdk && sdk.actions && sdk.actions.swapToken) {
             try {
-              // Try to use the Farcaster SDK to open swap
-              // The swap URL format for Warpcast wallet
-              const swapUrl = `https://warpcast.com/~/swap?token=${tokenAddress}`;
-              if (sdk.actions && sdk.actions.openUrl) {
-                sdk.actions.openUrl(swapUrl);
-              } else {
-                showToast('Opening swap...', 'info');
-                // Fallback: just show the contract address to copy
-                showToast(`Contract: ${tokenAddress}`, 'info', 8000);
-              }
+              // Use native SDK swapToken action - opens swap form in-app
+              await sdk.actions.swapToken({
+                buyToken: tokenAddress
+              });
             } catch (e) {
               console.log('Swap error:', e);
-              showToast(`Contract: ${tokenAddress}`, 'info', 8000);
+              showToast(`$NEYNARTODES: ${tokenAddress}`, 'info', 8000);
             }
           } else {
-            // Not in Mini App - show contract address
+            // SDK not available - show contract address
             showToast(`$NEYNARTODES Contract: ${tokenAddress}`, 'info', 8000);
           }
         };
