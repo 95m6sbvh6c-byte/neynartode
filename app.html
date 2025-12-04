@@ -2271,8 +2271,15 @@ Launch Your own! 👇`;
             </div>
 
             <button
+              id="castSuccessButton"
+              class="btn-primary w-full py-3 mb-3"
+            >
+              📣 Cast It
+            </button>
+
+            <button
               onclick="state.launchSuccess = null; render();"
-              class="btn-primary w-full py-3"
+              class="btn-ghost w-full py-3"
             >
               Launch Another
             </button>
@@ -3474,6 +3481,37 @@ Launch Your own! 👇`;
           } else {
             // SDK not available - show contract address
             showToast(`$NEYNARTODES Contract: ${tokenAddress}`, 'info', 8000);
+          }
+        };
+      }
+
+      // Cast success button - on contest creation confirmation page
+      const castSuccessButton = document.getElementById('castSuccessButton');
+      if (castSuccessButton && state.launchSuccess) {
+        castSuccessButton.onclick = () => {
+          const { contestId, castHash } = state.launchSuccess;
+          // Get user tag
+          const hostTag = state.userProfile?.username
+            ? `@${state.userProfile.username}`
+            : `FID:${state.userFid || 'Unknown'}`;
+
+          const successText = `🦎 Just launched Contest #${contestId} on NEYNARtodes! 🎉
+
+Check it out and enter for a chance to win! 👇`;
+
+          // Set up modal state and open
+          window.castModalState = {
+            contestId,
+            castId: castHash,
+            text: successText
+          };
+
+          const modal = document.getElementById('cast-modal');
+          const textarea = document.getElementById('cast-modal-text');
+          if (modal && textarea) {
+            textarea.value = successText;
+            modal.classList.remove('hidden');
+            textarea.focus();
           }
         };
       }
