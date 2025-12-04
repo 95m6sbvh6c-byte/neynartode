@@ -584,7 +584,28 @@
 
           if (response.ok) {
             const status = data.qualified ? '✅' : '❌';
-            results.push(`${status} Contest #${contest.contestId}`);
+            let line = `${status} Contest #${contest.contestId}: `;
+
+            // Build status details
+            const details = [];
+
+            // Social status
+            if (data.social.requirements.recast || data.social.requirements.like || data.social.requirements.reply) {
+              details.push(data.social.met ? 'Social ✓' : 'Social ✗');
+            }
+
+            // Volume status
+            if (data.volume.required > 0) {
+              details.push(data.volume.met ? 'Volume ✓' : `Volume ✗ ($${data.volume.usd.toFixed(0)}/$${data.volume.required})`);
+            }
+
+            // If no requirements
+            if (details.length === 0) {
+              details.push('Open to all');
+            }
+
+            line += details.join(' | ');
+            results.push(line);
             if (data.qualified) qualifiedCount++;
           } else {
             results.push(`⚠️ Contest #${contest.contestId}: Error`);
