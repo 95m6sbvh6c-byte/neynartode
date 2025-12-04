@@ -445,22 +445,48 @@
 
   <script>
     // Toast notification system (replaces alert() which is blocked in Farcaster iframe)
+    // Set duration to 0 for persistent toast that stays until user closes it
     function showToast(message, type = 'info', duration = 5000) {
       const container = document.getElementById('toast-container');
       if (!container) return;
 
       const toast = document.createElement('div');
       toast.className = `toast ${type}`;
-      toast.textContent = message;
+      toast.style.position = 'relative';
+      toast.style.whiteSpace = 'pre-line';
+
+      // Add message text
+      const textSpan = document.createElement('span');
+      textSpan.textContent = message;
+      toast.appendChild(textSpan);
+
+      // Add close button for persistent toasts
+      if (duration === 0) {
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = 'position:absolute;top:8px;right:8px;background:none;border:none;color:inherit;font-size:16px;cursor:pointer;padding:4px 8px;opacity:0.7;';
+        closeBtn.onmouseover = () => closeBtn.style.opacity = '1';
+        closeBtn.onmouseout = () => closeBtn.style.opacity = '0.7';
+        closeBtn.onclick = (e) => {
+          e.stopPropagation();
+          toast.style.animation = 'toastOut 0.3s ease-out forwards';
+          setTimeout(() => toast.remove(), 300);
+        };
+        toast.appendChild(closeBtn);
+        toast.style.paddingRight = '32px';
+      }
+
       container.appendChild(toast);
 
-      // Auto-remove after duration
-      setTimeout(() => {
-        toast.style.animation = 'toastOut 0.3s ease-out forwards';
-        setTimeout(() => toast.remove(), 300);
-      }, duration);
+      // Auto-remove after duration (skip if duration is 0 for persistent)
+      if (duration > 0) {
+        setTimeout(() => {
+          toast.style.animation = 'toastOut 0.3s ease-out forwards';
+          setTimeout(() => toast.remove(), 300);
+        }, duration);
+      }
 
-      // Click to dismiss
+      // Click to dismiss (anywhere on toast)
       toast.onclick = () => {
         toast.style.animation = 'toastOut 0.3s ease-out forwards';
         setTimeout(() => toast.remove(), 300);
@@ -550,21 +576,21 @@
       for (const contest of activeContests) {
         try {
           const params = state.userFid
-            ? `contestId=${contest.id}&fid=${state.userFid}`
-            : `contestId=${contest.id}&address=${state.userAddress}`;
+            ? `contestId=${contest.contestId}&fid=${state.userFid}`
+            : `contestId=${contest.contestId}&address=${state.userAddress}`;
 
           const response = await fetch(`/api/check-eligibility?${params}`);
           const data = await response.json();
 
           if (response.ok) {
             const status = data.qualified ? '✅' : '❌';
-            results.push(`${status} Contest #${contest.id}`);
+            results.push(`${status} Contest #${contest.contestId}`);
             if (data.qualified) qualifiedCount++;
           } else {
-            results.push(`⚠️ Contest #${contest.id}: Error`);
+            results.push(`⚠️ Contest #${contest.contestId}: Error`);
           }
         } catch (error) {
-          results.push(`⚠️ Contest #${contest.id}: Failed`);
+          results.push(`⚠️ Contest #${contest.contestId}: Failed`);
         }
       }
 
@@ -575,7 +601,8 @@
 
       const message = `${results.join('\n')}\n\n${summary}`;
       const toastType = qualifiedCount > 0 ? 'success' : 'warning';
-      showToast(message, toastType, 10000);
+      // Use duration 0 for persistent toast - user must close it
+      showToast(message, toastType, 0);
     }
 
     // Cast sharing modal functions
