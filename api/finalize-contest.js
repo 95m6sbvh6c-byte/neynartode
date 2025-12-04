@@ -31,6 +31,11 @@ const CONFIG = {
   // API Keys
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
   // COVALENT_API_KEY - set in environment variables (free tier: 300K credits/month)
+
+  // Blocked FIDs - these users cannot win contests
+  BLOCKED_FIDS: [
+    1188162,  // App owner - excluded from winning
+  ],
 };
 
 // Contract ABIs
@@ -446,6 +451,12 @@ async function checkAndFinalizeContest(contestId) {
   for (const [fid, userData] of engagement.usersByFid || new Map()) {
     // Skip the contest host
     if (fid === engagement.castAuthorFid) continue;
+
+    // Skip blocked FIDs (e.g., app owner)
+    if (CONFIG.BLOCKED_FIDS.includes(fid)) {
+      console.log(`   Skipping blocked FID: ${fid} (@${userData.username})`);
+      continue;
+    }
 
     // Check if user meets social requirements
     let meetsRequirements = true;
