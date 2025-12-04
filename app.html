@@ -1527,6 +1527,24 @@ Launch Your own! 👇`;
         state.isCheckingWhitelist = false;
         state.walletStatus = null;
 
+        // Fetch remaining votes from VotingManager contract
+        try {
+          const votingManagerRead = new ethers.Contract(
+            CONFIG.CONTRACTS.votingManager,
+            ['function getRemainingVotes(address user) external view returns (uint256)'],
+            rpcProvider
+          );
+          const remainingVotes = await withTimeout(votingManagerRead.getRemainingVotes(address), 5000);
+          state.votesRemaining = Number(remainingVotes);
+          state.votesUsedToday = 10 - state.votesRemaining;
+          console.log(`Remaining votes from contract: ${state.votesRemaining}`);
+        } catch (e) {
+          console.error('Failed to fetch remaining votes:', e);
+          // Default to 10 if contract call fails
+          state.votesRemaining = 10;
+          state.votesUsedToday = 0;
+        }
+
         // Load leaderboard data
         await loadLeaderboard();
 
@@ -2346,10 +2364,17 @@ Launch Your own! 👇`;
           movementText = `\n➡️ @${votedHost.username} stayed at rank #${newRank}`;
         }
 
-        // Only decrement vote counter for non-dev wallets
+        // Refresh remaining votes from contract for non-dev wallets
         if (!isDevWallet) {
-          state.votesUsedToday++;
-          state.votesRemaining--;
+          try {
+            const remainingVotes = await votingManagerRead.getRemainingVotes(state.userAddress);
+            state.votesRemaining = Number(remainingVotes);
+            state.votesUsedToday = 10 - state.votesRemaining;
+          } catch (e) {
+            // Fallback to local decrement if contract call fails
+            state.votesUsedToday++;
+            state.votesRemaining--;
+          }
         }
 
         const ethFromVote = 0.00001;
