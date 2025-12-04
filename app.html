@@ -538,7 +538,12 @@ Launch Your own! 👇`;
         warpcastUrl += `&embeds[]=${encodeURIComponent(castUrl)}`;
       }
 
-      window.open(warpcastUrl, '_blank');
+      // Use SDK openUrl when in Mini App, otherwise window.open
+      if (window.sdk && window.sdk.actions && window.sdk.actions.openUrl) {
+        window.sdk.actions.openUrl(warpcastUrl);
+      } else {
+        window.open(warpcastUrl, '_blank');
+      }
 
       // Close modal
       closeCastModal();
