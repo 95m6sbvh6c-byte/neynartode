@@ -194,47 +194,73 @@ async function getTokenBalance(provider, address) {
 }
 
 /**
- * Get recent NEYNARTODES transfers for addresses
- * Includes block number for historical price lookups
+ * Get recent NEYNARTODES transfers for addresses using direct blockchain queries
+ * More reliable than Blockscout API
  */
-async function getRecentTransfers(addresses) {
+async function getRecentTransfers(provider, addresses, fromBlock = null) {
   const transfers = [];
-  const now = Date.now();
-  const oneDayAgo = now - (24 * 60 * 60 * 1000);
+  const normalizedAddresses = addresses.map(a => a.toLowerCase());
 
   try {
-    const response = await fetch(
-      `${CONFIG.BLOCKSCOUT_API}/tokens/${CONFIG.NEYNARTODES}/transfers`
+    const tokenContract = new ethers.Contract(
+      CONFIG.NEYNARTODES,
+      ['event Transfer(address indexed from, address indexed to, uint256 value)'],
+      provider
     );
 
-    if (!response.ok) return transfers;
+    // If no fromBlock specified, get last 24 hours (~43200 blocks on Base at 2s/block)
+    const currentBlock = await provider.getBlockNumber();
+    const startBlock = fromBlock || currentBlock - 43200;
 
-    const data = await response.json();
-    const items = data.items || [];
+    console.log(`   Scanning blocks ${startBlock} to ${currentBlock}...`);
 
-    const normalizedAddresses = addresses.map(a => a.toLowerCase());
+    // Query transfers FROM these addresses (sells)
+    for (const addr of normalizedAddresses) {
+      const sellEvents = await tokenContract.queryFilter(
+        tokenContract.filters.Transfer(addr, null),
+        startBlock,
+        currentBlock
+      );
 
-    for (const item of items) {
-      const fromAddr = item.from?.hash?.toLowerCase();
-      const toAddr = item.to?.hash?.toLowerCase();
-      const timestamp = new Date(item.timestamp).getTime();
+      for (const event of sellEvents) {
+        const block = await event.getBlock();
+        transfers.push({
+          type: 'SELL',
+          amount: Number(ethers.formatEther(event.args.value)),
+          from: event.args.from.toLowerCase(),
+          to: event.args.to.toLowerCase(),
+          timestamp: block.timestamp * 1000,
+          timestampStr: new Date(block.timestamp * 1000).toLocaleString(),
+          txHash: event.transactionHash,
+          blockNumber: event.blockNumber,
+        });
+      }
 
-      if (timestamp >= oneDayAgo) {
-        if (normalizedAddresses.includes(fromAddr) || normalizedAddresses.includes(toAddr)) {
-          const value = Number(item.total?.value || 0) / 1e18;
-          transfers.push({
-            type: normalizedAddresses.includes(fromAddr) ? 'SELL' : 'BUY',
-            amount: value,
-            from: fromAddr,
-            to: toAddr,
-            timestamp: new Date(item.timestamp).getTime(),
-            timestampStr: new Date(item.timestamp).toLocaleString(),
-            txHash: item.transaction_hash,
-            blockNumber: item.block_number, // Include block for historical price lookup
-          });
-        }
+      // Query transfers TO these addresses (buys)
+      const buyEvents = await tokenContract.queryFilter(
+        tokenContract.filters.Transfer(null, addr),
+        startBlock,
+        currentBlock
+      );
+
+      for (const event of buyEvents) {
+        const block = await event.getBlock();
+        transfers.push({
+          type: 'BUY',
+          amount: Number(ethers.formatEther(event.args.value)),
+          from: event.args.from.toLowerCase(),
+          to: event.args.to.toLowerCase(),
+          timestamp: block.timestamp * 1000,
+          timestampStr: new Date(block.timestamp * 1000).toLocaleString(),
+          txHash: event.transactionHash,
+          blockNumber: event.blockNumber,
+        });
       }
     }
+
+    // Sort by timestamp descending
+    transfers.sort((a, b) => b.timestamp - a.timestamp);
+
   } catch (e) {
     console.error('Error fetching transfers:', e.message);
   }
@@ -267,10 +293,70 @@ async function calculateVolumeDuringPeriod(provider, transfers, startTime, endTi
 }
 
 /**
+ * Get transfers for a specific contest period (faster, no block timestamp lookups)
+ */
+async function getContestPeriodTransfers(provider, addresses, fromBlock, toBlock) {
+  const transfers = [];
+  const normalizedAddresses = addresses.map(a => a.toLowerCase());
+
+  try {
+    const tokenContract = new ethers.Contract(
+      CONFIG.NEYNARTODES,
+      ['event Transfer(address indexed from, address indexed to, uint256 value)'],
+      provider
+    );
+
+    for (const addr of normalizedAddresses) {
+      // Sells
+      const sellEvents = await tokenContract.queryFilter(
+        tokenContract.filters.Transfer(addr, null),
+        fromBlock,
+        toBlock
+      );
+
+      for (const event of sellEvents) {
+        const block = await event.getBlock();
+        transfers.push({
+          type: 'SELL',
+          amount: Number(ethers.formatEther(event.args.value)),
+          from: event.args.from.toLowerCase(),
+          to: event.args.to.toLowerCase(),
+          timestamp: block.timestamp * 1000,
+          blockNumber: event.blockNumber,
+        });
+      }
+
+      // Buys
+      const buyEvents = await tokenContract.queryFilter(
+        tokenContract.filters.Transfer(null, addr),
+        fromBlock,
+        toBlock
+      );
+
+      for (const event of buyEvents) {
+        const block = await event.getBlock();
+        transfers.push({
+          type: 'BUY',
+          amount: Number(ethers.formatEther(event.args.value)),
+          from: event.args.from.toLowerCase(),
+          to: event.args.to.toLowerCase(),
+          timestamp: block.timestamp * 1000,
+          blockNumber: event.blockNumber,
+        });
+      }
+    }
+  } catch (e) {
+    // Silently fail - will return empty array
+  }
+
+  return transfers;
+}
+
+/**
  * Get active contests and check if user qualifies
  * Uses historical prices for accurate USD volume calculation
  */
-async function checkContestEligibility(provider, addresses, transfers) {
+async function checkContestEligibility(provider, addresses) {
   const contract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
   const results = [];
 
@@ -278,11 +364,12 @@ async function checkContestEligibility(provider, addresses, transfers) {
     const nextId = await contract.nextContestId();
     const totalContests = Number(nextId) - 1;
     const now = Math.floor(Date.now() / 1000);
+    const currentBlock = await provider.getBlockNumber();
 
     for (let i = totalContests; i >= Math.max(1, totalContests - 10); i--) {
       try {
         const contest = await contract.getContest(i);
-        const [host, prizeToken, prizeAmount, startTime, endTime, castId, tokenReq, volumeReq, status, winner] = contest;
+        const [, , prizeAmount, startTime, endTime, castId, , volumeReq, status] = contest;
 
         const contestStartTime = Number(startTime);
         const contestEndTime = Number(endTime);
@@ -290,9 +377,20 @@ async function checkContestEligibility(provider, addresses, transfers) {
 
         // Only check active contests
         if (contestStatus === 0 && contestEndTime > now) {
+          // Calculate block range for contest period
+          // Base has ~2 second blocks
+          const elapsedTime = now - contestStartTime;
+          const blocksElapsed = Math.floor(elapsedTime / 2);
+          const fromBlock = currentBlock - blocksElapsed;
+
+          // Get transfers specifically for this contest period
+          const contestTransfers = await getContestPeriodTransfers(
+            provider, addresses, fromBlock, currentBlock
+          );
+
           // Calculate user's volume during contest period with HISTORICAL prices
           const { volumeTokens, volumeUSD } = await calculateVolumeDuringPeriod(
-            provider, transfers, contestStartTime, contestEndTime
+            provider, contestTransfers, contestStartTime, contestEndTime
           );
           const volumeRequiredUSD = Number(volumeReq) / 1e18;
 
@@ -434,9 +532,9 @@ Examples:
   const totalBalanceUSD = totalBalance * tokenPriceUSD;
   console.log(`\n💰 Total NEYNARTODES: ${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} (~$${totalBalanceUSD.toFixed(2)})`);
 
-  // Get recent transfers
+  // Get recent transfers using direct blockchain queries
   console.log('\n📈 Recent Trades (24h) - Using HISTORICAL prices at time of trade:');
-  const transfers = await getRecentTransfers(addresses);
+  const transfers = await getRecentTransfers(provider, addresses);
 
   if (transfers.length === 0) {
     console.log('   No trades in the last 24 hours');
@@ -461,7 +559,7 @@ Examples:
 
   // Check contest eligibility
   console.log('\n🏆 Active Contests:');
-  const contests = await checkContestEligibility(provider, addresses, transfers);
+  const contests = await checkContestEligibility(provider, addresses);
 
   if (contests.length === 0) {
     console.log('   No active contests found');
