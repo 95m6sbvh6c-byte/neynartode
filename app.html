@@ -3456,13 +3456,16 @@ Launch Your own! 👇`;
       if (buyTokenButton) {
         buyTokenButton.onclick = async () => {
           const tokenAddress = '0x8de1622fe07f56cda2e2273e615a513f1d828b07';
+          // CAIP-19 format: eip155:{chainId}/erc20:{tokenAddress}
+          // Base chain ID is 8453
+          const buyTokenCaip19 = `eip155:8453/erc20:${tokenAddress}`;
           const sdk = window.FarcasterSDK;
 
           if (sdk && sdk.actions && sdk.actions.swapToken) {
             try {
               // Use native SDK swapToken action - opens swap form in-app
               await sdk.actions.swapToken({
-                buyToken: tokenAddress
+                buyToken: buyTokenCaip19
               });
             } catch (e) {
               console.log('Swap error:', e);
