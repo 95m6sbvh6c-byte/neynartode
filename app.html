@@ -3495,6 +3495,7 @@ Launch Your own! 👇`;
             prizeAmount,
             prizeTicker,
             durationHours,
+            durationMinutes,
             requireRecast,
             requireLike,
             requireReply,
@@ -3510,6 +3511,11 @@ Launch Your own! 👇`;
           // Build prize string
           const prize = `${prizeAmount} $${prizeTicker}`;
 
+          // Build duration string
+          const hours = parseInt(durationHours) || 0;
+          const mins = parseInt(durationMinutes) || 0;
+          const durationStr = mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+
           // Build requirements list
           const reqs = [];
           if (requireRecast) reqs.push('🔄 Recast');
@@ -3523,7 +3529,7 @@ Launch Your own! 👇`;
           const successText = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
 
 🎁 Prize: ${prize}
-⏱️ Duration: ${durationHours}h
+⏱️ Duration: ${durationStr}
 ${reqsLine}
 ${reactLine}
 
@@ -4455,10 +4461,11 @@ Launch your own! 👇`;
           // Contest details for Cast It
           prizeAmount: state.prizeTokenAmount,
           prizeTicker: state.prizeTokenTicker || 'ETH',
-          durationHours: state.selectedDuration,
-          requireRecast: state.requireRecast,
-          requireLike: state.requireLike,
-          requireReply: state.requireReply,
+          durationHours: state.durationHours || '24',
+          durationMinutes: state.durationMinutes || '0',
+          requireRecast: parseInt(state.minRecasts) > 0,
+          requireLike: parseInt(state.minLikes) > 0,
+          requireReply: parseInt(state.minReplies) > 0,
           volumeReq: state.minTradeVolume ? parseFloat(state.minTradeVolume) : 0,
           tokenTicker: state.tokenTicker || 'NEYNARTODES'
         };
