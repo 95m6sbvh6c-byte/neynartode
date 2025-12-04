@@ -3489,15 +3489,45 @@ Launch Your own! 👇`;
       const castSuccessButton = document.getElementById('castSuccessButton');
       if (castSuccessButton && state.launchSuccess) {
         castSuccessButton.onclick = () => {
-          const { contestId, castHash } = state.launchSuccess;
+          const {
+            contestId,
+            castHash,
+            prizeAmount,
+            prizeTicker,
+            durationHours,
+            requireRecast,
+            requireLike,
+            requireReply,
+            volumeReq,
+            tokenTicker
+          } = state.launchSuccess;
+
           // Get user tag
           const hostTag = state.userProfile?.username
             ? `@${state.userProfile.username}`
             : `FID:${state.userFid || 'Unknown'}`;
 
-          const successText = `🦎 Just launched Contest #${contestId} on NEYNARtodes! 🎉
+          // Build prize string
+          const prize = `${prizeAmount} $${prizeTicker}`;
 
-Check it out and enter for a chance to win! 👇`;
+          // Build requirements list
+          const reqs = [];
+          if (requireRecast) reqs.push('🔄 Recast');
+          if (requireLike) reqs.push('❤️ Like');
+          if (requireReply) reqs.push('💬 Reply');
+          if (volumeReq > 0) reqs.push(`💰 $${volumeReq} ${tokenTicker} volume`);
+
+          const reqsLine = reqs.length > 0 ? `📋 To Enter: ${reqs.join(' + ')}` : '🎁 Open to everyone!';
+          const reactLine = reqs.length > 0 ? '👇 React to the cast below to enter!' : '';
+
+          const successText = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
+
+🎁 Prize: ${prize}
+⏱️ Duration: ${durationHours}h
+${reqsLine}
+${reactLine}
+
+Launch your own! 👇`;
 
           // Set up modal state and open
           window.castModalState = {
@@ -4416,11 +4446,21 @@ Check it out and enter for a chance to win! 👇`;
         state.lastLaunchDate = new Date();
 
         // Show success screen (don't use alert - Warpcast blocks it)
+        // Save all contest details BEFORE form reset for Cast It
         state.launchSuccess = {
           contestId,
           castHash: castId,
           txHash: tx.hash,
-          txUrl
+          txUrl,
+          // Contest details for Cast It
+          prizeAmount: state.prizeTokenAmount,
+          prizeTicker: state.prizeTokenTicker || 'ETH',
+          durationHours: state.selectedDuration,
+          requireRecast: state.requireRecast,
+          requireLike: state.requireLike,
+          requireReply: state.requireReply,
+          volumeReq: state.minTradeVolume ? parseFloat(state.minTradeVolume) : 0,
+          tokenTicker: state.tokenTicker || 'NEYNARTODES'
         };
 
         // Reset form only after successful launch
