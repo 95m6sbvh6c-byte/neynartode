@@ -1209,7 +1209,18 @@ Launch Your own! 👇`;
         return;
       }
 
-      const ethProvider = window.sdk?.wallet?.ethProvider;
+      // Get the Ethereum provider from Farcaster SDK or fallback to window.ethereum
+      let ethProvider = null;
+      const sdk = window.FarcasterSDK;
+      if (sdk && typeof sdk.wallet?.getEthereumProvider === 'function') {
+        ethProvider = sdk.wallet.getEthereumProvider();
+        if (ethProvider && typeof ethProvider.then === 'function') {
+          ethProvider = await ethProvider;
+        }
+      }
+      if (!ethProvider && window.ethereum) {
+        ethProvider = window.ethereum;
+      }
       if (!ethProvider) {
         showToast('Wallet provider not available', 'error');
         return;
