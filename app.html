@@ -795,7 +795,7 @@ ${reactLine}`;
       tokenMcap: 0,
       tokenSearch: '',
       showTokenSuggestions: false,
-      minTradeVolume: '10', // Default to $10 for NEYNARTODES
+      minTradeVolume: '20', // Default to $20 for NEYNARTODES
 
       // Winner announcement
       customMessage: '',
@@ -3620,7 +3620,7 @@ ${reactLine}`;
                 <p>• Whitelist required for participation</p>
                 <p>• Minimum 20,000 $NEYNARTODES token gate</p>
                 <p>• 4+ words required per reply</p>
-                <p>• $10 max volume for NEYNARTODES</p>
+                <p>• $20 min volume for NEYNARTODES</p>
               </div>
             </details>
 
@@ -3965,8 +3965,8 @@ ${reactLine}`;
                     <div>
                       <label class="block text-sm text-[var(--text-secondary)] mb-2">Min Volume ($)</label>
                       ${state.tokenAddress && state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
-                        <input type="number" id="minTradeVolume" value="10" readonly class="input-modern opacity-60 cursor-not-allowed" />
-                        <p class="text-xs text-[var(--text-muted)] mt-1">NEYNARTODES locked at $10</p>
+                        <input type="number" id="minTradeVolume" value="20" readonly class="input-modern opacity-60 cursor-not-allowed" />
+                        <p class="text-xs text-[var(--text-muted)] mt-1">NEYNARTODES locked at $20</p>
                       ` : `
                         <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="input-modern" />
                         <p class="text-xs text-[var(--text-muted)] mt-1">Max = prize amount</p>
@@ -4302,7 +4302,7 @@ ${reactLine}`;
             if (!state.tokenomicsEnabled) {
               state.minTradeVolume = '0';
             } else {
-              state.minTradeVolume = '10'; // Reset to default
+              state.minTradeVolume = '20'; // Reset to default
             }
             render();
             return;
