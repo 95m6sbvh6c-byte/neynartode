@@ -440,11 +440,7 @@
         placeholder="Enter your cast message..."
       ></textarea>
 
-      <p class="text-xs text-[var(--text-muted)] mt-2 mb-4">
-        The NEYNARtodes app link will be automatically added
-      </p>
-
-      <div class="flex gap-3">
+      <div class="flex gap-3 mt-4">
         <button onclick="closeCastModal()" class="btn-secondary flex-1">
           Cancel
         </button>
@@ -682,9 +678,7 @@
 ${prizeLine}
 ⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m
 ${reqsLine}
-${reactLine}
-
-Launch Your own! 👇`;
+${reactLine}`;
 
       // Store in window for access (including castId for quoting original cast, and NFT image for embed)
       window.castModalState = {
@@ -762,8 +756,7 @@ Launch Your own! 👇`;
         return;
       }
 
-      // Add the frame embed link
-      const fullText = text + '\n\nhttps://frame-opal-eight.vercel.app';
+      const fullText = text;
 
       // Build embeds array - NFT image FIRST so it displays prominently in Warpcast
       const embeds = [];
