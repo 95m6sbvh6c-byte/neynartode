@@ -638,8 +638,12 @@ ${reactLine}`;
 
       // Add NFT image as embed if available
       if (isNft && nftImage) {
-        // Use ipfs.io gateway (cloudflare-ipfs.com is down)
-        embeds.push(nftImage);
+        // Use dweb.link gateway (ipfs.io returns 403 for Warpcast servers)
+        let imageUrl = nftImage;
+        if (imageUrl.includes('ipfs.io/ipfs/')) {
+          imageUrl = imageUrl.replace('ipfs.io/ipfs/', 'dweb.link/ipfs/');
+        }
+        embeds.push(imageUrl);
       }
 
       // Quote the original cast
