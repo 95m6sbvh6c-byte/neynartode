@@ -5126,9 +5126,33 @@ Launch your own! 👇`;
               signerAddress: signerAddress
             });
 
-            // Skip simulation - it can fail due to RPC caching even when approval is confirmed
-            // We've already verified approval above, so proceed directly to the transaction
-            if (statusDiv) statusDiv.textContent = 'Step 9c: Sending transaction... Check wallet!';
+            // Try gas estimation first to catch errors
+            if (statusDiv) statusDiv.textContent = 'Step 9c: Estimating gas...';
+
+            const estimateTxParams = {
+              from: signerAddress,
+              to: CONFIG.CONTRACTS.nftContestEscrow,
+              data: createData
+            };
+            if (contestFee.gt(0)) {
+              estimateTxParams.value = contestFee;
+            }
+
+            try {
+              const gasEstimate = await rpcProvider.estimateGas(estimateTxParams);
+              console.log('NFT Contest gas estimate:', gasEstimate.toString());
+              if (statusDiv) statusDiv.textContent = 'Step 9d: Gas OK (' + gasEstimate.toString() + ')';
+            } catch (gasErr) {
+              console.error('NFT Contest gas estimation failed:', gasErr);
+              console.error('Error reason:', gasErr.reason);
+              console.error('Error code:', gasErr.code);
+              console.error('Error data:', gasErr.data);
+              showToast(`Transaction would fail: ${gasErr.reason || gasErr.message}`, 'error');
+              if (statusDiv) statusDiv.textContent = 'FAILED: ' + (gasErr.reason || gasErr.message);
+              return;
+            }
+
+            if (statusDiv) statusDiv.textContent = 'Step 9e: Sending transaction... Check wallet!';
 
             // Build transaction params - only include value if fee > 0
             const txParams = {
