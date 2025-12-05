@@ -703,18 +703,25 @@ Launch Your own! 👇`;
       const nftImageEl = document.getElementById('cast-modal-nft-image');
       const nftNameEl = document.getElementById('cast-modal-nft-name');
 
+      console.log('Modal elements found:', { modal: !!modal, textarea: !!textarea, nftPreview: !!nftPreview, nftImageEl: !!nftImageEl, nftNameEl: !!nftNameEl });
+      console.log('NFT data:', { isNft, nftImage, prize });
+
       if (modal && textarea) {
         textarea.value = defaultText;
 
         // Show NFT preview if it's an NFT contest with an image
         if (isNft && nftImage && nftPreview && nftImageEl && nftNameEl) {
+          console.log('Setting NFT image src to:', nftImage);
           nftImageEl.src = nftImage;
           nftImageEl.style.display = 'block';
           nftNameEl.textContent = prize;
           nftPreview.classList.remove('hidden');
-          console.log('Showing NFT preview with image:', nftImage);
-        } else if (nftPreview) {
-          nftPreview.classList.add('hidden');
+          console.log('NFT preview should now be visible');
+        } else {
+          console.log('NFT preview hidden - conditions not met:', { isNft, hasNftImage: !!nftImage, hasPreview: !!nftPreview, hasImageEl: !!nftImageEl, hasNameEl: !!nftNameEl });
+          if (nftPreview) {
+            nftPreview.classList.add('hidden');
+          }
         }
 
         modal.classList.remove('hidden');
