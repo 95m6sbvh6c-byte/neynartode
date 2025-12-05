@@ -4879,6 +4879,17 @@ Launch your own! 👇`;
               volumeRequirement
             ]);
 
+            // Log params for debugging
+            console.log('NFT Contest params:', {
+              nftContract: state.prizeNftAddress,
+              tokenId: tokenId,
+              duration: durationSeconds,
+              castId: castId,
+              tokenReq: tokenRequirement,
+              volumeReq: volumeRequirement.toString(),
+              fee: ethers.utils.formatEther(contestFee)
+            });
+
             try {
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
@@ -4886,7 +4897,8 @@ Launch your own! 👇`;
                   from: signerAddress,
                   to: CONFIG.CONTRACTS.nftContestEscrow,
                   value: contestFee.toHexString(),
-                  data: createData
+                  data: createData,
+                  gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
                 }]
               });
               tx = { hash: txHash };
@@ -4901,7 +4913,7 @@ Launch your own! 👇`;
                   castId,
                   tokenRequirement,
                   volumeRequirement,
-                  { value: contestFee }
+                  { value: contestFee, gasLimit: 5000000 }
                 );
                 if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
               } else {
@@ -4983,7 +4995,8 @@ Launch your own! 👇`;
                   from: signerAddress,
                   to: CONFIG.CONTRACTS.nftContestEscrow,
                   value: contestFee.toHexString(),
-                  data: createData
+                  data: createData,
+                  gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
                 }]
               });
               tx = { hash: txHash };
@@ -4999,7 +5012,7 @@ Launch your own! 👇`;
                   castId,
                   tokenRequirement,
                   volumeRequirement,
-                  { value: contestFee }
+                  { value: contestFee, gasLimit: 5000000 }
                 );
                 if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
               } else {
