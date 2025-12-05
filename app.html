@@ -4949,22 +4949,29 @@ Launch your own! 👇`;
             // We've already verified approval above, so proceed directly to the transaction
             if (statusDiv) statusDiv.textContent = 'Step 9c: Sending transaction... Check wallet!';
 
+            // Build transaction params - only include value if fee > 0
+            const txParams = {
+              from: signerAddress,
+              to: CONFIG.CONTRACTS.nftContestEscrow,
+              data: createData,
+              gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
+            };
+            if (contestFee.gt(0)) {
+              txParams.value = contestFee.toHexString();
+            }
+
             try {
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
-                params: [{
-                  from: signerAddress,
-                  to: CONFIG.CONTRACTS.nftContestEscrow,
-                  value: contestFee.toHexString(),
-                  data: createData,
-                  gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
-                }]
+                params: [txParams]
               });
               tx = { hash: txHash };
               if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + txHash.slice(0,15) + '...';
             } catch (txError) {
               if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
                 const nftEscrow = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, signer);
+                const txOptions = { gasLimit: 5000000 };
+                if (contestFee.gt(0)) txOptions.value = contestFee;
                 tx = await nftEscrow.createContestERC721(
                   state.prizeNftAddress,
                   tokenId,
@@ -4972,7 +4979,7 @@ Launch your own! 👇`;
                   castId,
                   tokenRequirement,
                   volumeRequirement,
-                  { value: contestFee, gasLimit: 5000000 }
+                  txOptions
                 );
                 if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
               } else {
@@ -5081,22 +5088,29 @@ Launch your own! 👇`;
               volumeRequirement
             ]);
 
+            // Build transaction params - only include value if fee > 0
+            const txParams1155 = {
+              from: signerAddress,
+              to: CONFIG.CONTRACTS.nftContestEscrow,
+              data: createData,
+              gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
+            };
+            if (contestFee.gt(0)) {
+              txParams1155.value = contestFee.toHexString();
+            }
+
             try {
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
-                params: [{
-                  from: signerAddress,
-                  to: CONFIG.CONTRACTS.nftContestEscrow,
-                  value: contestFee.toHexString(),
-                  data: createData,
-                  gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
-                }]
+                params: [txParams1155]
               });
               tx = { hash: txHash };
               if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + txHash.slice(0,15) + '...';
             } catch (txError) {
               if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
                 const nftEscrow = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, signer);
+                const txOptions1155 = { gasLimit: 5000000 };
+                if (contestFee.gt(0)) txOptions1155.value = contestFee;
                 tx = await nftEscrow.createContestERC1155(
                   state.prizeNftAddress,
                   tokenId,
@@ -5105,7 +5119,7 @@ Launch your own! 👇`;
                   castId,
                   tokenRequirement,
                   volumeRequirement,
-                  { value: contestFee, gasLimit: 5000000 }
+                  txOptions1155
                 );
                 if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
               } else {
