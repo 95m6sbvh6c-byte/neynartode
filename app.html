@@ -405,48 +405,6 @@
 <body>
   <div id="toast-container"></div>
 
-  <!-- Cast Share Modal -->
-  <div id="cast-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
-    <!-- Backdrop -->
-    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeCastModal()"></div>
-
-    <!-- Modal Content -->
-    <div class="relative glass-card w-full max-w-md p-6 animate-fade-in" style="background: var(--bg-secondary); border: 1px solid var(--border-light);">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-[var(--text-primary)]">Share Contest</h3>
-        <button onclick="closeCastModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-2xl transition-colors">&times;</button>
-      </div>
-
-      <p class="text-sm text-[var(--text-secondary)] mb-3">Customize your message before casting:</p>
-
-      <!-- NFT Image Preview (shown when sharing NFT contest) -->
-      <div id="cast-modal-nft-preview" class="hidden mb-3">
-        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: rgba(88, 28, 135, 0.3); border: 1px solid rgba(168, 85, 247, 0.3);">
-          <img id="cast-modal-nft-image" alt="NFT" style="width: 64px; height: 64px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: rgba(107, 33, 168, 0.5);" onload="console.log('NFT image loaded')" onerror="console.error('NFT image error:', this.src)" />
-          <div>
-            <div style="font-size: 12px; color: #c084fc;">NFT Prize</div>
-            <div id="cast-modal-nft-name" style="font-size: 14px; font-weight: 600; color: white;"></div>
-          </div>
-        </div>
-      </div>
-
-      <textarea
-        id="cast-modal-text"
-        rows="8"
-        class="input-modern resize-none text-sm"
-        placeholder="Enter your cast message..."
-      ></textarea>
-
-      <div class="flex gap-3 mt-4">
-        <button onclick="closeCastModal()" class="btn-secondary flex-1">
-          Cancel
-        </button>
-        <button onclick="submitCastModal()" class="btn-primary flex-1">
-          Cast Now
-        </button>
-      </div>
-    </div>
-  </div>
 
   <div id="app"></div>
 
@@ -649,12 +607,10 @@
       const isNft = button.dataset.isNft === 'true';
       const nftImage = decodeURIComponent(button.dataset.nftImage || '');
 
-      console.log('openCastModalFromData - nftImage:', nftImage);
-
-      openCastModal(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage);
+      shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage);
     }
 
-    function openCastModal(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage) {
+    async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage) {
       const hostTag = hostUsername ? `@${hostUsername}` : 'a host';
 
       // Build requirements string
@@ -670,97 +626,18 @@
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
 
-      const defaultText = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
+      const text = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
 
 ${prizeLine}
 ⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m
 ${reqsLine}
 ${reactLine}`;
 
-      // Store in window for access (including castId for quoting original cast, and NFT image for embed)
-      window.castModalState = {
-        contestId,
-        castId,
-        text: defaultText,
-        isNft: isNft || false,
-        nftImage: nftImage || '',
-        prize: prize
-      };
-
-      // Debug log
-      console.log('openCastModal called:', { contestId, isNft, nftImage: nftImage ? nftImage.substring(0, 50) + '...' : 'EMPTY', prize });
-
-      // Show the modal
-      const modal = document.getElementById('cast-modal');
-      const textarea = document.getElementById('cast-modal-text');
-      const nftPreview = document.getElementById('cast-modal-nft-preview');
-      const nftImageEl = document.getElementById('cast-modal-nft-image');
-      const nftNameEl = document.getElementById('cast-modal-nft-name');
-
-      console.log('Modal elements found:', { modal: !!modal, textarea: !!textarea, nftPreview: !!nftPreview, nftImageEl: !!nftImageEl, nftNameEl: !!nftNameEl });
-      console.log('NFT data:', { isNft, nftImage, prize });
-
-      if (modal && textarea) {
-        textarea.value = defaultText;
-
-        // Show NFT preview if it's an NFT contest with an image
-        // Check each condition separately for debugging
-        console.log('Checking NFT preview conditions:');
-        console.log('  - isNft:', isNft, '(type:', typeof isNft, ')');
-        console.log('  - nftImage:', nftImage ? 'has value' : 'EMPTY');
-        console.log('  - nftPreview element:', nftPreview ? 'found' : 'NOT FOUND');
-        console.log('  - nftImageEl element:', nftImageEl ? 'found' : 'NOT FOUND');
-        console.log('  - nftNameEl element:', nftNameEl ? 'found' : 'NOT FOUND');
-
-        if (isNft && nftImage) {
-          console.log('NFT contest with image - setting up preview...');
-          if (nftPreview && nftImageEl && nftNameEl) {
-            console.log('All elements found! Setting NFT image src to:', nftImage);
-            nftImageEl.src = nftImage;
-            nftNameEl.textContent = prize;
-            nftPreview.classList.remove('hidden');
-            console.log('NFT preview classList after remove:', nftPreview.classList.toString());
-          } else {
-            console.error('Missing DOM elements for NFT preview!');
-          }
-        } else {
-          console.log('Not an NFT contest with image, hiding preview');
-          if (nftPreview) {
-            nftPreview.classList.add('hidden');
-          }
-        }
-
-        modal.classList.remove('hidden');
-        textarea.focus();
-      }
-    }
-
-    function closeCastModal() {
-      const modal = document.getElementById('cast-modal');
-      if (modal) {
-        modal.classList.add('hidden');
-      }
-    }
-
-    async function submitCastModal() {
-      const textarea = document.getElementById('cast-modal-text');
-      if (!textarea) return;
-
-      const text = textarea.value.trim();
-      if (!text) {
-        showToast('Please enter a message', 'warning');
-        return;
-      }
-
-      const fullText = text;
-
-      // Build embeds array - NFT image FIRST so it displays prominently in Warpcast
+      // Build embeds array
       const embeds = [];
 
-      // Add NFT image as embed FIRST if available (Warpcast shows first embed more prominently)
-      const nftImage = window.castModalState?.nftImage;
-      if (nftImage && window.castModalState?.isNft) {
-        // Use faster IPFS gateway for better Warpcast loading
+      // Add NFT image as embed if available
+      if (isNft && nftImage) {
         let imageUrl = nftImage;
         if (imageUrl.includes('ipfs.io/ipfs/')) {
           imageUrl = imageUrl.replace('ipfs.io/ipfs/', 'cloudflare-ipfs.com/ipfs/');
@@ -768,22 +645,21 @@ ${reactLine}`;
         embeds.push(imageUrl);
       }
 
-      // Quote the original cast SECOND (image should display first)
-      const castId = window.castModalState?.castId;
+      // Quote the original cast
       if (castId) {
         embeds.push(`https://warpcast.com/~/conversations/${castId}`);
       }
 
-      // Try to use SDK composeCast for in-app experience
+      console.log('Sharing contest:', { contestId, isNft, embeds });
+
+      // Use SDK composeCast
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
         try {
-          console.log('Using SDK composeCast with embeds:', embeds);
           await sdk.actions.composeCast({
-            text: fullText,
+            text: text,
             embeds: embeds.length > 0 ? embeds : undefined
           });
-          closeCastModal();
           return;
         } catch (e) {
           console.log('composeCast failed, falling back to URL:', e);
@@ -791,21 +667,14 @@ ${reactLine}`;
       }
 
       // Fallback: Build Warpcast compose URL
-      let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(fullText)}`;
+      let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
       embeds.forEach(embed => {
         warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
       });
 
-      // Use SDK openUrl when in Mini App, otherwise window.open
-      if (sdk && sdk.actions && sdk.actions.openUrl) {
-        sdk.actions.openUrl(warpcastUrl);
-      } else {
-        window.open(warpcastUrl, '_blank');
-      }
-
-      // Close modal
-      closeCastModal();
+      window.open(warpcastUrl, '_blank');
     }
+
   </script>
 
   <script>
