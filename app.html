@@ -421,11 +421,14 @@
 
       <!-- NFT Image Preview (shown when sharing NFT contest) -->
       <div id="cast-modal-nft-preview" class="hidden mb-3">
-        <div class="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]">
-          <img id="cast-modal-nft-image" src="" alt="NFT" class="w-16 h-16 rounded-lg object-cover" onload="console.log('NFT image loaded successfully')" onerror="console.error('NFT image failed to load:', this.src); this.style.display='none'" />
+        <div class="flex items-center gap-3 p-3 rounded-lg bg-purple-900/30 border border-purple-500/30">
+          <div class="w-16 h-16 rounded-lg overflow-hidden bg-purple-800/50 flex items-center justify-center flex-shrink-0">
+            <img id="cast-modal-nft-image" src="" alt="NFT" class="w-full h-full object-cover" onload="console.log('NFT image loaded successfully'); this.parentElement.style.background='none'" onerror="console.error('NFT image failed to load:', this.src); this.style.display='none'; document.getElementById('cast-modal-nft-fallback').classList.remove('hidden')" />
+            <span id="cast-modal-nft-fallback" class="text-2xl hidden">🖼️</span>
+          </div>
           <div>
-            <div class="text-xs text-[var(--text-muted)]">NFT Prize</div>
-            <div id="cast-modal-nft-name" class="text-sm font-medium text-[var(--text-primary)]"></div>
+            <div class="text-xs text-purple-300">NFT Prize</div>
+            <div id="cast-modal-nft-name" class="text-sm font-semibold text-white"></div>
           </div>
         </div>
       </div>
