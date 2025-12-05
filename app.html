@@ -4885,7 +4885,7 @@ Launch your own! 👇`;
                 params: [{
                   from: signerAddress,
                   to: CONFIG.CONTRACTS.nftContestEscrow,
-                  value: '0x' + contestFee.toString(16),
+                  value: contestFee.toHexString(),
                   data: createData
                 }]
               });
@@ -4982,7 +4982,7 @@ Launch your own! 👇`;
                 params: [{
                   from: signerAddress,
                   to: CONFIG.CONTRACTS.nftContestEscrow,
-                  value: '0x' + contestFee.toString(16),
+                  value: contestFee.toHexString(),
                   data: createData
                 }]
               });
