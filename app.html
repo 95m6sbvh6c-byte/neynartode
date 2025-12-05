@@ -4808,7 +4808,7 @@ Launch your own! 👇`;
 
           // Get contest fee (always required for NFT contests)
           const contestFee = await nftEscrowRead.contestFee();
-          console.log('NFT Contest Fee:', ethers.formatEther(contestFee), 'ETH');
+          console.log('NFT Contest Fee:', ethers.utils.formatEther(contestFee), 'ETH');
 
           const tokenId = state.prizeNftTokenId;
 
