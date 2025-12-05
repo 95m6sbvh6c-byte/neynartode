@@ -1248,6 +1248,14 @@ Launch Your own! 👇`;
         const signerAddress = state.userAddress;
         const tokenId = parseInt(state.prizeNftTokenId) || 0;
 
+        console.log('NFT Approval Debug:', {
+          nftAddress: state.prizeNftAddress,
+          nftType: state.prizeNftType,
+          tokenId: tokenId,
+          signerAddress: signerAddress,
+          escrowContract: CONFIG.CONTRACTS.nftContestEscrow
+        });
+
         // Check if already approved
         const nftContract = new ethers.Contract(
           state.prizeNftAddress,
@@ -1256,12 +1264,18 @@ Launch Your own! 👇`;
         );
 
         let isAlreadyApproved = false;
-        if (state.prizeNftType === 'ERC721') {
-          const approved = await nftContract.getApproved(tokenId);
-          const isApprovedForAll = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-          isAlreadyApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
-        } else {
-          isAlreadyApproved = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+        try {
+          if (state.prizeNftType === 'ERC721') {
+            const approved = await nftContract.getApproved(tokenId);
+            const isApprovedForAll = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+            console.log('ERC721 approval check:', { approved, isApprovedForAll });
+            isAlreadyApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
+          } else {
+            isAlreadyApproved = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+            console.log('ERC1155 approval check:', { isAlreadyApproved });
+          }
+        } catch (checkErr) {
+          console.log('Approval check error (may be normal for some NFTs):', checkErr.message);
         }
 
         if (isAlreadyApproved) {
@@ -1278,13 +1292,35 @@ Launch Your own! 👇`;
           true
         ]);
 
-        const approveTxHash = await ethProvider.request({
-          method: 'eth_sendTransaction',
-          params: [{
+        const txParams = {
+          from: signerAddress,
+          to: state.prizeNftAddress,
+          data: approveData
+        };
+
+        console.log('Sending approval tx with params:', txParams);
+        console.log('Encoded data:', approveData);
+
+        // Try to estimate gas first to catch errors early
+        try {
+          const gasEstimate = await rpcProvider.estimateGas({
             from: signerAddress,
             to: state.prizeNftAddress,
             data: approveData
-          }]
+          });
+          console.log('Gas estimate:', gasEstimate.toString());
+        } catch (gasErr) {
+          console.error('Gas estimation failed:', gasErr.message);
+          console.error('Full error:', gasErr);
+          showToast(`Transaction would fail: ${gasErr.reason || gasErr.message}`, 'error');
+          state.nftApprovalStatus = 'failed';
+          render();
+          return;
+        }
+
+        const approveTxHash = await ethProvider.request({
+          method: 'eth_sendTransaction',
+          params: [txParams]
         });
 
         console.log('NFT approval tx hash:', approveTxHash);
