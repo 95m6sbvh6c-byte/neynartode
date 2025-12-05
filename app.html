@@ -422,9 +422,9 @@
       <!-- NFT Image Preview (shown when sharing NFT contest) -->
       <div id="cast-modal-nft-preview" class="hidden mb-3">
         <div class="flex items-center gap-3 p-3 rounded-lg bg-purple-900/30 border border-purple-500/30">
-          <div class="w-16 h-16 rounded-lg overflow-hidden bg-purple-800/50 flex items-center justify-center flex-shrink-0">
-            <img id="cast-modal-nft-image" src="" alt="NFT" class="w-full h-full object-cover" onload="console.log('NFT image loaded successfully'); this.parentElement.style.background='none'" onerror="console.error('NFT image failed to load:', this.src); this.style.display='none'; document.getElementById('cast-modal-nft-fallback').classList.remove('hidden')" />
-            <span id="cast-modal-nft-fallback" class="text-2xl hidden">🖼️</span>
+          <div class="w-16 h-16 rounded-lg overflow-hidden bg-purple-800/50 flex items-center justify-center flex-shrink-0 relative">
+            <span id="cast-modal-nft-fallback" class="text-2xl absolute">🖼️</span>
+            <img id="cast-modal-nft-image" src="" alt="NFT" class="w-full h-full object-cover relative z-10 hidden" onload="console.log('NFT image loaded successfully'); this.classList.remove('hidden')" onerror="console.error('NFT image failed to load:', this.src)" />
           </div>
           <div>
             <div class="text-xs text-purple-300">NFT Prize</div>
@@ -719,8 +719,9 @@ ${reactLine}`;
           console.log('NFT contest with image - setting up preview...');
           if (nftPreview && nftImageEl && nftNameEl) {
             console.log('All elements found! Setting NFT image src to:', nftImage);
+            // Reset image state - hide it until loaded, show fallback
+            nftImageEl.classList.add('hidden');
             nftImageEl.src = nftImage;
-            nftImageEl.style.display = 'block';
             nftNameEl.textContent = prize;
             nftPreview.classList.remove('hidden');
             console.log('NFT preview classList after remove:', nftPreview.classList.toString());
