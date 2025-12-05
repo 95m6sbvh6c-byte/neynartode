@@ -638,11 +638,8 @@ ${reactLine}`;
 
       // Add NFT image as embed if available
       if (isNft && nftImage) {
-        let imageUrl = nftImage;
-        if (imageUrl.includes('ipfs.io/ipfs/')) {
-          imageUrl = imageUrl.replace('ipfs.io/ipfs/', 'cloudflare-ipfs.com/ipfs/');
-        }
-        embeds.push(imageUrl);
+        // Use ipfs.io gateway (cloudflare-ipfs.com is down)
+        embeds.push(nftImage);
       }
 
       // Quote the original cast
