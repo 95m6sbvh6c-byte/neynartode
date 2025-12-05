@@ -4895,7 +4895,7 @@ Launch your own! 👇`;
 
             // Final approval verification before creating contest - use fresh provider to avoid cache
             if (statusDiv) statusDiv.textContent = 'Step 8g: Final approval check...';
-            const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.RPC_URL);
+            const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
             const nft721Fresh = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, freshProvider);
             const finalApproved = await nft721Fresh.getApproved(tokenId);
             const finalIsApprovedForAll = await nft721Fresh.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
