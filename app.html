@@ -730,20 +730,22 @@ Launch Your own! 👇`;
         prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
         votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8', // V2 deployed 2025-11-29
         contestEscrow: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-        nftContestEscrow: '0xA1B7D6Cf80f78B912a3651161d30Bf4d6F519799', // NFT Contest Escrow V2 deployed 2025-12-05 (skip treasury call when fee=0)
+        nftContestEscrow: '0xFD6e84d4396Ecaa144771C65914b2a345305F922', // NFT Contest Escrow V3 deployed 2025-12-05 (supports restricted NFTs with two-step flow)
         treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928', // V2 deployed 2025-12-01
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
       },
       SEASON_0_MIN_TOKENS: ethers.utils.parseEther('20000') // 20K tokens
     };
 
-    // ===== NFT ABIs (needed for approval flow) =====
+    // ===== NFT ABIs (needed for approval and transfer flow) =====
     const ERC721_ABI = [
       'function approve(address to, uint256 tokenId) external',
       'function getApproved(uint256 tokenId) external view returns (address)',
       'function setApprovalForAll(address operator, bool approved) external',
       'function isApprovedForAll(address owner, address operator) external view returns (bool)',
-      'function ownerOf(uint256 tokenId) external view returns (address)'
+      'function ownerOf(uint256 tokenId) external view returns (address)',
+      'function safeTransferFrom(address from, address to, uint256 tokenId) external',
+      'function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata data) external'
     ];
 
     const ERC1155_ABI = [
@@ -4723,11 +4725,20 @@ Launch your own! 👇`;
     ];
 
     const NFT_CONTEST_ESCROW_ABI = [
+      // Legacy functions (may fail for restricted NFTs)
       'function createContestERC721(address _nftContract, uint256 _tokenId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
       'function createContestERC1155(address _nftContract, uint256 _tokenId, uint256 _amount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+      // V3 functions for two-step flow (user transfers NFT first, then registers)
+      'function registerContest(uint256 depositId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+      'function withdrawDeposit(uint256 depositId) external',
+      'function nftToDepositId(address nftContract, uint256 tokenId) external view returns (uint256)',
+      'function getPendingDeposit(uint256 depositId) external view returns (address depositor, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 depositTime, bool claimed)',
+      // Common functions
       'function contestFee() external view returns (uint256)',
       'function defaultToken() external view returns (address)',
-      'event ContestCreated(uint256 indexed contestId, address indexed host, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType, uint256 endTime, string castId)'
+      // Events
+      'event NFTDeposited(uint256 indexed depositId, address indexed depositor, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType)',
+      'event NFTContestCreated(uint256 indexed contestId, address indexed host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 endTime, string castId)'
     ];
 
     // ERC721_ABI and ERC1155_ABI are defined at the top of the file near CONFIG
@@ -5101,7 +5112,7 @@ Launch your own! 👇`;
           const tokenId = parseInt(state.prizeNftTokenId) || 0;
 
           if (state.prizeNftType === 'ERC721') {
-            // ERC721 NFT
+            // ERC721 NFT - V3 uses two-step flow for restricted NFTs
             if (statusDiv) statusDiv.textContent = 'Step 8b: Verifying NFT ownership...';
 
             const nft721Read = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, rpcProvider);
@@ -5111,182 +5122,130 @@ Launch your own! 👇`;
               return;
             }
 
-            // Verify approval is still valid (double check)
-            if (statusDiv) statusDiv.textContent = 'Step 8c: Verifying approval...';
-            const isApprovedForAll = await nft721Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-            if (!isApprovedForAll) {
-              const approved = await nft721Read.getApproved(tokenId);
-              if (approved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()) {
-                showToast('NFT approval expired. Please approve again.', 'error');
-                state.nftApprovalStatus = 'none';
-                render();
-                return;
-              }
+            console.log('NFT Contest params:', {
+              nftContract: state.prizeNftAddress,
+              tokenId: tokenId,
+              duration: durationSeconds,
+              castId: castId,
+              volumeReq: volumeRequirement.toString(),
+              fee: ethers.utils.formatEther(contestFee),
+              signerAddress: signerAddress
+            });
+
+            // V3 Two-Step Flow: Transfer NFT directly, then register contest
+            // This works with NFTs that have transfer restrictions
+            if (statusDiv) statusDiv.textContent = 'Step 9: Transferring NFT to escrow... Check wallet!';
+
+            // Step 1: User transfers NFT directly to escrow
+            const nftIface = new ethers.utils.Interface(ERC721_ABI);
+            const transferData = nftIface.encodeFunctionData('safeTransferFrom(address,address,uint256)', [
+              signerAddress,
+              CONFIG.CONTRACTS.nftContestEscrow,
+              tokenId
+            ]);
+
+            console.log('Step 1: Transferring NFT directly to escrow...');
+            console.log('From:', signerAddress);
+            console.log('To:', CONFIG.CONTRACTS.nftContestEscrow);
+            console.log('TokenId:', tokenId);
+
+            const transferTxParams = {
+              from: signerAddress,
+              to: state.prizeNftAddress,
+              data: transferData,
+              gas: '0x186A0' // 100,000 gas for transfer
+            };
+
+            let transferTxHash;
+            try {
+              transferTxHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [transferTxParams]
+              });
+              console.log('NFT Transfer TX sent:', transferTxHash);
+              if (statusDiv) statusDiv.textContent = 'Step 9b: Transfer sent! Waiting for confirmation...';
+            } catch (transferErr) {
+              console.error('NFT transfer failed:', transferErr);
+              showToast('NFT transfer failed: ' + (transferErr.message || transferErr), 'error');
+              if (statusDiv) statusDiv.textContent = 'FAILED: ' + (transferErr.message || 'Transfer rejected');
+              return;
             }
 
-            if (statusDiv) statusDiv.textContent = 'Step 9: Creating NFT contest... Check wallet!';
+            // Wait for transfer to be mined
+            if (statusDiv) statusDiv.textContent = 'Step 9c: Waiting for NFT transfer confirmation...';
+            let transferConfirmed = false;
+            for (let i = 0; i < 60; i++) {
+              try {
+                const receipt = await rpcProvider.getTransactionReceipt(transferTxHash);
+                if (receipt && receipt.blockNumber) {
+                  if (receipt.status === 0) {
+                    showToast('NFT transfer failed on-chain', 'error');
+                    if (statusDiv) statusDiv.textContent = 'FAILED: NFT transfer reverted';
+                    return;
+                  }
+                  console.log('NFT Transfer confirmed in block:', receipt.blockNumber);
+                  transferConfirmed = true;
+                  break;
+                }
+              } catch (e) { }
+              await new Promise(r => setTimeout(r, 2000));
+            }
 
-            // Encode createContestERC721
-            const createIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
-            const createData = createIface.encodeFunctionData('createContestERC721', [
-              state.prizeNftAddress,
-              tokenId,
+            if (!transferConfirmed) {
+              showToast('NFT transfer not confirmed in time. Check your wallet.', 'warning');
+              if (statusDiv) statusDiv.textContent = 'WARNING: Transfer not confirmed yet';
+              return;
+            }
+
+            // Step 2: Get the deposit ID from the escrow contract
+            if (statusDiv) statusDiv.textContent = 'Step 9d: Getting deposit ID...';
+            await new Promise(r => setTimeout(r, 2000)); // Wait for state to update
+
+            const escrowRead = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, rpcProvider);
+            const depositId = await escrowRead.nftToDepositId(state.prizeNftAddress, tokenId);
+            console.log('Deposit ID:', depositId.toString());
+
+            if (depositId.eq(0)) {
+              showToast('Deposit not found. NFT may not have been received properly.', 'error');
+              if (statusDiv) statusDiv.textContent = 'FAILED: Deposit not found';
+              return;
+            }
+
+            // Step 3: Register the contest
+            if (statusDiv) statusDiv.textContent = 'Step 9e: Registering contest... Check wallet!';
+
+            const registerIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
+            const registerData = registerIface.encodeFunctionData('registerContest', [
+              depositId,
               durationSeconds,
               castId,
               tokenRequirement,
               volumeRequirement
             ]);
 
-            // Log params for debugging - show in status div
-            const debugInfo = `NFT:${state.prizeNftAddress.slice(0,10)}... ID:${tokenId} Dur:${durationSeconds}s Vol:${volumeRequirement.toString()}`;
-            if (statusDiv) statusDiv.textContent = 'Step 9b: ' + debugInfo;
-            console.log('NFT Contest params:', {
-              nftContract: state.prizeNftAddress,
-              tokenId: tokenId,
-              tokenIdType: typeof tokenId,
-              duration: durationSeconds,
-              castId: castId,
-              castIdLength: castId.length,
-              tokenReq: tokenRequirement,
-              volumeReq: volumeRequirement.toString(),
-              fee: ethers.utils.formatEther(contestFee),
-              signerAddress: signerAddress
-            });
-
-            // Double-check approval with fresh provider right before gas estimation
-            if (statusDiv) statusDiv.textContent = 'Step 9c: Fresh approval check...';
-            const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-            const freshNftContract = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, freshProvider);
-
-            // Get all relevant data with fresh provider
-            const freshIsApprovedForAll = await freshNftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-            const freshApproved = await freshNftContract.getApproved(tokenId);
-            const freshOwner = await freshNftContract.ownerOf(tokenId);
-
-            console.log('=== FRESH APPROVAL CHECK (before gas estimation) ===');
-            console.log('NFT Contract:', state.prizeNftAddress);
-            console.log('Token ID:', tokenId);
-            console.log('Escrow Contract:', CONFIG.CONTRACTS.nftContestEscrow);
-            console.log('Signer Address:', signerAddress);
-            console.log('Current NFT Owner:', freshOwner);
-            console.log('Owner matches signer:', freshOwner.toLowerCase() === signerAddress.toLowerCase());
-            console.log('isApprovedForAll:', freshIsApprovedForAll);
-            console.log('getApproved:', freshApproved);
-            console.log('getApproved matches escrow:', freshApproved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase());
-            console.log('=== END FRESH CHECK ===');
-
-            // Check ownership first
-            if (freshOwner.toLowerCase() !== signerAddress.toLowerCase()) {
-              showToast('You no longer own this NFT!', 'error');
-              console.error('Ownership mismatch! NFT owner:', freshOwner, 'Signer:', signerAddress);
-              return;
-            }
-
-            if (!freshIsApprovedForAll && freshApproved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()) {
-              showToast('NFT is NOT approved for escrow! Please approve first.', 'error');
-              console.error('Approval NOT found! isApprovedForAll:', freshIsApprovedForAll, 'getApproved:', freshApproved);
-              state.nftApprovalStatus = 'none';
-              render();
-              return;
-            }
-
-            console.log('Approval verified - proceeding to gas estimation');
-
-            // Try gas estimation
-            if (statusDiv) statusDiv.textContent = 'Step 9d: Estimating gas...';
-
-            const estimateTxParams = {
+            const registerTxParams = {
               from: signerAddress,
               to: CONFIG.CONTRACTS.nftContestEscrow,
-              data: createData
+              data: registerData,
+              gas: '0x7A120' // 500,000 gas
             };
             if (contestFee.gt(0)) {
-              estimateTxParams.value = contestFee;
-            }
-
-            try {
-              const gasEstimate = await rpcProvider.estimateGas(estimateTxParams);
-              console.log('NFT Contest gas estimate:', gasEstimate.toString());
-              if (statusDiv) statusDiv.textContent = 'Step 9e: Gas OK (' + gasEstimate.toString() + ')';
-            } catch (gasErr) {
-              console.error('=== NFT CONTEST GAS ESTIMATION FAILED ===');
-              console.error('Full error:', gasErr);
-              console.error('Error reason:', gasErr.reason);
-              console.error('Error code:', gasErr.code);
-              console.error('Error data:', gasErr.data);
-              console.error('TX params used:', JSON.stringify(estimateTxParams, null, 2));
-
-              // Decode error selector if present
-              if (gasErr.data) {
-                const errorSelector = gasErr.data.slice(0, 10);
-                const knownErrors = {
-                  '0xef28f901': 'ERC721InsufficientApproval - The escrow contract is not approved to transfer this NFT',
-                  '0x64a0ae92': 'ERC721NonexistentToken - This token ID does not exist',
-                  '0x177e802f': 'ERC721InvalidOwner - The from address is not the owner',
-                  '0x73c6ac6e': 'ERC721InvalidReceiver - The receiver cannot accept NFTs',
-                  '0x08c379a0': 'Error(string) - Revert with reason string'
-                };
-                const errorName = knownErrors[errorSelector] || 'Unknown error: ' + errorSelector;
-                console.error('Decoded error:', errorName);
-
-                if (errorSelector === '0xef28f901') {
-                  // Re-check approval status one more time
-                  console.log('=== RE-CHECKING APPROVAL AFTER FAILURE ===');
-                  try {
-                    const recheck = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, freshProvider);
-                    const recheckApprovalForAll = await recheck.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-                    const recheckApproved = await recheck.getApproved(tokenId);
-                    console.log('Re-check isApprovedForAll:', recheckApprovalForAll);
-                    console.log('Re-check getApproved:', recheckApproved);
-                  } catch (recheckErr) {
-                    console.error('Re-check failed:', recheckErr);
-                  }
-                }
-              }
-
-              showToast(`Transaction would fail: ${gasErr.reason || gasErr.message}`, 'error');
-              if (statusDiv) statusDiv.textContent = 'FAILED: ' + (gasErr.reason || gasErr.message);
-              return;
-            }
-
-            if (statusDiv) statusDiv.textContent = 'Step 9e: Sending transaction... Check wallet!';
-
-            // Build transaction params - only include value if fee > 0
-            const txParams = {
-              from: signerAddress,
-              to: CONFIG.CONTRACTS.nftContestEscrow,
-              data: createData,
-              gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
-            };
-            if (contestFee.gt(0)) {
-              txParams.value = contestFee.toHexString();
+              registerTxParams.value = contestFee.toHexString();
             }
 
             try {
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
-                params: [txParams]
+                params: [registerTxParams]
               });
               tx = { hash: txHash };
-              if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + txHash.slice(0,15) + '...';
-            } catch (txError) {
-              if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
-                const nftEscrow = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, signer);
-                const txOptions = { gasLimit: 5000000 };
-                if (contestFee.gt(0)) txOptions.value = contestFee;
-                tx = await nftEscrow.createContestERC721(
-                  state.prizeNftAddress,
-                  tokenId,
-                  durationSeconds,
-                  castId,
-                  tokenRequirement,
-                  volumeRequirement,
-                  txOptions
-                );
-                if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
-              } else {
-                throw txError;
-              }
+              if (statusDiv) statusDiv.textContent = 'Step 10: Contest registration sent! Hash: ' + txHash.slice(0,15) + '...';
+            } catch (regError) {
+              console.error('Contest registration failed:', regError);
+              // If registration fails, user can withdraw their NFT
+              showToast('Contest registration failed. Your NFT is safe - you can withdraw it.', 'error');
+              if (statusDiv) statusDiv.textContent = 'FAILED: ' + (regError.message || 'Registration rejected');
+              return;
             }
 
           } else if (state.prizeNftType === 'ERC1155') {
