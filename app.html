@@ -1204,7 +1204,7 @@ Launch Your own! 👇`;
         return;
       }
 
-      if (!state.walletAddress) {
+      if (!state.userAddress) {
         showToast('Please connect your wallet first', 'error');
         return;
       }
@@ -1219,7 +1219,7 @@ Launch Your own! 👇`;
       render();
 
       try {
-        const signerAddress = state.walletAddress;
+        const signerAddress = state.userAddress;
         const tokenId = parseInt(state.prizeNftTokenId) || 0;
 
         // Check if already approved
@@ -1315,7 +1315,7 @@ Launch Your own! 👇`;
 
     // Check if NFT is currently approved for escrow
     async function checkNftApprovalStatus() {
-      if (!state.prizeNftAddress || !state.prizeNftType || !state.walletAddress) {
+      if (!state.prizeNftAddress || !state.prizeNftType || !state.userAddress) {
         state.nftApprovalStatus = 'none';
         return;
       }
@@ -1332,10 +1332,10 @@ Launch Your own! 👇`;
 
         if (state.prizeNftType === 'ERC721') {
           const approved = await nftContract.getApproved(tokenId);
-          const isApprovedForAll = await nftContract.isApprovedForAll(state.walletAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          const isApprovedForAll = await nftContract.isApprovedForAll(state.userAddress, CONFIG.CONTRACTS.nftContestEscrow);
           isApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
         } else {
-          isApproved = await nftContract.isApprovedForAll(state.walletAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          isApproved = await nftContract.isApprovedForAll(state.userAddress, CONFIG.CONTRACTS.nftContestEscrow);
         }
 
         state.nftApprovalStatus = isApproved ? 'approved' : 'none';
