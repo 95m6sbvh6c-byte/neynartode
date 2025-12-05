@@ -4432,7 +4432,7 @@ Launch your own! 👇`;
     const NFT_CONTEST_ESCROW_ABI = [
       'function createContestERC721(address _nftContract, uint256 _tokenId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
       'function createContestERC1155(address _nftContract, uint256 _tokenId, uint256 _amount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
-      'function customTokenFee() external view returns (uint256)',
+      'function contestFee() external view returns (uint256)',
       'function defaultToken() external view returns (address)',
       'event ContestCreated(uint256 indexed contestId, address indexed host, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType, uint256 endTime, string castId)'
     ];
@@ -4806,12 +4806,9 @@ Launch your own! 👇`;
             rpcProvider
           );
 
-          // Get custom token fee and default token
-          const customTokenFee = await nftEscrowRead.customTokenFee();
-          const defaultToken = await nftEscrowRead.defaultToken();
-
-          const isCustomToken = tokenRequirement.toLowerCase() !== defaultToken.toLowerCase();
-          const ethValue = isCustomToken ? customTokenFee : ethers.BigNumber.from(0);
+          // Get contest fee (always required for NFT contests)
+          const contestFee = await nftEscrowRead.contestFee();
+          console.log('NFT Contest Fee:', ethers.formatEther(contestFee), 'ETH');
 
           const tokenId = state.prizeNftTokenId;
 
@@ -4888,7 +4885,7 @@ Launch your own! 👇`;
                 params: [{
                   from: signerAddress,
                   to: CONFIG.CONTRACTS.nftContestEscrow,
-                  value: ethValue.gt(0) ? '0x' + ethValue.toBigInt().toString(16) : '0x0',
+                  value: '0x' + contestFee.toString(16),
                   data: createData
                 }]
               });
@@ -4904,7 +4901,7 @@ Launch your own! 👇`;
                   castId,
                   tokenRequirement,
                   volumeRequirement,
-                  { value: ethValue }
+                  { value: contestFee }
                 );
                 if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
               } else {
@@ -4985,7 +4982,7 @@ Launch your own! 👇`;
                 params: [{
                   from: signerAddress,
                   to: CONFIG.CONTRACTS.nftContestEscrow,
-                  value: ethValue.gt(0) ? '0x' + ethValue.toBigInt().toString(16) : '0x0',
+                  value: '0x' + contestFee.toString(16),
                   data: createData
                 }]
               });
@@ -5002,7 +4999,7 @@ Launch your own! 👇`;
                   castId,
                   tokenRequirement,
                   volumeRequirement,
-                  { value: ethValue }
+                  { value: contestFee }
                 );
                 if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
               } else {
