@@ -5153,7 +5153,7 @@ Launch your own! 👇`;
               from: signerAddress,
               to: state.prizeNftAddress,
               data: transferData,
-              gas: '0x30D40' // 200,000 gas for transfer (proxy NFTs + escrow onReceived need more)
+              gas: '0x493E0' // 300,000 gas for transfer (proxy NFTs + escrow onReceived can use ~200k)
             };
 
             let transferTxHash;
