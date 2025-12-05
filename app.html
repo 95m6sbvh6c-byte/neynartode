@@ -4894,7 +4894,9 @@ Launch your own! 👇`;
               volumeRequirement
             ]);
 
-            // Log params for debugging
+            // Log params for debugging - show in status div
+            const debugInfo = `NFT:${state.prizeNftAddress.slice(0,10)}... ID:${tokenId} Dur:${durationSeconds}s Vol:${volumeRequirement.toString()}`;
+            if (statusDiv) statusDiv.textContent = 'Step 9b: ' + debugInfo;
             console.log('NFT Contest params:', {
               nftContract: state.prizeNftAddress,
               tokenId: tokenId,
@@ -4907,6 +4909,28 @@ Launch your own! 👇`;
               fee: ethers.utils.formatEther(contestFee),
               signerAddress: signerAddress
             });
+
+            // Try to simulate the call first to get better error messages
+            try {
+              if (statusDiv) statusDiv.textContent = 'Step 9c: Simulating transaction...';
+              const nftEscrowSim = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, rpcProvider);
+              await nftEscrowSim.callStatic.createContestERC721(
+                state.prizeNftAddress,
+                tokenId,
+                durationSeconds,
+                castId,
+                tokenRequirement,
+                volumeRequirement,
+                { from: signerAddress, value: contestFee }
+              );
+              if (statusDiv) statusDiv.textContent = 'Step 9d: Simulation passed! Sending tx...';
+            } catch (simError) {
+              console.error('Simulation failed:', simError);
+              const errMsg = simError.reason || simError.message || 'Unknown error';
+              if (statusDiv) statusDiv.textContent = 'Simulation FAILED: ' + errMsg;
+              showToast('Contract call would fail: ' + errMsg, 'error');
+              return;
+            }
 
             try {
               const txHash = await ethProvider.request({
