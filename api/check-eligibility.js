@@ -117,6 +117,7 @@ async function getUserAddresses(fid) {
 
 /**
  * Check social requirements (recast, like, reply)
+ * Also checks reactions on quote casts of the original cast
  */
 async function checkSocialRequirements(castHash, fid, requirements) {
   const result = {
@@ -126,37 +127,100 @@ async function checkSocialRequirements(castHash, fid, requirements) {
   };
 
   try {
-    // Check reactions (likes and recasts)
-    const reactionsResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castHash}&types=likes,recasts&limit=100`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
+    // Build list of casts to check (original + quote casts)
+    const castsToCheck = [castHash];
 
-    if (reactionsResponse.ok) {
-      const reactionsData = await reactionsResponse.json();
-      for (const reaction of reactionsData.reactions || []) {
-        if (reaction.user?.fid === fid) {
-          if (reaction.reaction_type === 'like') result.liked = true;
-          if (reaction.reaction_type === 'recast') result.recasted = true;
+    // Get quote casts of the original cast
+    try {
+      const quotesResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (quotesResponse.ok) {
+        const castData = await quotesResponse.json();
+        // The cast object has a "quotes" field with quote cast hashes
+        // Also check conversation for quotes
+        const conversationResponse = await fetch(
+          `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&include_chronological_parent_casts=false&limit=50`,
+          { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+        );
+
+        if (conversationResponse.ok) {
+          const convData = await conversationResponse.json();
+          // Check for quote casts in replies (they have embeds with the original cast)
+          const replies = convData.conversation?.cast?.direct_replies || [];
+          for (const reply of replies) {
+            // Quote casts have the original cast in their embeds
+            if (reply.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
+              castsToCheck.push(reply.hash);
+            }
+          }
+        }
+      }
+
+      // Also search for casts that embed/quote this cast
+      const searchResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast/search?q=${castHash}&limit=25`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json();
+        for (const cast of searchData.result?.casts || []) {
+          // Check if this cast quotes our original
+          if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash || e.url?.includes(castHash))) {
+            if (!castsToCheck.includes(cast.hash)) {
+              castsToCheck.push(cast.hash);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching quote casts:', e.message);
+    }
+
+    console.log(`Checking ${castsToCheck.length} casts for eligibility (1 original + ${castsToCheck.length - 1} quote casts)`);
+
+    // Check reactions on all casts (original + quote casts)
+    for (const hash of castsToCheck) {
+      if (result.recasted && result.liked) break; // Already found both
+
+      const reactionsResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${hash}&types=likes,recasts&limit=100`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (reactionsResponse.ok) {
+        const reactionsData = await reactionsResponse.json();
+        for (const reaction of reactionsData.reactions || []) {
+          if (reaction.user?.fid === fid) {
+            if (reaction.reaction_type === 'like') result.liked = true;
+            if (reaction.reaction_type === 'recast') result.recasted = true;
+          }
         }
       }
     }
 
-    // Check replies
-    const repliesResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=50`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
+    // Check replies on all casts (original + quote casts)
+    for (const hash of castsToCheck) {
+      if (result.replied) break; // Already found
 
-    if (repliesResponse.ok) {
-      const repliesData = await repliesResponse.json();
-      const replies = repliesData.conversation?.cast?.direct_replies || [];
-      for (const reply of replies) {
-        if (reply.author?.fid === fid) {
-          const wordCount = (reply.text || '').trim().split(/\s+/).length;
-          if (wordCount >= 4) {
-            result.replied = true;
-            break;
+      const repliesResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${hash}&type=hash&reply_depth=1&limit=50`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (repliesResponse.ok) {
+        const repliesData = await repliesResponse.json();
+        const replies = repliesData.conversation?.cast?.direct_replies || [];
+        for (const reply of replies) {
+          if (reply.author?.fid === fid) {
+            const wordCount = (reply.text || '').trim().split(/\s+/).length;
+            if (wordCount >= 4) {
+              result.replied = true;
+              break;
+            }
           }
         }
       }
