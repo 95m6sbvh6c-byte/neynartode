@@ -25,8 +25,9 @@ const CONTEST_ESCROW_ABI = [
   'function nextContestId() external view returns (uint256)',
 ];
 
+// V3 ABI - note: nftType comes before nftContract in return order
 const NFT_CONTEST_ESCROW_ABI = [
-  'function getContest(uint256 _contestId) external view returns (address host, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
   'function getQualifiedEntries(uint256 _contestId) external view returns (address[] memory)',
   'function nextContestId() external view returns (uint256)',
 ];
@@ -250,7 +251,8 @@ async function getNftContestDetails(provider, contract, contestId) {
       contract.getQualifiedEntries(contestId).catch(() => []),
     ]);
 
-    const [host, nftContract, tokenId, amount, nftType, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner] = contestData;
+    // V3 order: nftType comes before nftContract
+    const [host, nftType, nftContract, tokenId, amount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner] = contestData;
 
     // Extract actual cast hash, parse requirements, and cached image URL FIRST
     // Format: castHash|R1L0P1|imageUrl (image URL is optional)
