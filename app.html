@@ -4810,7 +4810,7 @@ Launch your own! 👇`;
           const contestFee = await nftEscrowRead.contestFee();
           console.log('NFT Contest Fee:', ethers.utils.formatEther(contestFee), 'ETH');
 
-          const tokenId = state.prizeNftTokenId;
+          const tokenId = parseInt(state.prizeNftTokenId) || 0;
 
           if (state.prizeNftType === 'ERC721') {
             // ERC721 NFT
@@ -4866,6 +4866,21 @@ Launch your own! 👇`;
               }
             }
 
+            // Final approval verification before creating contest
+            if (statusDiv) statusDiv.textContent = 'Step 8f: Verifying approval...';
+            const finalApproved = await nft721Read.getApproved(tokenId);
+            const finalIsApprovedForAll = await nft721Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+            console.log('Final approval check:', {
+              approved: finalApproved,
+              isApprovedForAll: finalIsApprovedForAll,
+              escrowContract: CONFIG.CONTRACTS.nftContestEscrow
+            });
+
+            if (finalApproved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() && !finalIsApprovedForAll) {
+              showToast('NFT approval not confirmed. Please try again.', 'error');
+              return;
+            }
+
             if (statusDiv) statusDiv.textContent = 'Step 9: Creating NFT contest... Check wallet!';
 
             // Encode createContestERC721
@@ -4883,11 +4898,14 @@ Launch your own! 👇`;
             console.log('NFT Contest params:', {
               nftContract: state.prizeNftAddress,
               tokenId: tokenId,
+              tokenIdType: typeof tokenId,
               duration: durationSeconds,
               castId: castId,
+              castIdLength: castId.length,
               tokenReq: tokenRequirement,
               volumeReq: volumeRequirement.toString(),
-              fee: ethers.utils.formatEther(contestFee)
+              fee: ethers.utils.formatEther(contestFee),
+              signerAddress: signerAddress
             });
 
             try {
