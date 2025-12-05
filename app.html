@@ -4251,9 +4251,21 @@ Launch your own! 👇`;
             return;
           }
 
-          if (!state.prizeTokenAddress || !state.prizeTokenAmount) {
-            showToast('Please select a prize token and enter the amount!', 'error');
-            return;
+          // Validate prize based on type (token or NFT)
+          if (state.prizeType === 'nft') {
+            if (!state.prizeNftAddress || !state.prizeNftTokenId) {
+              showToast('Please enter NFT contract address and token ID!', 'error');
+              return;
+            }
+            if (!state.prizeNftImage) {
+              showToast('Could not load NFT metadata. Please verify the contract address and token ID.', 'error');
+              return;
+            }
+          } else {
+            if (!state.prizeTokenAddress || !state.prizeTokenAmount) {
+              showToast('Please select a prize token and enter the amount!', 'error');
+              return;
+            }
           }
 
           // Cast hash is ALWAYS required
@@ -4288,21 +4300,30 @@ Launch your own! 👇`;
           // Store the validated hash (use resolved full hash if available)
           state.castHash = castValidation.hash || extractedHash;
 
-          // Volume requirement validation
-          const prizeAmount = parseFloat(state.prizeTokenAmount) || 0;
+          // Volume requirement validation (only for token contests)
           const volumeReq = parseFloat(state.minTradeVolume) || 0;
-          const isCustomToken = state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase();
 
-          if (isCustomToken) {
-            // Custom token: volume must be <= prize amount
-            if (volumeReq > prizeAmount) {
-              showToast(`Volume requirement cannot exceed prize amount (${prizeAmount} ${state.prizeTokenTicker})`, 'error');
-              return;
+          if (state.prizeType !== 'nft') {
+            const prizeAmount = parseFloat(state.prizeTokenAmount) || 0;
+            const isCustomToken = state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase();
+
+            if (isCustomToken) {
+              // Custom token: volume must be <= prize amount
+              if (volumeReq > prizeAmount) {
+                showToast(`Volume requirement cannot exceed prize amount (${prizeAmount} ${state.prizeTokenTicker})`, 'error');
+                return;
+              }
+            } else {
+              // Default NEYNARTODES: fixed cap at $10
+              if (volumeReq > 10) {
+                showToast('Volume requirement cannot exceed $10 for NEYNARTODES!', 'error');
+                return;
+              }
             }
           } else {
-            // Default NEYNARTODES: fixed cap at $10
+            // NFT contests: volume requirement is in USD, capped at $10
             if (volumeReq > 10) {
-              showToast('Volume requirement cannot exceed $10 for NEYNARTODES!', 'error');
+              showToast('Volume requirement cannot exceed $10 for NFT contests!', 'error');
               return;
             }
           }
