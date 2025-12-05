@@ -638,12 +638,9 @@ ${reactLine}`;
 
       // Add NFT image as embed if available
       if (isNft && nftImage) {
-        // Use dweb.link gateway (ipfs.io returns 403 for Warpcast servers)
-        let imageUrl = nftImage;
-        if (imageUrl.includes('ipfs.io/ipfs/')) {
-          imageUrl = imageUrl.replace('ipfs.io/ipfs/', 'dweb.link/ipfs/');
-        }
-        embeds.push(imageUrl);
+        // Proxy through our server to avoid IPFS gateway 403 errors
+        const proxyUrl = `https://frame-opal-eight.vercel.app/api/nft-image?url=${encodeURIComponent(nftImage)}`;
+        embeds.push(proxyUrl);
       }
 
       // Quote the original cast
