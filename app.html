@@ -5134,7 +5134,8 @@ Launch your own! 👇`;
 
             // V3 Two-Step Flow: Transfer NFT directly, then register contest
             // This works with NFTs that have transfer restrictions
-            if (statusDiv) statusDiv.textContent = 'Step 9: Transferring NFT to escrow... Check wallet!';
+            showToast('NFT Contest requires 2 transactions: Transfer + Register', 'info');
+            if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Transfer NFT to escrow... Check wallet!';
 
             // Step 1: User transfers NFT directly to escrow
             const nftIface = new ethers.utils.Interface(ERC721_ABI);
@@ -5163,7 +5164,7 @@ Launch your own! 👇`;
                 params: [transferTxParams]
               });
               console.log('NFT Transfer TX sent:', transferTxHash);
-              if (statusDiv) statusDiv.textContent = 'Step 9b: Transfer sent! Waiting for confirmation...';
+              if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Transfer sent! Confirming...';
             } catch (transferErr) {
               console.error('NFT transfer failed:', transferErr);
               showToast('NFT transfer failed: ' + (transferErr.message || transferErr), 'error');
@@ -5172,7 +5173,7 @@ Launch your own! 👇`;
             }
 
             // Wait for transfer to be mined
-            if (statusDiv) statusDiv.textContent = 'Step 9c: Waiting for NFT transfer confirmation...';
+            if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Waiting for blockchain confirmation...';
             let transferConfirmed = false;
             for (let i = 0; i < 60; i++) {
               try {
@@ -5198,7 +5199,8 @@ Launch your own! 👇`;
             }
 
             // Step 2: Get the deposit ID from the escrow contract
-            if (statusDiv) statusDiv.textContent = 'Step 9d: Getting deposit ID...';
+            showToast('NFT transferred! Now registering contest...', 'success');
+            if (statusDiv) statusDiv.textContent = 'TX 1 complete! Preparing TX 2...';
             await new Promise(r => setTimeout(r, 2000)); // Wait for state to update
 
             const escrowRead = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, rpcProvider);
@@ -5212,7 +5214,7 @@ Launch your own! 👇`;
             }
 
             // Step 3: Register the contest
-            if (statusDiv) statusDiv.textContent = 'Step 9e: Registering contest... Check wallet!';
+            if (statusDiv) statusDiv.textContent = 'TX 2 of 2: Register contest... Check wallet!';
 
             const registerIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
             const registerData = registerIface.encodeFunctionData('registerContest', [
@@ -5239,7 +5241,7 @@ Launch your own! 👇`;
                 params: [registerTxParams]
               });
               tx = { hash: txHash };
-              if (statusDiv) statusDiv.textContent = 'Step 10: Contest registration sent! Hash: ' + txHash.slice(0,15) + '...';
+              if (statusDiv) statusDiv.textContent = 'TX 2 of 2: Registration sent! Confirming...';
             } catch (regError) {
               console.error('Contest registration failed:', regError);
               // If registration fails, user can withdraw their NFT
