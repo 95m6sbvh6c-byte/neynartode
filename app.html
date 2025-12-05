@@ -1329,11 +1329,26 @@ Launch Your own! 👇`;
         render();
 
         // Wait for transaction to be mined
+        let txReceipt = null;
         for (let i = 0; i < 60; i++) {
           try {
             const receipt = await rpcProvider.getTransactionReceipt(approveTxHash);
             if (receipt && receipt.blockNumber) {
-              console.log('Approval confirmed in block:', receipt.blockNumber);
+              txReceipt = receipt;
+              console.log('=== APPROVAL TX RECEIPT ===');
+              console.log('Block number:', receipt.blockNumber);
+              console.log('Status:', receipt.status, '(1=success, 0=failed)');
+              console.log('Gas used:', receipt.gasUsed?.toString());
+              console.log('From:', receipt.from);
+              console.log('To:', receipt.to);
+              console.log('Logs:', receipt.logs?.length || 0, 'events');
+              if (receipt.status === 0) {
+                console.error('APPROVAL TRANSACTION FAILED ON-CHAIN!');
+                showToast('Approval transaction failed on-chain!', 'error');
+                state.nftApprovalStatus = 'failed';
+                render();
+                return;
+              }
               break;
             }
           } catch (e) {
@@ -1342,7 +1357,17 @@ Launch Your own! 👇`;
           await new Promise(r => setTimeout(r, 2000));
         }
 
+        if (!txReceipt) {
+          console.warn('Could not get transaction receipt after 2 minutes');
+        }
+
         // Verify approval is confirmed on-chain
+        console.log('=== VERIFYING APPROVAL ON-CHAIN ===');
+        console.log('Checking approval for:');
+        console.log('  NFT Contract:', state.prizeNftAddress);
+        console.log('  Owner:', signerAddress);
+        console.log('  Operator (escrow):', CONFIG.CONTRACTS.nftContestEscrow);
+
         for (let i = 0; i < 10; i++) {
           await new Promise(r => setTimeout(r, 2000));
 
@@ -1354,7 +1379,9 @@ Launch Your own! 👇`;
           );
 
           const nowApproved = await freshContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          console.log(`Approval check attempt ${i + 1}: isApprovedForAll =`, nowApproved);
           if (nowApproved) {
+            console.log('=== APPROVAL CONFIRMED ===');
             state.nftApprovalStatus = 'approved';
             showToast('NFT approved! You can now create the contest.', 'success');
             render();
@@ -5131,18 +5158,29 @@ Launch your own! 👇`;
             const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
             const freshNftContract = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, freshProvider);
 
+            // Get all relevant data with fresh provider
             const freshIsApprovedForAll = await freshNftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
             const freshApproved = await freshNftContract.getApproved(tokenId);
+            const freshOwner = await freshNftContract.ownerOf(tokenId);
 
-            console.log('FRESH Approval Check:', {
-              isApprovedForAll: freshIsApprovedForAll,
-              getApproved: freshApproved,
-              escrowAddress: CONFIG.CONTRACTS.nftContestEscrow,
-              signerAddress: signerAddress,
-              nftAddress: state.prizeNftAddress,
-              tokenId: tokenId,
-              approvedMatchesEscrow: freshApproved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()
-            });
+            console.log('=== FRESH APPROVAL CHECK (before gas estimation) ===');
+            console.log('NFT Contract:', state.prizeNftAddress);
+            console.log('Token ID:', tokenId);
+            console.log('Escrow Contract:', CONFIG.CONTRACTS.nftContestEscrow);
+            console.log('Signer Address:', signerAddress);
+            console.log('Current NFT Owner:', freshOwner);
+            console.log('Owner matches signer:', freshOwner.toLowerCase() === signerAddress.toLowerCase());
+            console.log('isApprovedForAll:', freshIsApprovedForAll);
+            console.log('getApproved:', freshApproved);
+            console.log('getApproved matches escrow:', freshApproved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase());
+            console.log('=== END FRESH CHECK ===');
+
+            // Check ownership first
+            if (freshOwner.toLowerCase() !== signerAddress.toLowerCase()) {
+              showToast('You no longer own this NFT!', 'error');
+              console.error('Ownership mismatch! NFT owner:', freshOwner, 'Signer:', signerAddress);
+              return;
+            }
 
             if (!freshIsApprovedForAll && freshApproved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()) {
               showToast('NFT is NOT approved for escrow! Please approve first.', 'error');
@@ -5151,6 +5189,8 @@ Launch your own! 👇`;
               render();
               return;
             }
+
+            console.log('Approval verified - proceeding to gas estimation');
 
             // Try gas estimation
             if (statusDiv) statusDiv.textContent = 'Step 9d: Estimating gas...';
@@ -5169,10 +5209,41 @@ Launch your own! 👇`;
               console.log('NFT Contest gas estimate:', gasEstimate.toString());
               if (statusDiv) statusDiv.textContent = 'Step 9e: Gas OK (' + gasEstimate.toString() + ')';
             } catch (gasErr) {
-              console.error('NFT Contest gas estimation failed:', gasErr);
+              console.error('=== NFT CONTEST GAS ESTIMATION FAILED ===');
+              console.error('Full error:', gasErr);
               console.error('Error reason:', gasErr.reason);
               console.error('Error code:', gasErr.code);
               console.error('Error data:', gasErr.data);
+              console.error('TX params used:', JSON.stringify(estimateTxParams, null, 2));
+
+              // Decode error selector if present
+              if (gasErr.data) {
+                const errorSelector = gasErr.data.slice(0, 10);
+                const knownErrors = {
+                  '0xef28f901': 'ERC721InsufficientApproval - The escrow contract is not approved to transfer this NFT',
+                  '0x64a0ae92': 'ERC721NonexistentToken - This token ID does not exist',
+                  '0x177e802f': 'ERC721InvalidOwner - The from address is not the owner',
+                  '0x73c6ac6e': 'ERC721InvalidReceiver - The receiver cannot accept NFTs',
+                  '0x08c379a0': 'Error(string) - Revert with reason string'
+                };
+                const errorName = knownErrors[errorSelector] || 'Unknown error: ' + errorSelector;
+                console.error('Decoded error:', errorName);
+
+                if (errorSelector === '0xef28f901') {
+                  // Re-check approval status one more time
+                  console.log('=== RE-CHECKING APPROVAL AFTER FAILURE ===');
+                  try {
+                    const recheck = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, freshProvider);
+                    const recheckApprovalForAll = await recheck.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+                    const recheckApproved = await recheck.getApproved(tokenId);
+                    console.log('Re-check isApprovedForAll:', recheckApprovalForAll);
+                    console.log('Re-check getApproved:', recheckApproved);
+                  } catch (recheckErr) {
+                    console.error('Re-check failed:', recheckErr);
+                  }
+                }
+              }
+
               showToast(`Transaction would fail: ${gasErr.reason || gasErr.message}`, 'error');
               if (statusDiv) statusDiv.textContent = 'FAILED: ' + (gasErr.reason || gasErr.message);
               return;
