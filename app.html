@@ -4831,11 +4831,12 @@ Launch your own! 👇`;
             if (approved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() && !isApprovedForAll) {
               if (statusDiv) statusDiv.textContent = 'Step 8d: Approving NFT... Check wallet!';
 
-              // Encode approve function
+              // Use setApprovalForAll instead of approve for a specific token
+              // This is more reliable and avoids race conditions with token-specific approvals
               const approveIface = new ethers.utils.Interface(ERC721_ABI);
-              const approveData = approveIface.encodeFunctionData('approve', [
+              const approveData = approveIface.encodeFunctionData('setApprovalForAll', [
                 CONFIG.CONTRACTS.nftContestEscrow,
-                tokenId
+                true
               ]);
 
               let approveTxHash;
@@ -4852,7 +4853,7 @@ Launch your own! 👇`;
               } catch (approveError) {
                 if (approveError.message?.includes('unsupported') || approveError.message?.includes('not supported')) {
                   const nft721 = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, signer);
-                  const approveTx = await nft721.approve(CONFIG.CONTRACTS.nftContestEscrow, tokenId);
+                  const approveTx = await nft721.setApprovalForAll(CONFIG.CONTRACTS.nftContestEscrow, true);
                   if (statusDiv) statusDiv.textContent = 'Step 8e: Waiting for approval tx...';
                   await approveTx.wait();
                   approveTxHash = approveTx.hash;
@@ -4880,13 +4881,13 @@ Launch your own! 👇`;
                 }
               }
 
-              // Wait for approval state to update on chain
+              // Wait for approval state to update on chain (check isApprovedForAll)
               if (statusDiv) statusDiv.textContent = 'Step 8f: Verifying approval state...';
               for (let i = 0; i < 15; i++) {
                 await new Promise(r => setTimeout(r, 2000));
-                const newApproved = await nft721Read.getApproved(tokenId);
-                if (newApproved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()) {
-                  console.log('Approval confirmed on chain');
+                const nowApprovedForAll = await nft721Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+                if (nowApprovedForAll) {
+                  console.log('ApprovalForAll confirmed on chain');
                   break;
                 }
                 if (statusDiv) statusDiv.textContent = `Step 8f: Verifying approval... (${i + 1}/15)`;
