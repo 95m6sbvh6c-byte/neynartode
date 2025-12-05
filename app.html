@@ -737,6 +737,21 @@ Launch Your own! 👇`;
       SEASON_0_MIN_TOKENS: ethers.utils.parseEther('20000') // 20K tokens
     };
 
+    // ===== NFT ABIs (needed for approval flow) =====
+    const ERC721_ABI = [
+      'function approve(address to, uint256 tokenId) external',
+      'function getApproved(uint256 tokenId) external view returns (address)',
+      'function setApprovalForAll(address operator, bool approved) external',
+      'function isApprovedForAll(address owner, address operator) external view returns (bool)',
+      'function ownerOf(uint256 tokenId) external view returns (address)'
+    ];
+
+    const ERC1155_ABI = [
+      'function setApprovalForAll(address operator, bool approved) external',
+      'function isApprovedForAll(address account, address operator) external view returns (bool)',
+      'function balanceOf(address account, uint256 id) external view returns (uint256)'
+    ];
+
     // ===== SHARED RPC PROVIDER (reduces duplicate connections) =====
     const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
 
@@ -4652,19 +4667,7 @@ Launch your own! 👇`;
       'event ContestCreated(uint256 indexed contestId, address indexed host, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType, uint256 endTime, string castId)'
     ];
 
-    const ERC721_ABI = [
-      'function approve(address to, uint256 tokenId) external',
-      'function getApproved(uint256 tokenId) external view returns (address)',
-      'function setApprovalForAll(address operator, bool approved) external',
-      'function isApprovedForAll(address owner, address operator) external view returns (bool)',
-      'function ownerOf(uint256 tokenId) external view returns (address)'
-    ];
-
-    const ERC1155_ABI = [
-      'function setApprovalForAll(address operator, bool approved) external',
-      'function isApprovedForAll(address account, address operator) external view returns (bool)',
-      'function balanceOf(address account, uint256 id) external view returns (uint256)'
-    ];
+    // ERC721_ABI and ERC1155_ABI are defined at the top of the file near CONFIG
 
     // Launch contest on ContestEscrow contract
     async function launchContestOnChain(contest, durationSeconds) {
