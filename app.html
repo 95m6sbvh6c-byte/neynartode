@@ -627,7 +627,7 @@
     }
 
     // Cast sharing modal functions
-    function openCastModal(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId) {
+    function openCastModal(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage) {
       const hostTag = hostUsername ? `@${hostUsername}` : 'a host';
 
       // Build requirements string
@@ -640,20 +640,25 @@
       const reqsLine = reqs.length > 0 ? `📋 To Enter: ${reqs.join(' + ')}` : '🎁 Open to everyone!';
       const reactLine = reqs.length > 0 ? '👇 React to the cast below to enter!' : '';
 
+      // Different prize line for NFT vs token
+      const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
+
       const defaultText = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
 
-🎁 Prize: ${prize}
+${prizeLine}
 ⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m
 ${reqsLine}
 ${reactLine}
 
 Launch Your own! 👇`;
 
-      // Store in window for access (including castId for quoting original cast)
+      // Store in window for access (including castId for quoting original cast, and NFT image for embed)
       window.castModalState = {
         contestId,
         castId,
-        text: defaultText
+        text: defaultText,
+        isNft: isNft || false,
+        nftImage: nftImage || ''
       };
 
       // Show the modal
@@ -697,6 +702,12 @@ Launch Your own! 👇`;
         warpcastUrl += `&embeds[]=${encodeURIComponent(castUrl)}`;
       }
 
+      // Add NFT image as embed if available
+      const nftImage = window.castModalState?.nftImage;
+      if (nftImage && window.castModalState?.isNft) {
+        warpcastUrl += `&embeds[]=${encodeURIComponent(nftImage)}`;
+      }
+
       // Use SDK openUrl when in Mini App, otherwise window.open
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && sdk.actions.openUrl) {
@@ -719,6 +730,7 @@ Launch Your own! 👇`;
         prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
         votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8', // V2 deployed 2025-11-29
         contestEscrow: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+        nftContestEscrow: '0xa8393f003ca57A8Aef0F5823a1479e44dC9aE4CE', // NFT Contest Escrow deployed 2025-12-04
         treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928', // V2 deployed 2025-12-01
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
       },
@@ -773,13 +785,22 @@ Launch Your own! 👇`;
       durationMinutes: '0',
       lastLaunchDate: null, // Track last contest launch per wallet
       upcomingContests: [], // Array of scheduled contests
-      prizeType: 'token', // Always token now (NFT removed)
+      prizeType: 'token', // 'token' or 'nft'
       prizeTokenAddress: '',
       prizeTokenAmount: '',
       prizeTokenTicker: '',
       prizeTokenImage: '',
       prizeTokenSearch: '',
       showPrizeTokenSuggestions: false,
+      // NFT Prize fields
+      prizeNftAddress: '',
+      prizeNftTokenId: '',
+      prizeNftImage: '',
+      prizeNftName: '',
+      prizeNftCollection: '',
+      prizeNftType: '', // 'ERC721' or 'ERC1155'
+      prizeNftAmount: '1', // For ERC1155
+      loadingNftMetadata: false,
 
       // Social Dynamics
       socialEnabled: true,
@@ -1040,6 +1061,133 @@ Launch Your own! 👇`;
         token.ticker.toLowerCase().includes(q) ||
         token.address.toLowerCase().includes(q)
       ).slice(0, 20); // Limit to 20 results for performance
+    }
+
+    // Fetch NFT metadata from contract or Alchemy
+    async function fetchNftMetadata(contractAddress, tokenId) {
+      try {
+        // First try to get metadata directly from contract tokenURI
+        const erc721ABI = [
+          'function tokenURI(uint256 tokenId) view returns (string)',
+          'function name() view returns (string)',
+          'function ownerOf(uint256 tokenId) view returns (address)',
+          'function supportsInterface(bytes4 interfaceId) view returns (bool)'
+        ];
+        const erc1155ABI = [
+          'function uri(uint256 tokenId) view returns (string)',
+          'function balanceOf(address account, uint256 id) view returns (uint256)'
+        ];
+
+        const contract721 = new ethers.Contract(contractAddress, erc721ABI, rpcProvider);
+        const contract1155 = new ethers.Contract(contractAddress, erc1155ABI, rpcProvider);
+
+        let tokenUri = null;
+        let nftType = '';
+        let collectionName = '';
+
+        // Check if ERC721 (interface ID: 0x80ac58cd)
+        try {
+          const is721 = await contract721.supportsInterface('0x80ac58cd');
+          if (is721) {
+            nftType = 'ERC721';
+            tokenUri = await contract721.tokenURI(tokenId);
+            collectionName = await contract721.name().catch(() => 'NFT Collection');
+          }
+        } catch (e) {
+          // Not ERC721, try ERC1155
+        }
+
+        // Check if ERC1155 (interface ID: 0xd9b67a26)
+        if (!nftType) {
+          try {
+            const is1155 = await contract721.supportsInterface('0xd9b67a26');
+            if (is1155) {
+              nftType = 'ERC1155';
+              tokenUri = await contract1155.uri(tokenId);
+              // ERC1155 URIs often have {id} placeholder
+              tokenUri = tokenUri.replace('{id}', tokenId.toString().padStart(64, '0'));
+              collectionName = await contract721.name().catch(() => 'NFT Collection');
+            }
+          } catch (e) {
+            // Not ERC1155 either
+          }
+        }
+
+        if (!tokenUri) {
+          throw new Error('Could not fetch token URI - may not be a valid NFT');
+        }
+
+        // Convert IPFS URLs to gateway
+        if (tokenUri.startsWith('ipfs://')) {
+          tokenUri = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        }
+
+        // Fetch metadata JSON
+        const metadataResponse = await fetch(tokenUri);
+        if (!metadataResponse.ok) throw new Error('Failed to fetch metadata');
+        const metadata = await metadataResponse.json();
+
+        // Get image URL
+        let imageUrl = metadata.image || metadata.image_url || '';
+        if (imageUrl.startsWith('ipfs://')) {
+          imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        }
+
+        return {
+          success: true,
+          name: metadata.name || `${collectionName} #${tokenId}`,
+          collection: collectionName,
+          image: imageUrl,
+          type: nftType,
+          description: metadata.description || '',
+          attributes: metadata.attributes || [],
+        };
+      } catch (error) {
+        console.error('NFT metadata fetch error:', error);
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    }
+
+    // Handle NFT address/tokenId input and fetch metadata
+    async function loadNftMetadata() {
+      const address = state.prizeNftAddress.trim();
+      const tokenId = state.prizeNftTokenId.trim();
+
+      if (!address || !tokenId) {
+        showToast('Enter both NFT contract address and Token ID', 'warning');
+        return;
+      }
+
+      if (!ethers.utils.isAddress(address)) {
+        showToast('Invalid contract address', 'error');
+        return;
+      }
+
+      state.loadingNftMetadata = true;
+      render();
+
+      const result = await fetchNftMetadata(address, tokenId);
+
+      state.loadingNftMetadata = false;
+
+      if (result.success) {
+        state.prizeNftImage = result.image;
+        state.prizeNftName = result.name;
+        state.prizeNftCollection = result.collection;
+        state.prizeNftType = result.type;
+        showToast(`Loaded: ${result.name}`, 'success');
+      } else {
+        state.prizeNftImage = '';
+        state.prizeNftName = '';
+        state.prizeNftCollection = '';
+        state.prizeNftType = '';
+        showToast(`Failed to load NFT: ${result.error}`, 'error');
+      }
+
+      render();
     }
 
     function getBadgeMultiplier(badges) {
@@ -1771,7 +1919,9 @@ Launch Your own! 👇`;
               contestId: c.contestId,
               host: c.host,
               hostUser: c.hostUser,
-              prize: `${c.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${c.prizeTokenSymbol}`,
+              prize: c.isNft
+                ? `${c.nftName || 'NFT'}`
+                : `${c.prizeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} $${c.prizeTokenSymbol}`,
               prizeToken: c.prizeTokenSymbol,
               prizeAmount: c.prizeAmount,
               startTime: new Date(c.startTime * 1000),
@@ -1786,6 +1936,13 @@ Launch Your own! 👇`;
               requireRecast: c.requireRecast || false,
               requireLike: c.requireLike || false,
               requireReply: c.requireReply || false,
+              // NFT fields
+              isNft: c.isNft || false,
+              nftAddress: c.nftAddress || '',
+              nftTokenId: c.nftTokenId || '',
+              nftImage: c.nftImage || '',
+              nftName: c.nftName || '',
+              nftType: c.nftType || '',
             }));
           console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
         }
@@ -2884,7 +3041,17 @@ Launch Your own! 👇`;
                               <div class="grid grid-cols-2 gap-3 mb-3">
                                 <div>
                                   <div class="text-xs text-[var(--text-muted)] mb-0.5">Prize</div>
-                                  <div class="text-sm font-semibold text-[var(--success)]">${contest.prize}</div>
+                                  ${contest.isNft && contest.nftImage ? `
+                                    <div class="flex items-center gap-2">
+                                      <img src="${contest.nftImage}" alt="${contest.nftName}" class="w-10 h-10 rounded-lg object-cover" onerror="this.style.display='none'" />
+                                      <div>
+                                        <div class="text-sm font-semibold text-[var(--success)]">${contest.nftName || 'NFT'}</div>
+                                        <span class="tag tag-accent text-xs">${contest.nftType || 'NFT'}</span>
+                                      </div>
+                                    </div>
+                                  ` : `
+                                    <div class="text-sm font-semibold text-[var(--success)]">${contest.prize}</div>
+                                  `}
                                 </div>
                                 <div>
                                   <div class="text-xs text-[var(--text-muted)] mb-0.5">Time Left</div>
@@ -2904,7 +3071,7 @@ Launch Your own! 👇`;
                               <!-- Actions -->
                               <div class="flex gap-2 flex-wrap">
                                 <button
-                                  onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}', '${(contest.hostUser?.username || '').replace(/'/g, "\\'")}', ${contest.requireRecast || false}, ${contest.requireLike || false}, ${contest.requireReply || false}, '${contest.castId || ''}')"
+                                  onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}', '${(contest.hostUser?.username || '').replace(/'/g, "\\'")}', ${contest.requireRecast || false}, ${contest.requireLike || false}, ${contest.requireReply || false}, '${contest.castId || ''}', ${contest.isNft || false}, '${(contest.nftImage || '').replace(/'/g, "\\'")}')"
                                   class="btn-primary text-sm py-2 px-4"
                                 >
                                   Share
@@ -3312,43 +3479,100 @@ Launch Your own! 👇`;
 
                 <!-- Prize Settings -->
                 <div class="space-y-4">
-                  <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Prize Token</h3>
+                  <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Prize</h3>
 
-                  <div class="relative">
-                    <label class="block text-sm text-[var(--text-secondary)] mb-2">Search Token</label>
-                    <input type="text" id="prizeTokenSearch" value="${state.prizeTokenSearch}" placeholder="USDC, ETH, NEYNARTODES..." class="input-modern" />
-                    ${state.showPrizeTokenSuggestions ? `
-                      <div class="absolute z-10 w-full mt-1 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-lg max-h-64 overflow-y-auto">
-                        ${searchTokens(state.prizeTokenSearch).map((token, idx) => `
-                          <button onclick="selectPrizeToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-[var(--bg-tertiary)] border-b border-[var(--border-subtle)] transition-colors flex items-center gap-3">
-                            <img src="${token.image}" alt="${token.ticker}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/32/8b5cf6/ffffff?text=${token.ticker[0]}'" />
-                            <div class="flex-1 min-w-0">
-                              <div class="font-medium text-[var(--text-primary)]">${token.ticker}</div>
-                              <div class="text-xs text-[var(--text-muted)] truncate">${token.name}</div>
-                            </div>
-                            <div class="text-right">
-                              <div class="text-sm font-medium text-[var(--success)]">$${(token.mcap / 1000000).toFixed(1)}M</div>
-                            </div>
-                          </button>
-                        `).join('')}
+                  <!-- Prize Type Toggle -->
+                  <div class="flex gap-2">
+                    <button onclick="state.prizeType = 'token'; render();" class="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all ${state.prizeType === 'token' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}">
+                      Token
+                    </button>
+                    <button onclick="state.prizeType = 'nft'; render();" class="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all ${state.prizeType === 'nft' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}">
+                      NFT
+                    </button>
+                  </div>
+
+                  ${state.prizeType === 'token' ? `
+                    <!-- Token Prize -->
+                    <div class="relative">
+                      <label class="block text-sm text-[var(--text-secondary)] mb-2">Search Token</label>
+                      <input type="text" id="prizeTokenSearch" value="${state.prizeTokenSearch}" placeholder="USDC, ETH, NEYNARTODES..." class="input-modern" />
+                      ${state.showPrizeTokenSuggestions ? `
+                        <div class="absolute z-10 w-full mt-1 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                          ${searchTokens(state.prizeTokenSearch).map((token, idx) => `
+                            <button onclick="selectPrizeToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-[var(--bg-tertiary)] border-b border-[var(--border-subtle)] transition-colors flex items-center gap-3">
+                              <img src="${token.image}" alt="${token.ticker}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/32/8b5cf6/ffffff?text=${token.ticker[0]}'" />
+                              <div class="flex-1 min-w-0">
+                                <div class="font-medium text-[var(--text-primary)]">${token.ticker}</div>
+                                <div class="text-xs text-[var(--text-muted)] truncate">${token.name}</div>
+                              </div>
+                              <div class="text-right">
+                                <div class="text-sm font-medium text-[var(--success)]">$${(token.mcap / 1000000).toFixed(1)}M</div>
+                              </div>
+                            </button>
+                          `).join('')}
+                        </div>
+                      ` : ''}
+                    </div>
+
+                    ${state.prizeTokenAddress ? `
+                      <div class="p-4 bg-[var(--bg-secondary)] rounded-xl flex items-center gap-3">
+                        <img src="${state.prizeTokenImage}" alt="${state.prizeTokenTicker}" class="w-10 h-10 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/40/8b5cf6/ffffff?text=${state.prizeTokenTicker[0]}'" />
+                        <div class="flex-1">
+                          <div class="text-xs text-[var(--success)] mb-0.5">Selected</div>
+                          <div class="font-medium text-[var(--text-primary)]">${state.prizeTokenTicker}</div>
+                        </div>
                       </div>
                     ` : ''}
-                  </div>
 
-                  ${state.prizeTokenAddress ? `
-                    <div class="p-4 bg-[var(--bg-secondary)] rounded-xl flex items-center gap-3">
-                      <img src="${state.prizeTokenImage}" alt="${state.prizeTokenTicker}" class="w-10 h-10 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/40/8b5cf6/ffffff?text=${state.prizeTokenTicker[0]}'" />
-                      <div class="flex-1">
-                        <div class="text-xs text-[var(--success)] mb-0.5">Selected</div>
-                        <div class="font-medium text-[var(--text-primary)]">${state.prizeTokenTicker}</div>
-                      </div>
+                    <div>
+                      <label class="block text-sm text-[var(--text-secondary)] mb-2">Prize Amount</label>
+                      <input type="number" id="prizeTokenAmount" value="${state.prizeTokenAmount}" placeholder="1000" class="input-modern" />
                     </div>
-                  ` : ''}
+                  ` : `
+                    <!-- NFT Prize -->
+                    <div class="space-y-3">
+                      <div>
+                        <label class="block text-sm text-[var(--text-secondary)] mb-2">NFT Contract Address</label>
+                        <input type="text" id="prizeNftAddress" value="${state.prizeNftAddress}" placeholder="0x..." class="input-modern" />
+                      </div>
+                      <div>
+                        <label class="block text-sm text-[var(--text-secondary)] mb-2">Token ID</label>
+                        <div class="flex gap-2">
+                          <input type="text" id="prizeNftTokenId" value="${state.prizeNftTokenId}" placeholder="1" class="input-modern flex-1" />
+                          <button onclick="loadNftMetadata()" class="btn-primary px-4 py-2 text-sm whitespace-nowrap" ${state.loadingNftMetadata ? 'disabled' : ''}>
+                            ${state.loadingNftMetadata ? '<span class="animate-spin">...</span>' : 'Load NFT'}
+                          </button>
+                        </div>
+                      </div>
 
-                  <div>
-                    <label class="block text-sm text-[var(--text-secondary)] mb-2">Prize Amount</label>
-                    <input type="number" id="prizeTokenAmount" value="${state.prizeTokenAmount}" placeholder="1000" class="input-modern" />
-                  </div>
+                      ${state.prizeNftImage ? `
+                        <div class="p-4 bg-[var(--bg-secondary)] rounded-xl">
+                          <div class="flex gap-4">
+                            <img src="${state.prizeNftImage}" alt="${state.prizeNftName}" class="w-24 h-24 rounded-xl object-cover" onerror="this.src='https://via.placeholder.com/96/8b5cf6/ffffff?text=NFT'" />
+                            <div class="flex-1">
+                              <div class="text-xs text-[var(--success)] mb-1">NFT Loaded</div>
+                              <div class="font-medium text-[var(--text-primary)] mb-1">${state.prizeNftName}</div>
+                              <div class="text-xs text-[var(--text-muted)]">${state.prizeNftCollection}</div>
+                              <div class="mt-2">
+                                <span class="tag tag-accent">${state.prizeNftType}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ` : `
+                        <div class="p-4 bg-[var(--bg-secondary)] rounded-xl text-center text-[var(--text-muted)] text-sm">
+                          Enter contract address and token ID, then click "Load NFT" to preview
+                        </div>
+                      `}
+
+                      ${state.prizeNftType === 'ERC1155' ? `
+                        <div>
+                          <label class="block text-sm text-[var(--text-secondary)] mb-2">Amount (ERC1155)</label>
+                          <input type="number" id="prizeNftAmount" value="${state.prizeNftAmount}" placeholder="1" min="1" class="input-modern" />
+                        </div>
+                      ` : ''}
+                    </div>
+                  `}
                 </div>
 
                 <div class="divider"></div>
@@ -3974,6 +4198,14 @@ Launch your own! 👇`;
       if (prizeTokenAmount) prizeTokenAmount.oninput = (e) => { state.prizeTokenAmount = e.target.value; };
       if (minTradeVolume) minTradeVolume.oninput = (e) => { state.minTradeVolume = e.target.value; };
 
+      // NFT Prize inputs
+      const prizeNftAddress = document.getElementById('prizeNftAddress');
+      const prizeNftTokenId = document.getElementById('prizeNftTokenId');
+      const prizeNftAmount = document.getElementById('prizeNftAmount');
+      if (prizeNftAddress) prizeNftAddress.oninput = (e) => { state.prizeNftAddress = e.target.value; };
+      if (prizeNftTokenId) prizeNftTokenId.oninput = (e) => { state.prizeNftTokenId = e.target.value; };
+      if (prizeNftAmount) prizeNftAmount.oninput = (e) => { state.prizeNftAmount = e.target.value; };
+
       const launchButton = document.getElementById('launchButton');
       if (launchButton) {
         launchButton.onclick = async () => {
@@ -4176,6 +4408,28 @@ Launch your own! 👇`;
       'function decimals() external view returns (uint8)'
     ];
 
+    const NFT_CONTEST_ESCROW_ABI = [
+      'function createContestERC721(address _nftContract, uint256 _tokenId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+      'function createContestERC1155(address _nftContract, uint256 _tokenId, uint256 _amount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+      'function customTokenFee() external view returns (uint256)',
+      'function defaultToken() external view returns (address)',
+      'event ContestCreated(uint256 indexed contestId, address indexed host, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType, uint256 endTime, string castId)'
+    ];
+
+    const ERC721_ABI = [
+      'function approve(address to, uint256 tokenId) external',
+      'function getApproved(uint256 tokenId) external view returns (address)',
+      'function setApprovalForAll(address operator, bool approved) external',
+      'function isApprovedForAll(address owner, address operator) external view returns (bool)',
+      'function ownerOf(uint256 tokenId) external view returns (address)'
+    ];
+
+    const ERC1155_ABI = [
+      'function setApprovalForAll(address operator, bool approved) external',
+      'function isApprovedForAll(address account, address operator) external view returns (bool)',
+      'function balanceOf(address account, uint256 id) external view returns (uint256)'
+    ];
+
     // Launch contest on ContestEscrow contract
     async function launchContestOnChain(contest, durationSeconds) {
       const statusDiv = document.getElementById('launchStatus');
@@ -4276,7 +4530,15 @@ Launch your own! 👇`;
         }
 
         const requirementsCode = `R${reqRecast}L${reqLike}P${reqReply}`;
-        const castId = `${state.castHash}|${requirementsCode}`;
+        // For NFT contests, also encode the image URL in castId for caching
+        // Format: castHash|R1L0P1|imageUrl (image URL is optional, only for NFT)
+        let castId = `${state.castHash}|${requirementsCode}`;
+        if (state.prizeType === 'nft' && state.prizeNftImage) {
+          // Encode image URL (truncate if too long to fit in string storage)
+          const imageUrl = state.prizeNftImage.slice(0, 200); // Limit to 200 chars
+          castId = `${state.castHash}|${requirementsCode}|${imageUrl}`;
+          console.log('   NFT image URL cached in castId');
+        }
         console.log('   Cast ID to send (with requirements):', castId);
         console.log('   Requirements encoded: Recast=' + reqRecast + ', Like=' + reqLike + ', Reply=' + reqReply);
         if (!state.castHash || !state.castHash.startsWith('0x')) {
@@ -4508,9 +4770,229 @@ Launch your own! 👇`;
             }
           }
         } else {
-          // NFT prize - not supported in current contract
-          showToast('NFT prizes are not yet supported. Please use token prizes for now.', 'error');
-          return;
+          // NFT prize - use NFTContestEscrow contract
+          if (statusDiv) statusDiv.textContent = 'Step 8: Preparing NFT prize...';
+
+          if (!state.prizeNftAddress || !state.prizeNftTokenId || !state.prizeNftType) {
+            showToast('Please load NFT metadata first by clicking "Load NFT"', 'error');
+            return;
+          }
+
+          // Use NFT Contest Escrow contract
+          const nftEscrowRead = new ethers.Contract(
+            CONFIG.CONTRACTS.nftContestEscrow,
+            NFT_CONTEST_ESCROW_ABI,
+            rpcProvider
+          );
+
+          // Get custom token fee and default token
+          const customTokenFee = await nftEscrowRead.customTokenFee();
+          const defaultToken = await nftEscrowRead.defaultToken();
+
+          const isCustomToken = tokenRequirement.toLowerCase() !== defaultToken.toLowerCase();
+          const ethValue = isCustomToken ? customTokenFee : ethers.BigNumber.from(0);
+
+          const tokenId = state.prizeNftTokenId;
+
+          if (state.prizeNftType === 'ERC721') {
+            // ERC721 NFT
+            if (statusDiv) statusDiv.textContent = 'Step 8b: Checking NFT ownership...';
+
+            const nft721Read = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, rpcProvider);
+            const owner = await nft721Read.ownerOf(tokenId);
+            if (owner.toLowerCase() !== signerAddress.toLowerCase()) {
+              showToast('You do not own this NFT!', 'error');
+              return;
+            }
+
+            // Check approval
+            if (statusDiv) statusDiv.textContent = 'Step 8c: Checking NFT approval...';
+            const approved = await nft721Read.getApproved(tokenId);
+            const isApprovedForAll = await nft721Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+
+            if (approved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() && !isApprovedForAll) {
+              if (statusDiv) statusDiv.textContent = 'Step 8d: Approving NFT... Check wallet!';
+
+              // Encode approve function
+              const approveIface = new ethers.utils.Interface(ERC721_ABI);
+              const approveData = approveIface.encodeFunctionData('approve', [
+                CONFIG.CONTRACTS.nftContestEscrow,
+                tokenId
+              ]);
+
+              try {
+                await ethProvider.request({
+                  method: 'eth_sendTransaction',
+                  params: [{
+                    from: signerAddress,
+                    to: state.prizeNftAddress,
+                    data: approveData
+                  }]
+                });
+              } catch (approveError) {
+                if (approveError.message?.includes('unsupported') || approveError.message?.includes('not supported')) {
+                  const nft721 = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, signer);
+                  const approveTx = await nft721.approve(CONFIG.CONTRACTS.nftContestEscrow, tokenId);
+                  await approveTx.wait();
+                } else {
+                  throw approveError;
+                }
+              }
+
+              // Wait for approval
+              if (statusDiv) statusDiv.textContent = 'Step 8e: Waiting for approval...';
+              for (let i = 0; i < 30; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                const newApproved = await nft721Read.getApproved(tokenId);
+                if (newApproved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()) break;
+              }
+            }
+
+            if (statusDiv) statusDiv.textContent = 'Step 9: Creating NFT contest... Check wallet!';
+
+            // Encode createContestERC721
+            const createIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
+            const createData = createIface.encodeFunctionData('createContestERC721', [
+              state.prizeNftAddress,
+              tokenId,
+              durationSeconds,
+              castId,
+              tokenRequirement,
+              volumeRequirement
+            ]);
+
+            try {
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: signerAddress,
+                  to: CONFIG.CONTRACTS.nftContestEscrow,
+                  value: ethValue.gt(0) ? '0x' + ethValue.toBigInt().toString(16) : '0x0',
+                  data: createData
+                }]
+              });
+              tx = { hash: txHash };
+              if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + txHash.slice(0,15) + '...';
+            } catch (txError) {
+              if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
+                const nftEscrow = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, signer);
+                tx = await nftEscrow.createContestERC721(
+                  state.prizeNftAddress,
+                  tokenId,
+                  durationSeconds,
+                  castId,
+                  tokenRequirement,
+                  volumeRequirement,
+                  { value: ethValue }
+                );
+                if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
+              } else {
+                throw txError;
+              }
+            }
+
+          } else if (state.prizeNftType === 'ERC1155') {
+            // ERC1155 NFT
+            if (statusDiv) statusDiv.textContent = 'Step 8b: Checking NFT balance...';
+
+            const nft1155Read = new ethers.Contract(state.prizeNftAddress, ERC1155_ABI, rpcProvider);
+            const amount = parseInt(state.prizeNftAmount) || 1;
+            const balance = await nft1155Read.balanceOf(signerAddress, tokenId);
+            if (balance.lt(amount)) {
+              showToast(`You don't have enough of this NFT (need ${amount}, have ${balance})`, 'error');
+              return;
+            }
+
+            // Check approval
+            if (statusDiv) statusDiv.textContent = 'Step 8c: Checking NFT approval...';
+            const isApproved = await nft1155Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+
+            if (!isApproved) {
+              if (statusDiv) statusDiv.textContent = 'Step 8d: Approving NFT... Check wallet!';
+
+              const approveIface = new ethers.utils.Interface(ERC1155_ABI);
+              const approveData = approveIface.encodeFunctionData('setApprovalForAll', [
+                CONFIG.CONTRACTS.nftContestEscrow,
+                true
+              ]);
+
+              try {
+                await ethProvider.request({
+                  method: 'eth_sendTransaction',
+                  params: [{
+                    from: signerAddress,
+                    to: state.prizeNftAddress,
+                    data: approveData
+                  }]
+                });
+              } catch (approveError) {
+                if (approveError.message?.includes('unsupported') || approveError.message?.includes('not supported')) {
+                  const nft1155 = new ethers.Contract(state.prizeNftAddress, ERC1155_ABI, signer);
+                  const approveTx = await nft1155.setApprovalForAll(CONFIG.CONTRACTS.nftContestEscrow, true);
+                  await approveTx.wait();
+                } else {
+                  throw approveError;
+                }
+              }
+
+              // Wait for approval
+              if (statusDiv) statusDiv.textContent = 'Step 8e: Waiting for approval...';
+              for (let i = 0; i < 30; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                const nowApproved = await nft1155Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+                if (nowApproved) break;
+              }
+            }
+
+            if (statusDiv) statusDiv.textContent = 'Step 9: Creating NFT contest... Check wallet!';
+
+            // Encode createContestERC1155
+            const createIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
+            const createData = createIface.encodeFunctionData('createContestERC1155', [
+              state.prizeNftAddress,
+              tokenId,
+              amount,
+              durationSeconds,
+              castId,
+              tokenRequirement,
+              volumeRequirement
+            ]);
+
+            try {
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: signerAddress,
+                  to: CONFIG.CONTRACTS.nftContestEscrow,
+                  value: ethValue.gt(0) ? '0x' + ethValue.toBigInt().toString(16) : '0x0',
+                  data: createData
+                }]
+              });
+              tx = { hash: txHash };
+              if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + txHash.slice(0,15) + '...';
+            } catch (txError) {
+              if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
+                const nftEscrow = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, signer);
+                tx = await nftEscrow.createContestERC1155(
+                  state.prizeNftAddress,
+                  tokenId,
+                  amount,
+                  durationSeconds,
+                  castId,
+                  tokenRequirement,
+                  volumeRequirement,
+                  { value: ethValue }
+                );
+                if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
+              } else {
+                throw txError;
+              }
+            }
+
+          } else {
+            showToast('Unknown NFT type. Please reload the NFT.', 'error');
+            return;
+          }
         }
 
         console.log('📤 Transaction submitted:', tx.hash);
