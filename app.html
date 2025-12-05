@@ -2188,6 +2188,7 @@ Launch Your own! 👇`;
               nftTokenId: c.nftTokenId || '',
               nftImage: c.nftImage || '',
               nftName: c.nftName || '',
+              nftCollection: c.nftCollection || '',
               nftType: c.nftType || '',
             }));
           console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
@@ -3287,12 +3288,16 @@ Launch Your own! 👇`;
                               <div class="grid grid-cols-2 gap-3 mb-3">
                                 <div>
                                   <div class="text-xs text-[var(--text-muted)] mb-0.5">Prize</div>
-                                  ${contest.isNft && contest.nftImage ? `
+                                  ${contest.isNft ? `
                                     <div class="flex items-center gap-2">
-                                      <img src="${contest.nftImage}" alt="${contest.nftName}" class="w-10 h-10 rounded-lg object-cover" onerror="this.style.display='none'" />
+                                      ${contest.nftImage ? `
+                                        <img src="${contest.nftImage}" alt="${contest.nftName}" class="w-10 h-10 rounded-lg object-cover" onerror="this.parentElement.innerHTML='<div class=\\'w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs\\'>NFT</div>'" />
+                                      ` : `
+                                        <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs">NFT</div>
+                                      `}
                                       <div>
-                                        <div class="text-sm font-semibold text-[var(--success)]">${contest.nftName || 'NFT'}</div>
-                                        <span class="tag tag-accent text-xs">${contest.nftType || 'NFT'}</span>
+                                        <div class="text-sm font-semibold text-[var(--success)]">${contest.nftName || contest.prize || 'NFT Prize'}</div>
+                                        <span class="text-xs text-[var(--text-muted)]">${contest.nftCollection || contest.nftType || 'NFT'}</span>
                                       </div>
                                     </div>
                                   ` : `

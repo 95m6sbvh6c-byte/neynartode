@@ -258,20 +258,26 @@ async function getNftContestDetails(provider, contract, contestId) {
     const actualCastHash = castParts[0];
     const cachedImageUrl = castParts[2] || ''; // Third part is cached image URL
 
+    // Convert tokenId to number for display
+    const tokenIdNum = Number(tokenId);
+
     // Only fetch NFT metadata if we don't have a cached image (saves IPFS calls)
     let nftMetadata;
     if (cachedImageUrl) {
-      // Use cached image, just get collection name
-      nftMetadata = { name: `NFT #${tokenId}`, image: cachedImageUrl, collection: 'NFT' };
-      // Try to get collection name quickly (optional)
+      // Use cached image, get collection name from contract
+      let collectionName = 'NFT Collection';
       try {
         const nft = new ethers.Contract(nftContract, ERC721_ABI, provider);
-        nftMetadata.collection = await nft.name().catch(() => 'NFT Collection');
-        nftMetadata.name = `${nftMetadata.collection} #${tokenId}`;
+        collectionName = await nft.name().catch(() => 'NFT Collection');
       } catch (e) { /* ignore */ }
+      nftMetadata = {
+        name: `${collectionName} #${tokenIdNum}`,
+        image: cachedImageUrl,
+        collection: collectionName
+      };
     } else {
       // No cached image, do full metadata fetch
-      nftMetadata = await getNftMetadata(provider, nftContract, Number(tokenId), Number(nftType));
+      nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType));
     }
 
     // Get requirement token info
