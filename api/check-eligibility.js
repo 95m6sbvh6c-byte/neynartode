@@ -159,14 +159,34 @@ async function checkSocialRequirements(castHash, fid, requirements) {
         }
       }
 
-      // Also search for casts that embed/quote this cast
-      const searchResponse = await fetch(
+      // Search for casts that embed/quote this cast using multiple search strategies
+      // Strategy 1: Search by warpcast conversation URL format
+      const warpcastUrl = `warpcast.com/~/conversations/${castHash}`;
+      const searchResponse1 = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast/search?q=${encodeURIComponent(warpcastUrl)}&limit=50`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (searchResponse1.ok) {
+        const searchData = await searchResponse1.json();
+        for (const cast of searchData.result?.casts || []) {
+          // Check if this cast embeds our original cast
+          if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
+            if (!castsToCheck.includes(cast.hash)) {
+              castsToCheck.push(cast.hash);
+            }
+          }
+        }
+      }
+
+      // Strategy 2: Search by hash directly
+      const searchResponse2 = await fetch(
         `https://api.neynar.com/v2/farcaster/cast/search?q=${castHash}&limit=25`,
         { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
       );
 
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json();
+      if (searchResponse2.ok) {
+        const searchData = await searchResponse2.json();
         for (const cast of searchData.result?.casts || []) {
           // Check if this cast quotes our original
           if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash || e.url?.includes(castHash))) {
