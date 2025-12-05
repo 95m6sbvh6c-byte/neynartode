@@ -742,19 +742,24 @@ Launch Your own! 👇`;
       // Add the frame embed link
       const fullText = text + '\n\nhttps://frame-opal-eight.vercel.app';
 
-      // Build embeds array
+      // Build embeds array - NFT image FIRST so it displays prominently in Warpcast
       const embeds = [];
 
-      // Quote the original cast if we have a castId
+      // Add NFT image as embed FIRST if available (Warpcast shows first embed more prominently)
+      const nftImage = window.castModalState?.nftImage;
+      if (nftImage && window.castModalState?.isNft) {
+        // Use faster IPFS gateway for better Warpcast loading
+        let imageUrl = nftImage;
+        if (imageUrl.includes('ipfs.io/ipfs/')) {
+          imageUrl = imageUrl.replace('ipfs.io/ipfs/', 'cloudflare-ipfs.com/ipfs/');
+        }
+        embeds.push(imageUrl);
+      }
+
+      // Quote the original cast SECOND (image should display first)
       const castId = window.castModalState?.castId;
       if (castId) {
         embeds.push(`https://warpcast.com/~/conversations/${castId}`);
-      }
-
-      // Add NFT image as embed if available
-      const nftImage = window.castModalState?.nftImage;
-      if (nftImage && window.castModalState?.isNft) {
-        embeds.push(nftImage);
       }
 
       // Try to use SDK composeCast for in-app experience
