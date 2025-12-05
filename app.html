@@ -419,6 +419,17 @@
 
       <p class="text-sm text-[var(--text-secondary)] mb-3">Customize your message before casting:</p>
 
+      <!-- NFT Image Preview (shown when sharing NFT contest) -->
+      <div id="cast-modal-nft-preview" class="hidden mb-3">
+        <div class="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]">
+          <img id="cast-modal-nft-image" src="" alt="NFT" class="w-16 h-16 rounded-lg object-cover" onerror="this.style.display='none'" />
+          <div>
+            <div class="text-xs text-[var(--text-muted)]">NFT Prize</div>
+            <div id="cast-modal-nft-name" class="text-sm font-medium text-[var(--text-primary)]"></div>
+          </div>
+        </div>
+      </div>
+
       <textarea
         id="cast-modal-text"
         rows="8"
@@ -658,14 +669,34 @@ Launch Your own! 👇`;
         castId,
         text: defaultText,
         isNft: isNft || false,
-        nftImage: nftImage || ''
+        nftImage: nftImage || '',
+        prize: prize
       };
+
+      // Debug log
+      console.log('openCastModal called:', { contestId, isNft, nftImage: nftImage ? nftImage.substring(0, 50) + '...' : 'EMPTY', prize });
 
       // Show the modal
       const modal = document.getElementById('cast-modal');
       const textarea = document.getElementById('cast-modal-text');
+      const nftPreview = document.getElementById('cast-modal-nft-preview');
+      const nftImageEl = document.getElementById('cast-modal-nft-image');
+      const nftNameEl = document.getElementById('cast-modal-nft-name');
+
       if (modal && textarea) {
         textarea.value = defaultText;
+
+        // Show NFT preview if it's an NFT contest with an image
+        if (isNft && nftImage && nftPreview && nftImageEl && nftNameEl) {
+          nftImageEl.src = nftImage;
+          nftImageEl.style.display = 'block';
+          nftNameEl.textContent = prize;
+          nftPreview.classList.remove('hidden');
+          console.log('Showing NFT preview with image:', nftImage);
+        } else if (nftPreview) {
+          nftPreview.classList.add('hidden');
+        }
+
         modal.classList.remove('hidden');
         textarea.focus();
       }
