@@ -15,6 +15,7 @@ const { ethers } = require('ethers');
 const CONFIG = {
   NEYNARTODES: '0x8dE1622fE07f56cda2e2273e615A513F1d828B07',
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+  NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
   V4_STATE_VIEW: '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71',
@@ -24,6 +25,10 @@ const CONFIG = {
 
 const CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+];
+
+const NFT_CONTEST_ESCROW_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
 ];
 
 const V4_STATE_VIEW_ABI = [
@@ -332,7 +337,8 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  const { contestId, fid, address } = req.query;
+  const { contestId, fid, address, nft } = req.query;
+  const isNftContest = nft === 'true' || nft === '1';
 
   if (!contestId) {
     return res.status(400).json({ error: 'Missing contestId' });
@@ -379,14 +385,26 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Could not find user addresses' });
     }
 
-    // Get contest details
-    const contract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
-    const contest = await contract.getContest(contestId);
-    const [, , , startTime, endTime, castId, , volumeReq, status] = contest;
+    // Get contest details - use different contract for NFT contests
+    let contestStartTime, contestEndTime, castId, volumeRequiredUSD;
 
-    const contestStartTime = Number(startTime);
-    const contestEndTime = Number(endTime);
-    const volumeRequiredUSD = Number(volumeReq) / 1e18;
+    if (isNftContest) {
+      const nftContract = new ethers.Contract(CONFIG.NFT_CONTEST_ESCROW, NFT_CONTEST_ESCROW_ABI, provider);
+      const contest = await nftContract.getContest(contestId);
+      // NFT contract returns: host, nftType, nftContract, tokenId, amount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner
+      contestStartTime = Number(contest[5]);
+      contestEndTime = Number(contest[6]);
+      castId = contest[7];
+      volumeRequiredUSD = Number(contest[9]) / 1e18;
+    } else {
+      const contract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
+      const contest = await contract.getContest(contestId);
+      const [, , , startTime, endTime, castIdVal, , volumeReq] = contest;
+      contestStartTime = Number(startTime);
+      contestEndTime = Number(endTime);
+      castId = castIdVal;
+      volumeRequiredUSD = Number(volumeReq) / 1e18;
+    }
 
     // Parse cast hash and requirements from castId
     let castHash = castId;
