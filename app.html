@@ -639,7 +639,7 @@ ${reactLine}`;
       // Add NFT image as embed if available
       if (isNft && nftImage) {
         // Proxy through our server to avoid IPFS gateway 403 errors
-        const proxyUrl = `https://frame-opal-eight.vercel.app/api/nft-image?url=${encodeURIComponent(nftImage)}`;
+        const proxyUrl = `https://frame-opal-eight.vercel.app/api/image?url=${encodeURIComponent(nftImage)}`;
         embeds.push(proxyUrl);
       }
 

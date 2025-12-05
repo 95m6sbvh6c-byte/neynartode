@@ -1,10 +1,47 @@
-// Vercel Serverless Function - Generate Frame Image
-// This creates the initial image shown in the Frame
+// Vercel Serverless Function - Generate Frame Image or Proxy NFT Images
+// This creates the initial image shown in the Frame, or proxies IPFS images
 
 export default async function handler(req, res) {
   // Set CORS headers for Farcaster
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // If a URL is provided, proxy that image (for NFT embeds)
+  const { url } = req.query;
+  if (url) {
+    try {
+      let fetchUrl = url;
+      if (fetchUrl.startsWith('ipfs://')) {
+        fetchUrl = fetchUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+      }
+
+      const response = await fetch(fetchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; NEYNARtodes/1.0)',
+        },
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).json({ error: `Failed to fetch: ${response.status}` });
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/png';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+
+      const buffer = await response.arrayBuffer();
+      return res.status(200).send(Buffer.from(buffer));
+    } catch (error) {
+      console.error('Image proxy error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Default: Generate the frame image
   res.setHeader('Content-Type', 'image/png');
 
   // Generate SVG image (you can replace this with a static PNG later)
