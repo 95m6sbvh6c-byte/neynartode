@@ -710,15 +710,28 @@ Launch Your own! 👇`;
         textarea.value = defaultText;
 
         // Show NFT preview if it's an NFT contest with an image
-        if (isNft && nftImage && nftPreview && nftImageEl && nftNameEl) {
-          console.log('Setting NFT image src to:', nftImage);
-          nftImageEl.src = nftImage;
-          nftImageEl.style.display = 'block';
-          nftNameEl.textContent = prize;
-          nftPreview.classList.remove('hidden');
-          console.log('NFT preview should now be visible');
+        // Check each condition separately for debugging
+        console.log('Checking NFT preview conditions:');
+        console.log('  - isNft:', isNft, '(type:', typeof isNft, ')');
+        console.log('  - nftImage:', nftImage ? 'has value' : 'EMPTY');
+        console.log('  - nftPreview element:', nftPreview ? 'found' : 'NOT FOUND');
+        console.log('  - nftImageEl element:', nftImageEl ? 'found' : 'NOT FOUND');
+        console.log('  - nftNameEl element:', nftNameEl ? 'found' : 'NOT FOUND');
+
+        if (isNft && nftImage) {
+          console.log('NFT contest with image - setting up preview...');
+          if (nftPreview && nftImageEl && nftNameEl) {
+            console.log('All elements found! Setting NFT image src to:', nftImage);
+            nftImageEl.src = nftImage;
+            nftImageEl.style.display = 'block';
+            nftNameEl.textContent = prize;
+            nftPreview.classList.remove('hidden');
+            console.log('NFT preview classList after remove:', nftPreview.classList.toString());
+          } else {
+            console.error('Missing DOM elements for NFT preview!');
+          }
         } else {
-          console.log('NFT preview hidden - conditions not met:', { isNft, hasNftImage: !!nftImage, hasPreview: !!nftPreview, hasImageEl: !!nftImageEl, hasNameEl: !!nftNameEl });
+          console.log('Not an NFT contest with image, hiding preview');
           if (nftPreview) {
             nftPreview.classList.add('hidden');
           }
