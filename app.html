@@ -729,7 +729,7 @@ Launch Your own! 👇`;
       }
     }
 
-    function submitCastModal() {
+    async function submitCastModal() {
       const textarea = document.getElementById('cast-modal-text');
       if (!textarea) return;
 
@@ -742,25 +742,44 @@ Launch Your own! 👇`;
       // Add the frame embed link
       const fullText = text + '\n\nhttps://frame-opal-eight.vercel.app';
 
-      // Build Warpcast compose URL
-      let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(fullText)}`;
+      // Build embeds array
+      const embeds = [];
 
       // Quote the original cast if we have a castId
       const castId = window.castModalState?.castId;
       if (castId) {
-        // Add the original cast as an embed (quote cast)
-        const castUrl = `https://warpcast.com/~/conversations/${castId}`;
-        warpcastUrl += `&embeds[]=${encodeURIComponent(castUrl)}`;
+        embeds.push(`https://warpcast.com/~/conversations/${castId}`);
       }
 
       // Add NFT image as embed if available
       const nftImage = window.castModalState?.nftImage;
       if (nftImage && window.castModalState?.isNft) {
-        warpcastUrl += `&embeds[]=${encodeURIComponent(nftImage)}`;
+        embeds.push(nftImage);
       }
 
-      // Use SDK openUrl when in Mini App, otherwise window.open
+      // Try to use SDK composeCast for in-app experience
       const sdk = window.FarcasterSDK;
+      if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
+        try {
+          console.log('Using SDK composeCast with embeds:', embeds);
+          await sdk.actions.composeCast({
+            text: fullText,
+            embeds: embeds.length > 0 ? embeds : undefined
+          });
+          closeCastModal();
+          return;
+        } catch (e) {
+          console.log('composeCast failed, falling back to URL:', e);
+        }
+      }
+
+      // Fallback: Build Warpcast compose URL
+      let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(fullText)}`;
+      embeds.forEach(embed => {
+        warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
+      });
+
+      // Use SDK openUrl when in Mini App, otherwise window.open
       if (sdk && sdk.actions && sdk.actions.openUrl) {
         sdk.actions.openUrl(warpcastUrl);
       } else {
