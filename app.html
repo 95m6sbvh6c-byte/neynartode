@@ -2192,6 +2192,10 @@ Launch Your own! 👇`;
               nftType: c.nftType || '',
             }));
           console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
+          // Debug NFT contests
+          state.upcomingContests.filter(c => c.isNft).forEach(c => {
+            console.log('NFT Contest:', c.contestId, 'nftImage:', c.nftImage, 'nftName:', c.nftName);
+          });
         }
       } catch (e) {
         console.error('Error fetching active contests:', e);
