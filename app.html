@@ -801,6 +801,9 @@ Launch Your own! 👇`;
       prizeNftType: '', // 'ERC721' or 'ERC1155'
       prizeNftAmount: '1', // For ERC1155
       loadingNftMetadata: false,
+      // NFT Approval state (two-step flow for reliable wallet handling)
+      nftApprovalStatus: 'none', // 'none', 'pending', 'approved'
+      nftApprovalTxHash: '',
 
       // Social Dynamics
       socialEnabled: true,
@@ -1179,15 +1182,167 @@ Launch Your own! 👇`;
         state.prizeNftCollection = result.collection;
         state.prizeNftType = result.type;
         showToast(`Loaded: ${result.name}`, 'success');
+        // Check if NFT is already approved
+        await checkNftApprovalStatus();
       } else {
         state.prizeNftImage = '';
         state.prizeNftName = '';
         state.prizeNftCollection = '';
         state.prizeNftType = '';
+        state.nftApprovalStatus = 'none';
         showToast(`Failed to load NFT: ${result.error}`, 'error');
       }
 
       render();
+    }
+
+    // Approve NFT for escrow (Step 1 of NFT contest creation)
+    // This is a separate step to ensure the wallet properly sequences transactions
+    async function approveNftForEscrow() {
+      if (!state.prizeNftAddress || !state.prizeNftType) {
+        showToast('Please load the NFT first', 'warning');
+        return;
+      }
+
+      if (!state.walletAddress) {
+        showToast('Please connect your wallet first', 'error');
+        return;
+      }
+
+      const ethProvider = window.sdk?.wallet?.ethProvider;
+      if (!ethProvider) {
+        showToast('Wallet provider not available', 'error');
+        return;
+      }
+
+      state.nftApprovalStatus = 'pending';
+      render();
+
+      try {
+        const signerAddress = state.walletAddress;
+        const tokenId = parseInt(state.prizeNftTokenId) || 0;
+
+        // Check if already approved
+        const nftContract = new ethers.Contract(
+          state.prizeNftAddress,
+          state.prizeNftType === 'ERC721' ? ERC721_ABI : ERC1155_ABI,
+          rpcProvider
+        );
+
+        let isAlreadyApproved = false;
+        if (state.prizeNftType === 'ERC721') {
+          const approved = await nftContract.getApproved(tokenId);
+          const isApprovedForAll = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          isAlreadyApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
+        } else {
+          isAlreadyApproved = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+        }
+
+        if (isAlreadyApproved) {
+          state.nftApprovalStatus = 'approved';
+          showToast('NFT already approved! You can now create the contest.', 'success');
+          render();
+          return;
+        }
+
+        // Send approval transaction
+        const approveIface = new ethers.utils.Interface(state.prizeNftType === 'ERC721' ? ERC721_ABI : ERC1155_ABI);
+        const approveData = approveIface.encodeFunctionData('setApprovalForAll', [
+          CONFIG.CONTRACTS.nftContestEscrow,
+          true
+        ]);
+
+        const approveTxHash = await ethProvider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: signerAddress,
+            to: state.prizeNftAddress,
+            data: approveData
+          }]
+        });
+
+        console.log('NFT approval tx hash:', approveTxHash);
+        state.nftApprovalTxHash = approveTxHash;
+        showToast('Approval submitted! Waiting for confirmation...', 'info');
+        render();
+
+        // Wait for transaction to be mined
+        for (let i = 0; i < 60; i++) {
+          try {
+            const receipt = await rpcProvider.getTransactionReceipt(approveTxHash);
+            if (receipt && receipt.blockNumber) {
+              console.log('Approval confirmed in block:', receipt.blockNumber);
+              break;
+            }
+          } catch (e) {
+            // Receipt not yet available
+          }
+          await new Promise(r => setTimeout(r, 2000));
+        }
+
+        // Verify approval is confirmed on-chain
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+
+          const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+          const freshContract = new ethers.Contract(
+            state.prizeNftAddress,
+            state.prizeNftType === 'ERC721' ? ERC721_ABI : ERC1155_ABI,
+            freshProvider
+          );
+
+          const nowApproved = await freshContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          if (nowApproved) {
+            state.nftApprovalStatus = 'approved';
+            showToast('NFT approved! You can now create the contest.', 'success');
+            render();
+            return;
+          }
+        }
+
+        // Approval didn't confirm in time
+        state.nftApprovalStatus = 'none';
+        showToast('Approval may still be pending. Please try again or check BaseScan.', 'warning');
+        render();
+
+      } catch (error) {
+        console.error('NFT approval error:', error);
+        state.nftApprovalStatus = 'none';
+        showToast('Failed to approve NFT: ' + (error.message || error), 'error');
+        render();
+      }
+    }
+
+    // Check if NFT is currently approved for escrow
+    async function checkNftApprovalStatus() {
+      if (!state.prizeNftAddress || !state.prizeNftType || !state.walletAddress) {
+        state.nftApprovalStatus = 'none';
+        return;
+      }
+
+      try {
+        const nftContract = new ethers.Contract(
+          state.prizeNftAddress,
+          state.prizeNftType === 'ERC721' ? ERC721_ABI : ERC1155_ABI,
+          rpcProvider
+        );
+
+        const tokenId = parseInt(state.prizeNftTokenId) || 0;
+        let isApproved = false;
+
+        if (state.prizeNftType === 'ERC721') {
+          const approved = await nftContract.getApproved(tokenId);
+          const isApprovedForAll = await nftContract.isApprovedForAll(state.walletAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          isApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
+        } else {
+          isApproved = await nftContract.isApprovedForAll(state.walletAddress, CONFIG.CONTRACTS.nftContestEscrow);
+        }
+
+        state.nftApprovalStatus = isApproved ? 'approved' : 'none';
+      } catch (e) {
+        console.error('Error checking NFT approval:', e);
+        state.nftApprovalStatus = 'none';
+      }
     }
 
     function getBadgeMultiplier(badges) {
@@ -3571,6 +3726,35 @@ Launch Your own! 👇`;
                           <input type="number" id="prizeNftAmount" value="${state.prizeNftAmount}" placeholder="1" min="1" class="input-modern" />
                         </div>
                       ` : ''}
+
+                      <!-- NFT Approval Step -->
+                      ${state.prizeNftImage ? `
+                        <div class="p-4 bg-[var(--bg-tertiary)] rounded-xl border ${state.nftApprovalStatus === 'approved' ? 'border-[var(--success)]' : 'border-[var(--warning)]'}">
+                          <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium ${state.nftApprovalStatus === 'approved' ? 'text-[var(--success)]' : 'text-[var(--warning)]'}">
+                              ${state.nftApprovalStatus === 'approved' ? 'NFT Approved' : state.nftApprovalStatus === 'pending' ? 'Approving...' : 'Step 1: Approve NFT'}
+                            </span>
+                            ${state.nftApprovalStatus === 'approved' ? '<span class="text-[var(--success)]">&#10003;</span>' : ''}
+                          </div>
+                          ${state.nftApprovalStatus !== 'approved' ? `
+                            <p class="text-xs text-[var(--text-muted)] mb-3">
+                              Before creating the contest, you must approve the escrow contract to transfer your NFT.
+                            </p>
+                            <button onclick="approveNftForEscrow()" class="btn-primary w-full py-2 text-sm ${state.nftApprovalStatus === 'pending' ? 'opacity-50 cursor-not-allowed' : ''}" ${state.nftApprovalStatus === 'pending' ? 'disabled' : ''}>
+                              ${state.nftApprovalStatus === 'pending' ? 'Approving... Check Wallet' : 'Approve NFT for Escrow'}
+                            </button>
+                            ${state.nftApprovalTxHash ? `
+                              <a href="https://basescan.org/tx/${state.nftApprovalTxHash}" target="_blank" class="block text-center text-xs text-[var(--accent-light)] mt-2 hover:underline">
+                                View approval tx on BaseScan
+                              </a>
+                            ` : ''}
+                          ` : `
+                            <p class="text-xs text-[var(--success)]">
+                              Escrow contract can transfer your NFT. You can now launch the contest.
+                            </p>
+                          `}
+                        </div>
+                      ` : ''}
                     </div>
                   `}
                 </div>
@@ -3745,9 +3929,23 @@ Launch Your own! 👇`;
                 ` : ''}
 
                 <!-- Launch Button -->
-                <button id="launchButton" class="btn-primary w-full py-4 text-lg font-semibold ${state.pendingTx ? 'opacity-50 cursor-not-allowed' : ''}" ${state.pendingTx ? 'disabled' : ''}>
-                  ${state.pendingTx ? 'Launching...' : 'Launch Contest'}
-                </button>
+                ${(() => {
+                  // Check if NFT contest needs approval first
+                  const isNftContest = state.prizeType === 'nft';
+                  const nftNeedsApproval = isNftContest && state.prizeNftImage && state.nftApprovalStatus !== 'approved';
+                  const isDisabled = state.pendingTx || nftNeedsApproval;
+
+                  return `
+                    <button id="launchButton" class="btn-primary w-full py-4 text-lg font-semibold ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}" ${isDisabled ? 'disabled' : ''}>
+                      ${state.pendingTx ? 'Launching...' : nftNeedsApproval ? 'Approve NFT First' : 'Launch Contest'}
+                    </button>
+                    ${nftNeedsApproval ? `
+                      <p class="text-center text-sm text-[var(--warning)] mt-2">
+                        Please approve your NFT above before launching
+                      </p>
+                    ` : ''}
+                  `;
+                })()}
                 <p id="launchStatus" class="text-center text-sm text-[var(--accent-light)] mt-2"></p>
                 <p class="text-center text-xs text-[var(--text-muted)]">
                   Prize will be locked in escrow
@@ -4792,10 +4990,17 @@ Launch your own! 👇`;
           }
         } else {
           // NFT prize - use NFTContestEscrow contract
+          // Approval should already be done via the separate "Approve NFT" button
           if (statusDiv) statusDiv.textContent = 'Step 8: Preparing NFT prize...';
 
           if (!state.prizeNftAddress || !state.prizeNftTokenId || !state.prizeNftType) {
             showToast('Please load NFT metadata first by clicking "Load NFT"', 'error');
+            return;
+          }
+
+          // Verify approval status (should already be approved from separate step)
+          if (state.nftApprovalStatus !== 'approved') {
+            showToast('Please approve your NFT first using the "Approve NFT" button', 'error');
             return;
           }
 
@@ -4806,7 +5011,7 @@ Launch your own! 👇`;
             rpcProvider
           );
 
-          // Get contest fee (always required for NFT contests)
+          // Get contest fee
           const contestFee = await nftEscrowRead.contestFee();
           console.log('NFT Contest Fee:', ethers.utils.formatEther(contestFee), 'ETH');
 
@@ -4814,7 +5019,7 @@ Launch your own! 👇`;
 
           if (state.prizeNftType === 'ERC721') {
             // ERC721 NFT
-            if (statusDiv) statusDiv.textContent = 'Step 8b: Checking NFT ownership...';
+            if (statusDiv) statusDiv.textContent = 'Step 8b: Verifying NFT ownership...';
 
             const nft721Read = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, rpcProvider);
             const owner = await nft721Read.ownerOf(tokenId);
@@ -4823,97 +5028,17 @@ Launch your own! 👇`;
               return;
             }
 
-            // Check approval
-            if (statusDiv) statusDiv.textContent = 'Step 8c: Checking NFT approval...';
-            const approved = await nft721Read.getApproved(tokenId);
+            // Verify approval is still valid (double check)
+            if (statusDiv) statusDiv.textContent = 'Step 8c: Verifying approval...';
             const isApprovedForAll = await nft721Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-
-            if (approved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() && !isApprovedForAll) {
-              if (statusDiv) statusDiv.textContent = 'Step 8d: Approving NFT... Check wallet!';
-
-              // Use setApprovalForAll instead of approve for a specific token
-              // This is more reliable and avoids race conditions with token-specific approvals
-              const approveIface = new ethers.utils.Interface(ERC721_ABI);
-              const approveData = approveIface.encodeFunctionData('setApprovalForAll', [
-                CONFIG.CONTRACTS.nftContestEscrow,
-                true
-              ]);
-
-              let approveTxHash;
-              try {
-                approveTxHash = await ethProvider.request({
-                  method: 'eth_sendTransaction',
-                  params: [{
-                    from: signerAddress,
-                    to: state.prizeNftAddress,
-                    data: approveData
-                  }]
-                });
-                console.log('Approval tx hash:', approveTxHash);
-              } catch (approveError) {
-                if (approveError.message?.includes('unsupported') || approveError.message?.includes('not supported')) {
-                  const nft721 = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, signer);
-                  const approveTx = await nft721.setApprovalForAll(CONFIG.CONTRACTS.nftContestEscrow, true);
-                  if (statusDiv) statusDiv.textContent = 'Step 8e: Waiting for approval tx...';
-                  await approveTx.wait();
-                  approveTxHash = approveTx.hash;
-                } else {
-                  throw approveError;
-                }
+            if (!isApprovedForAll) {
+              const approved = await nft721Read.getApproved(tokenId);
+              if (approved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()) {
+                showToast('NFT approval expired. Please approve again.', 'error');
+                state.nftApprovalStatus = 'none';
+                render();
+                return;
               }
-
-              // Wait for approval transaction to be mined
-              if (statusDiv) statusDiv.textContent = 'Step 8e: Waiting for approval to confirm...';
-              if (approveTxHash) {
-                // Poll for transaction receipt
-                for (let i = 0; i < 60; i++) {
-                  try {
-                    const receipt = await rpcProvider.getTransactionReceipt(approveTxHash);
-                    if (receipt && receipt.blockNumber) {
-                      console.log('Approval tx confirmed in block:', receipt.blockNumber);
-                      break;
-                    }
-                  } catch (e) {
-                    // Receipt not yet available
-                  }
-                  await new Promise(r => setTimeout(r, 2000));
-                  if (statusDiv) statusDiv.textContent = `Step 8e: Waiting for approval... (${i + 1}/60)`;
-                }
-              }
-
-              // Wait for approval state to update on chain (check isApprovedForAll)
-              if (statusDiv) statusDiv.textContent = 'Step 8f: Verifying approval state...';
-              for (let i = 0; i < 15; i++) {
-                await new Promise(r => setTimeout(r, 2000));
-                const nowApprovedForAll = await nft721Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-                if (nowApprovedForAll) {
-                  console.log('ApprovalForAll confirmed on chain');
-                  break;
-                }
-                if (statusDiv) statusDiv.textContent = `Step 8f: Verifying approval... (${i + 1}/15)`;
-              }
-            }
-
-            // Final approval verification before creating contest - use fresh provider to avoid cache
-            if (statusDiv) statusDiv.textContent = 'Step 8g: Final approval check...';
-            const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-            const nft721Fresh = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, freshProvider);
-            const finalApproved = await nft721Fresh.getApproved(tokenId);
-            const finalIsApprovedForAll = await nft721Fresh.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-
-            const approvalConfirmed = finalApproved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || finalIsApprovedForAll;
-            console.log('Final approval check:', {
-              approved: finalApproved,
-              isApprovedForAll: finalIsApprovedForAll,
-              escrowContract: CONFIG.CONTRACTS.nftContestEscrow,
-              approvalConfirmed: approvalConfirmed
-            });
-
-            if (statusDiv) statusDiv.textContent = `Step 8g: Approval=${approvalConfirmed ? 'YES' : 'NO'} (${finalApproved.slice(0,10)}...)`;
-
-            if (!approvalConfirmed) {
-              showToast('NFT approval not confirmed. Please try again.', 'error');
-              return;
             }
 
             if (statusDiv) statusDiv.textContent = 'Step 9: Creating NFT contest... Check wallet!';
@@ -4999,78 +5124,13 @@ Launch your own! 👇`;
               return;
             }
 
-            // Check approval
-            if (statusDiv) statusDiv.textContent = 'Step 8c: Checking NFT approval...';
+            // Verify approval is still valid (double check - should be done in separate step)
+            if (statusDiv) statusDiv.textContent = 'Step 8c: Verifying approval...';
             const isApproved = await nft1155Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-
             if (!isApproved) {
-              if (statusDiv) statusDiv.textContent = 'Step 8d: Approving NFT... Check wallet!';
-
-              const approveIface = new ethers.utils.Interface(ERC1155_ABI);
-              const approveData = approveIface.encodeFunctionData('setApprovalForAll', [
-                CONFIG.CONTRACTS.nftContestEscrow,
-                true
-              ]);
-
-              let approveTxHash;
-              try {
-                approveTxHash = await ethProvider.request({
-                  method: 'eth_sendTransaction',
-                  params: [{
-                    from: signerAddress,
-                    to: state.prizeNftAddress,
-                    data: approveData
-                  }]
-                });
-                console.log('ERC1155 approval tx hash:', approveTxHash);
-              } catch (approveError) {
-                if (approveError.message?.includes('unsupported') || approveError.message?.includes('not supported')) {
-                  const nft1155 = new ethers.Contract(state.prizeNftAddress, ERC1155_ABI, signer);
-                  const approveTx = await nft1155.setApprovalForAll(CONFIG.CONTRACTS.nftContestEscrow, true);
-                  if (statusDiv) statusDiv.textContent = 'Step 8e: Waiting for approval tx...';
-                  await approveTx.wait();
-                  approveTxHash = approveTx.hash;
-                } else {
-                  throw approveError;
-                }
-              }
-
-              // Wait for approval transaction to be mined
-              if (statusDiv) statusDiv.textContent = 'Step 8e: Waiting for approval to confirm...';
-              if (approveTxHash) {
-                for (let i = 0; i < 60; i++) {
-                  try {
-                    const receipt = await rpcProvider.getTransactionReceipt(approveTxHash);
-                    if (receipt && receipt.blockNumber) {
-                      console.log('ERC1155 approval tx confirmed in block:', receipt.blockNumber);
-                      break;
-                    }
-                  } catch (e) {
-                    // Receipt not yet available
-                  }
-                  await new Promise(r => setTimeout(r, 2000));
-                  if (statusDiv) statusDiv.textContent = `Step 8e: Waiting for approval... (${i + 1}/60)`;
-                }
-              }
-
-              // Wait for approval state to update on chain
-              if (statusDiv) statusDiv.textContent = 'Step 8f: Verifying approval state...';
-              for (let i = 0; i < 15; i++) {
-                await new Promise(r => setTimeout(r, 2000));
-                const nowApproved = await nft1155Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-                if (nowApproved) {
-                  console.log('ERC1155 approval confirmed on chain');
-                  break;
-                }
-                if (statusDiv) statusDiv.textContent = `Step 8f: Verifying approval... (${i + 1}/15)`;
-              }
-            }
-
-            // Final approval verification
-            if (statusDiv) statusDiv.textContent = 'Step 8g: Final approval check...';
-            const finalApproved1155 = await nft1155Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-            if (!finalApproved1155) {
-              showToast('NFT approval not confirmed. Please try again.', 'error');
+              showToast('NFT approval expired. Please approve again.', 'error');
+              state.nftApprovalStatus = 'none';
+              render();
               return;
             }
 
