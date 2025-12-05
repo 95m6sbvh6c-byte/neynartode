@@ -14,7 +14,7 @@ const { ethers } = require('ethers');
 
 const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-  NFT_CONTEST_ESCROW: '0xa8393f003ca57A8Aef0F5823a1479e44dC9aE4CE',
+  NFT_CONTEST_ESCROW: '0xA1B7D6Cf80f78B912a3651161d30Bf4d6F519799', // V2 deployed 2025-12-05
   BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
