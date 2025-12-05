@@ -637,7 +637,27 @@
       showToast(message, toastType, 0);
     }
 
-    // Cast sharing modal functions
+    // Cast sharing modal functions - wrapper to read from data attributes (avoids URL escaping issues in onclick)
+    function openCastModalFromData(button) {
+      const contestId = parseInt(button.dataset.contestId);
+      const prize = decodeURIComponent(button.dataset.prize || '');
+      const hoursLeft = parseInt(button.dataset.hours);
+      const minutesLeft = parseInt(button.dataset.minutes);
+      const volumeReq = parseFloat(button.dataset.volume) || 0;
+      const tokenSymbol = decodeURIComponent(button.dataset.token || '');
+      const hostUsername = decodeURIComponent(button.dataset.host || '');
+      const requireRecast = button.dataset.recast === 'true';
+      const requireLike = button.dataset.like === 'true';
+      const requireReply = button.dataset.reply === 'true';
+      const castId = button.dataset.castId || '';
+      const isNft = button.dataset.isNft === 'true';
+      const nftImage = decodeURIComponent(button.dataset.nftImage || '');
+
+      console.log('openCastModalFromData - nftImage:', nftImage);
+
+      openCastModal(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage);
+    }
+
     function openCastModal(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage) {
       const hostTag = hostUsername ? `@${hostUsername}` : 'a host';
 
@@ -3357,7 +3377,20 @@ Launch Your own! 👇`;
                               <!-- Actions -->
                               <div class="flex gap-2 flex-wrap">
                                 <button
-                                  onclick="openCastModal(${contest.contestId}, '${contest.prize.replace(/'/g, "\\'")}', ${hoursLeft}, ${minutesLeft}, ${contest.volumeRequirement || 0}, '${(contest.tokenRequirementSymbol || '').replace(/'/g, "\\'")}', '${(contest.hostUser?.username || '').replace(/'/g, "\\'")}', ${contest.requireRecast || false}, ${contest.requireLike || false}, ${contest.requireReply || false}, '${contest.castId || ''}', ${contest.isNft || false}, '${(contest.nftImage || '').replace(/'/g, "\\'")}')"
+                                  data-contest-id="${contest.contestId}"
+                                  data-prize="${encodeURIComponent(contest.prize)}"
+                                  data-hours="${hoursLeft}"
+                                  data-minutes="${minutesLeft}"
+                                  data-volume="${contest.volumeRequirement || 0}"
+                                  data-token="${encodeURIComponent(contest.tokenRequirementSymbol || '')}"
+                                  data-host="${encodeURIComponent(contest.hostUser?.username || '')}"
+                                  data-recast="${contest.requireRecast || false}"
+                                  data-like="${contest.requireLike || false}"
+                                  data-reply="${contest.requireReply || false}"
+                                  data-cast-id="${contest.castId || ''}"
+                                  data-is-nft="${contest.isNft || false}"
+                                  data-nft-image="${encodeURIComponent(contest.nftImage || '')}"
+                                  onclick="openCastModalFromData(this)"
                                   class="btn-primary text-sm py-2 px-4"
                                 >
                                   Share
