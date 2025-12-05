@@ -422,7 +422,7 @@
       <!-- NFT Image Preview (shown when sharing NFT contest) -->
       <div id="cast-modal-nft-preview" class="hidden mb-3">
         <div class="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]">
-          <img id="cast-modal-nft-image" src="" alt="NFT" class="w-16 h-16 rounded-lg object-cover" onerror="this.style.display='none'" />
+          <img id="cast-modal-nft-image" src="" alt="NFT" class="w-16 h-16 rounded-lg object-cover" onload="console.log('NFT image loaded successfully')" onerror="console.error('NFT image failed to load:', this.src); this.style.display='none'" />
           <div>
             <div class="text-xs text-[var(--text-muted)]">NFT Prize</div>
             <div id="cast-modal-nft-name" class="text-sm font-medium text-[var(--text-primary)]"></div>
