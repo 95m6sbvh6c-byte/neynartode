@@ -3206,14 +3206,128 @@ ${reactLine}`;
     }
 
     function renderActiveContests() {
-      return `
-        <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
-          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
+      const activeContests = state.upcomingContests.filter(c => new Date(c.endTime) > new Date()).slice(0, 20);
 
-          <div class="max-w-6xl mx-auto relative z-10">
-            ${renderHeader()}
+      let contestsHtml = '';
+      if (activeContests.length > 0) {
+        contestsHtml = activeContests.map(contest => {
+          const now = new Date();
+          const isLive = new Date(contest.startTime) <= now && new Date(contest.endTime) > now;
+          const isPending = contest.status === 1;
+          const timeLeft = Math.max(0, Math.floor((new Date(contest.endTime) - now) / 1000));
+          const hoursLeft = Math.floor(timeLeft / 3600);
+          const minutesLeft = Math.floor((timeLeft % 3600) / 60);
 
-            ${state.upcomingContests.length > 0 ? `
+          const statusTag = isLive
+            ? '<span class="tag tag-success"><span class="w-1.5 h-1.5 rounded-full bg-[var(--success)] animate-pulse"></span>Live</span>'
+            : isPending
+            ? '<span class="tag tag-warning">Pending</span>'
+            : '<span class="tag tag-accent">Upcoming</span>';
+
+          const hostImg = contest.hostUser?.pfpUrl ? `<img src="${contest.hostUser.pfpUrl}" class="w-7 h-7 rounded-full" onerror="this.style.display='none'" />` : '';
+          const hostName = contest.hostUser?.username ? '@' + contest.hostUser.username : contest.host.slice(0, 10) + '...';
+
+          let prizeHtml = '';
+          if (contest.isNft) {
+            const nftImg = contest.nftImage
+              ? `<img src="${contest.nftImage}" alt="${contest.nftName || ''}" class="w-10 h-10 rounded-lg object-cover" onerror="this.style.display='none'" />`
+              : `<div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs">NFT</div>`;
+            prizeHtml = `
+              <div class="flex items-center gap-2">
+                ${nftImg}
+                <div>
+                  <div class="text-sm font-semibold text-[var(--success)]">${contest.nftName || contest.prize || 'NFT Prize'}</div>
+                  <span class="text-xs text-[var(--text-muted)]">${contest.nftCollection || contest.nftType || 'NFT'}</span>
+                </div>
+              </div>
+            `;
+          } else {
+            prizeHtml = `<div class="text-sm font-semibold text-[var(--success)]">${contest.prize}</div>`;
+          }
+
+          let reqTags = '';
+          if (contest.requireRecast) reqTags += '<span class="tag tag-accent">Recast</span>';
+          if (contest.requireLike) reqTags += '<span class="tag tag-accent">Like</span>';
+          if (contest.requireReply) reqTags += '<span class="tag tag-accent">Reply</span>';
+          if (contest.volumeRequirement > 0) reqTags += `<span class="tag tag-warning">$${contest.volumeRequirement} vol</span>`;
+          if (!contest.requireRecast && !contest.requireLike && !contest.requireReply && !contest.volumeRequirement) {
+            reqTags = '<span class="tag" style="background: var(--bg-tertiary); color: var(--text-secondary);">Open to all</span>';
+          }
+
+          const viewBtn = contest.castId ? `
+            <a
+              href="https://warpcast.com/~/conversations/${contest.castId}"
+              target="_blank"
+              class="btn-secondary text-sm py-2 px-4"
+            >
+              View
+            </a>
+          ` : '';
+
+          return `
+            <div class="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-[var(--border-light)] transition-all">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-3">
+                    ${statusTag}
+                    <span class="text-sm text-[var(--text-muted)]">#${contest.contestId}</span>
+                  </div>
+                  <div class="flex items-center gap-2 mb-3">
+                    ${hostImg}
+                    <span class="font-medium text-[var(--text-primary)]">${hostName}</span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <div class="text-xs text-[var(--text-muted)] mb-0.5">Prize</div>
+                      ${prizeHtml}
+                    </div>
+                    <div>
+                      <div class="text-xs text-[var(--text-muted)] mb-0.5">Time Left</div>
+                      <div class="text-sm font-semibold text-[var(--text-primary)]">${hoursLeft}h ${minutesLeft}m</div>
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap gap-1.5 mb-3">
+                    ${reqTags}
+                  </div>
+                  <div class="flex gap-2 flex-wrap">
+                    <button
+                      data-contest-id="${contest.contestId}"
+                      data-prize="${encodeURIComponent(contest.prize)}"
+                      data-hours="${hoursLeft}"
+                      data-minutes="${minutesLeft}"
+                      data-volume="${contest.volumeRequirement || 0}"
+                      data-token="${encodeURIComponent(contest.tokenRequirementSymbol || '')}"
+                      data-host="${encodeURIComponent(contest.hostUser?.username || '')}"
+                      data-recast="${contest.requireRecast || false}"
+                      data-like="${contest.requireLike || false}"
+                      data-reply="${contest.requireReply || false}"
+                      data-cast-id="${contest.castId || ''}"
+                      data-is-nft="${contest.isNft || false}"
+                      data-nft-image="${encodeURIComponent(contest.nftImage || '')}"
+                      onclick="openCastModalFromData(this)"
+                      class="btn-primary text-sm py-2 px-4"
+                    >
+                      Share
+                    </button>
+                    ${viewBtn}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      const moreText = state.upcomingContests.length > 20
+        ? `<div class="mt-4 text-center text-sm text-[var(--text-muted)]">+ ${state.upcomingContests.length - 20} more contests</div>`
+        : '';
+
+      if (state.upcomingContests.length > 0) {
+        return `
+          <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+            <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
+            <div class="max-w-6xl mx-auto relative z-10">
+              ${renderHeader()}
               <div class="glass-card p-5">
                 <div class="flex items-center justify-between mb-4">
                   <div>
@@ -3222,136 +3336,31 @@ ${reactLine}`;
                   </div>
                   <div class="flex items-center gap-2">
                     <div class="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse"></div>
-                    <button
-                      onclick="checkAllEligibility()"
-                      class="btn-accent text-sm py-2 px-4"
-                    >
-                      Check Eligibility
-                    </button>
+                    <button onclick="checkAllEligibility()" class="btn-accent text-sm py-2 px-4">Check Eligibility</button>
                   </div>
                 </div>
-
-                <div class="space-y-3">
-                  ${state.upcomingContests.filter(c => new Date(c.endTime) > new Date()).slice(0, 20).map(contest => {
-                    const now = new Date();
-                    const isLive = new Date(contest.startTime) <= now && new Date(contest.endTime) > now;
-                    const isPending = contest.status === 1;
-                    const timeLeft = Math.max(0, Math.floor((new Date(contest.endTime) - now) / 1000));
-                    const hoursLeft = Math.floor(timeLeft / 3600);
-                    const minutesLeft = Math.floor((timeLeft % 3600) / 60);
-
-                    return \`
-                      <div class="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-[var(--border-light)] transition-all">
-                        <div class="flex items-start justify-between gap-4">
-                          <div class="flex-1 min-w-0">
-                            <!-- Header row -->
-                            <div class="flex items-center gap-2 mb-3">
-                              \${isLive
-                                ? '<span class="tag tag-success"><span class="w-1.5 h-1.5 rounded-full bg-[var(--success)] animate-pulse"></span>Live</span>'
-                                : isPending
-                                ? '<span class="tag tag-warning">Pending</span>'
-                                : '<span class="tag tag-accent">Upcoming</span>'}
-                              <span class="text-sm text-[var(--text-muted)]">#\${contest.contestId}</span>
-                            </div>
-
-                            <!-- Host info -->
-                            <div class="flex items-center gap-2 mb-3">
-                              \${contest.hostUser?.pfpUrl ? \`<img src="\${contest.hostUser.pfpUrl}" class="w-7 h-7 rounded-full" onerror="this.style.display='none'" />\` : ''}
-                              <span class="font-medium text-[var(--text-primary)]">\${contest.hostUser?.username ? '@' + contest.hostUser.username : contest.host.slice(0, 10) + '...'}</span>
-                            </div>
-
-                            <!-- Info grid -->
-                            <div class="grid grid-cols-2 gap-3 mb-3">
-                              <div>
-                                <div class="text-xs text-[var(--text-muted)] mb-0.5">Prize</div>
-                                \${contest.isNft ? \`
-                                  <div class="flex items-center gap-2">
-                                    \${contest.nftImage ? \`
-                                      <img src="\${contest.nftImage}" alt="\${contest.nftName}" class="w-10 h-10 rounded-lg object-cover" onerror="this.parentElement.innerHTML='<div class=\\\\'w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs\\\\'>NFT</div>'" />
-                                    \` : \`
-                                      <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs">NFT</div>
-                                    \`}
-                                    <div>
-                                      <div class="text-sm font-semibold text-[var(--success)]">\${contest.nftName || contest.prize || 'NFT Prize'}</div>
-                                      <span class="text-xs text-[var(--text-muted)]">\${contest.nftCollection || contest.nftType || 'NFT'}</span>
-                                    </div>
-                                  </div>
-                                \` : \`
-                                  <div class="text-sm font-semibold text-[var(--success)]">\${contest.prize}</div>
-                                \`}
-                              </div>
-                              <div>
-                                <div class="text-xs text-[var(--text-muted)] mb-0.5">Time Left</div>
-                                <div class="text-sm font-semibold text-[var(--text-primary)]">\${hoursLeft}h \${minutesLeft}m</div>
-                              </div>
-                            </div>
-
-                            <!-- Requirements -->
-                            <div class="flex flex-wrap gap-1.5 mb-3">
-                              \${contest.requireRecast ? '<span class="tag tag-accent">Recast</span>' : ''}
-                              \${contest.requireLike ? '<span class="tag tag-accent">Like</span>' : ''}
-                              \${contest.requireReply ? '<span class="tag tag-accent">Reply</span>' : ''}
-                              \${contest.volumeRequirement > 0 ? \`<span class="tag tag-warning">$\${contest.volumeRequirement} vol</span>\` : ''}
-                              \${!contest.requireRecast && !contest.requireLike && !contest.requireReply && !contest.volumeRequirement ? '<span class="tag" style="background: var(--bg-tertiary); color: var(--text-secondary);">Open to all</span>' : ''}
-                            </div>
-
-                            <!-- Actions -->
-                            <div class="flex gap-2 flex-wrap">
-                              <button
-                                data-contest-id="\${contest.contestId}"
-                                data-prize="\${encodeURIComponent(contest.prize)}"
-                                data-hours="\${hoursLeft}"
-                                data-minutes="\${minutesLeft}"
-                                data-volume="\${contest.volumeRequirement || 0}"
-                                data-token="\${encodeURIComponent(contest.tokenRequirementSymbol || '')}"
-                                data-host="\${encodeURIComponent(contest.hostUser?.username || '')}"
-                                data-recast="\${contest.requireRecast || false}"
-                                data-like="\${contest.requireLike || false}"
-                                data-reply="\${contest.requireReply || false}"
-                                data-cast-id="\${contest.castId || ''}"
-                                data-is-nft="\${contest.isNft || false}"
-                                data-nft-image="\${encodeURIComponent(contest.nftImage || '')}"
-                                onclick="openCastModalFromData(this)"
-                                class="btn-primary text-sm py-2 px-4"
-                              >
-                                Share
-                              </button>
-                              \${contest.castId ? \`
-                                <a
-                                  href="https://warpcast.com/~/conversations/\${contest.castId}"
-                                  target="_blank"
-                                  class="btn-secondary text-sm py-2 px-4"
-                                >
-                                  View
-                                </a>
-                              \` : ''}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    \`;
-                  }).join('')}
-                </div>
-
-                ${state.upcomingContests.length > 20 ? `
-                  <div class="mt-4 text-center text-sm text-[var(--text-muted)]">
-                    + ${state.upcomingContests.length - 20} more contests
-                  </div>
-                ` : ''}
+                <div class="space-y-3">${contestsHtml}</div>
+                ${moreText}
               </div>
-            ` : `
+            </div>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+            <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
+            <div class="max-w-6xl mx-auto relative z-10">
+              ${renderHeader()}
               <div class="glass-card p-8 text-center">
                 <div class="text-4xl mb-4">🐸</div>
                 <h3 class="text-lg font-semibold text-[var(--text-primary)] mb-2">No Active Contests</h3>
                 <p class="text-sm text-[var(--text-muted)] mb-4">Be the first to create one!</p>
-                <button onclick="state.currentView = 'create'; render();" class="btn-primary">
-                  Create Contest
-                </button>
+                <button onclick="state.currentView = 'create'; render();" class="btn-primary">Create Contest</button>
               </div>
-            `}
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      }
     }
 
     function renderHistory() {
