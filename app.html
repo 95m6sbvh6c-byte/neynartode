@@ -4187,55 +4187,38 @@ ${reactLine}`;
             requireLike,
             requireReply,
             volumeReq,
-            tokenTicker
+            tokenTicker,
+            isNft,
+            nftImage,
+            nftName
           } = state.launchSuccess;
 
           // Get user tag
-          const hostTag = state.userProfile?.username
-            ? `@${state.userProfile.username}`
-            : `FID:${state.userFid || 'Unknown'}`;
+          const hostUsername = state.userProfile?.username || '';
 
-          // Build prize string
-          const prize = `${prizeAmount} $${prizeTicker}`;
+          // Build prize string - use NFT name for NFT contests
+          const prize = isNft ? nftName : `${prizeAmount} $${prizeTicker}`;
 
           // Build duration string
           const hours = parseInt(durationHours) || 0;
           const mins = parseInt(durationMinutes) || 0;
-          const durationStr = mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 
-          // Build requirements list
-          const reqs = [];
-          if (requireRecast) reqs.push('🔄 Recast');
-          if (requireLike) reqs.push('❤️ Like');
-          if (requireReply) reqs.push('💬 Reply');
-          if (volumeReq > 0) reqs.push(`💰 $${volumeReq} ${tokenTicker} volume`);
-
-          const reqsLine = reqs.length > 0 ? `📋 To Enter: ${reqs.join(' + ')}` : '🎁 Open to everyone!';
-          const reactLine = reqs.length > 0 ? '👇 React to the cast below to enter!' : '';
-
-          const successText = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
-
-🎁 Prize: ${prize}
-⏱️ Duration: ${durationStr}
-${reqsLine}
-${reactLine}
-
-Launch your own! 👇`;
-
-          // Set up modal state and open
-          window.castModalState = {
+          // Call shareContest directly (no modal needed)
+          shareContest(
             contestId,
-            castId: castHash,
-            text: successText
-          };
-
-          const modal = document.getElementById('cast-modal');
-          const textarea = document.getElementById('cast-modal-text');
-          if (modal && textarea) {
-            textarea.value = successText;
-            modal.classList.remove('hidden');
-            textarea.focus();
-          }
+            prize,
+            hours,
+            mins,
+            volumeReq || 0,
+            tokenTicker,
+            hostUsername,
+            requireRecast,
+            requireLike,
+            requireReply,
+            castHash,
+            isNft,
+            nftImage
+          );
         };
       }
 
@@ -5453,7 +5436,11 @@ Launch your own! 👇`;
           requireLike: parseInt(state.minLikes) > 0,
           requireReply: parseInt(state.minReplies) > 0,
           volumeReq: state.minTradeVolume ? parseFloat(state.minTradeVolume) : 0,
-          tokenTicker: state.tokenTicker || 'NEYNARTODES'
+          tokenTicker: state.tokenTicker || 'NEYNARTODES',
+          // NFT-specific fields
+          isNft: state.prizeType === 'nft',
+          nftImage: state.prizeType === 'nft' ? state.prizeNftImage : '',
+          nftName: state.prizeType === 'nft' ? `${state.prizeNftName || 'NFT'} #${state.prizeNftId}` : ''
         };
 
         // Reset form only after successful launch
