@@ -5126,8 +5126,34 @@ Launch your own! 👇`;
               signerAddress: signerAddress
             });
 
-            // Try gas estimation first to catch errors
-            if (statusDiv) statusDiv.textContent = 'Step 9c: Estimating gas...';
+            // Double-check approval with fresh provider right before gas estimation
+            if (statusDiv) statusDiv.textContent = 'Step 9c: Fresh approval check...';
+            const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+            const freshNftContract = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, freshProvider);
+
+            const freshIsApprovedForAll = await freshNftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+            const freshApproved = await freshNftContract.getApproved(tokenId);
+
+            console.log('FRESH Approval Check:', {
+              isApprovedForAll: freshIsApprovedForAll,
+              getApproved: freshApproved,
+              escrowAddress: CONFIG.CONTRACTS.nftContestEscrow,
+              signerAddress: signerAddress,
+              nftAddress: state.prizeNftAddress,
+              tokenId: tokenId,
+              approvedMatchesEscrow: freshApproved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()
+            });
+
+            if (!freshIsApprovedForAll && freshApproved.toLowerCase() !== CONFIG.CONTRACTS.nftContestEscrow.toLowerCase()) {
+              showToast('NFT is NOT approved for escrow! Please approve first.', 'error');
+              console.error('Approval NOT found! isApprovedForAll:', freshIsApprovedForAll, 'getApproved:', freshApproved);
+              state.nftApprovalStatus = 'none';
+              render();
+              return;
+            }
+
+            // Try gas estimation
+            if (statusDiv) statusDiv.textContent = 'Step 9d: Estimating gas...';
 
             const estimateTxParams = {
               from: signerAddress,
@@ -5141,7 +5167,7 @@ Launch your own! 👇`;
             try {
               const gasEstimate = await rpcProvider.estimateGas(estimateTxParams);
               console.log('NFT Contest gas estimate:', gasEstimate.toString());
-              if (statusDiv) statusDiv.textContent = 'Step 9d: Gas OK (' + gasEstimate.toString() + ')';
+              if (statusDiv) statusDiv.textContent = 'Step 9e: Gas OK (' + gasEstimate.toString() + ')';
             } catch (gasErr) {
               console.error('NFT Contest gas estimation failed:', gasErr);
               console.error('Error reason:', gasErr.reason);
