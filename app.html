@@ -2250,11 +2250,6 @@ ${reactLine}`;
         state.historyTotal = data.total || 0;
         state.historyLoading = false;
         render();
-
-        // Start auto-refresh if there are active/pending contests (and we're on history view)
-        if (state.currentView === 'history') {
-          startHistoryAutoRefresh();
-        }
       } catch (error) {
         console.error('Error loading history:', error);
         state.historyError = error.message;
@@ -2323,41 +2318,10 @@ ${reactLine}`;
       }
     }
 
-    // Auto-refresh for history page when there are active or pending VRF contests
-    let historyRefreshInterval = null;
-
-    function startHistoryAutoRefresh() {
-      // Clear any existing interval
-      stopHistoryAutoRefresh();
-
-      // Check if there are active (status 0) or pending VRF (status 1) contests
-      const hasActiveOrPending = (state.historyData || []).some(c => c.status === 0 || c.status === 1);
-
-      if (hasActiveOrPending) {
-        console.log('Starting history auto-refresh (active/pending contests detected)');
-        historyRefreshInterval = setInterval(async () => {
-          // Only refresh if still on history view
-          if (state.currentView === 'history') {
-            console.log('Auto-refreshing history...');
-            await loadHistory();
-
-            // Check if we still need to auto-refresh
-            const stillHasActiveOrPending = (state.historyData || []).some(c => c.status === 0 || c.status === 1);
-            if (!stillHasActiveOrPending) {
-              console.log('No more active/pending contests, stopping auto-refresh');
-              stopHistoryAutoRefresh();
-            }
-          }
-        }, 15000); // Refresh every 15 seconds
-      }
-    }
-
+    // History refresh is now manual only - triggered when entering the page or clicking Refresh button
+    // Removed auto-refresh interval to reduce unnecessary API calls
     function stopHistoryAutoRefresh() {
-      if (historyRefreshInterval) {
-        clearInterval(historyRefreshInterval);
-        historyRefreshInterval = null;
-        console.log('Stopped history auto-refresh');
-      }
+      // No-op - kept for compatibility with existing view switching code
     }
 
     // Countdown timer interval for leaderboard
@@ -4273,10 +4237,8 @@ ${reactLine}`;
         state.currentView = 'history';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'history' });
         stopCountdownTimer();
-        // Always refresh history when switching to this view
+        // Refresh history when switching to this view (manual refresh via Refresh button also available)
         loadHistory();
-        // Start auto-refresh for active/pending contests
-        startHistoryAutoRefresh();
       };
       if (viewLeaderboard) viewLeaderboard.onclick = () => {
         state.currentView = 'leaderboard';
