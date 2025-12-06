@@ -5,13 +5,16 @@
  * 1. Fetching social engagement data from Neynar
  * 2. Fetching trading volume data from GeckoTerminal (FREE API)
  * 3. Filtering qualified participants
- * 4. Calling finalizeContest() on ContestEscrow
+ * 4. Calling finalizeContest() on ContestEscrow (ETH or NFT)
+ *
+ * Supports both ETH prize contests and NFT prize contests.
  *
  * Can be called manually or via Vercel Cron
  *
  * Usage:
- *   GET /api/finalize-contest?contestId=1
- *   POST /api/finalize-contest (for cron - checks all pending contests)
+ *   GET /api/finalize-contest?contestId=1           (ETH contest)
+ *   GET /api/finalize-contest?contestId=1&nft=true  (NFT contest)
+ *   POST /api/finalize-contest (for cron - checks all pending ETH + NFT contests)
  */
 
 const { ethers } = require('ethers');
@@ -23,6 +26,7 @@ const { ethers } = require('ethers');
 const CONFIG = {
   // Contract addresses
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+  NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
 
   // RPC
@@ -46,6 +50,13 @@ const CONTEST_ESCROW_ABI = [
   'function cancelContest(uint256 _contestId, string calldata _reason) external',
   'function nextContestId() external view returns (uint256)',
   'event ContestCreated(uint256 indexed contestId, address indexed host, address prizeToken, uint256 prizeAmount, uint256 endTime, string castId)'
+];
+
+const NFT_CONTEST_ESCROW_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function finalizeContest(uint256 _contestId, address[] calldata _qualifiedAddresses) external returns (uint256 requestId)',
+  'function cancelContest(uint256 _contestId, string calldata _reason) external',
+  'function nextContestId() external view returns (uint256)',
 ];
 
 // ═══════════════════════════════════════════════════════════════════
@@ -337,9 +348,10 @@ async function fallbackVolumeCheck(tokenAddress, addresses, minVolumeUSD) {
 /**
  * Check and finalize a specific contest
  * @param {number} contestId - Contest ID to finalize
+ * @param {boolean} isNftContest - Whether this is an NFT contest
  * @returns {Object} Result of finalization attempt
  */
-async function checkAndFinalizeContest(contestId) {
+async function checkAndFinalizeContest(contestId, isNftContest = false) {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
 
   // Need private key to call finalizeContest (owner only)
@@ -348,15 +360,29 @@ async function checkAndFinalizeContest(contestId) {
   }
 
   const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+
+  // Use appropriate contract based on contest type
+  const contractAddress = isNftContest ? CONFIG.NFT_CONTEST_ESCROW : CONFIG.CONTEST_ESCROW;
+  const contractABI = isNftContest ? NFT_CONTEST_ESCROW_ABI : CONTEST_ESCROW_ABI;
+
   const contestEscrow = new ethers.Contract(
-    CONFIG.CONTEST_ESCROW,
-    CONTEST_ESCROW_ABI,
+    contractAddress,
+    contractABI,
     wallet
   );
 
-  // Get contest details
+  // Get contest details - different structure for NFT vs ETH contests
   const contest = await contestEscrow.getContest(contestId);
-  const [host, prizeToken, prizeAmount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner] = contest;
+
+  let host, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner;
+
+  if (isNftContest) {
+    // NFT: host, nftType, nftContract, tokenId, amount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner
+    [host, , , , , startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner] = contest;
+  } else {
+    // ETH: host, prizeToken, prizeAmount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner
+    [host, , , startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner] = contest;
+  }
 
   // Status: 0=Active, 1=PendingVRF, 2=Completed, 3=Cancelled
   if (status !== 0n) {
@@ -377,7 +403,7 @@ async function checkAndFinalizeContest(contestId) {
     };
   }
 
-  console.log(`\n📋 Processing Contest #${contestId}`);
+  console.log(`\n📋 Processing ${isNftContest ? 'NFT' : 'ETH'} Contest #${contestId}`);
   console.log(`   Cast ID (raw): ${castId}`);
   console.log(`   Token Requirement: ${tokenRequirement}`);
   console.log(`   Volume Requirement: ${ethers.formatEther(volumeRequirement)} tokens`);
@@ -684,36 +710,69 @@ async function checkAndFinalizeContest(contestId) {
 
 /**
  * Check all pending contests and finalize any that have ended
+ * Checks both ETH and NFT contest escrow contracts
  */
 async function checkAllPendingContests() {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
-  const contestEscrow = new ethers.Contract(
+  const results = [];
+
+  // Check ETH contests
+  const ethEscrow = new ethers.Contract(
     CONFIG.CONTEST_ESCROW,
     CONTEST_ESCROW_ABI,
     provider
   );
 
-  const nextContestId = await contestEscrow.nextContestId();
-  const results = [];
-
-  // Check the last 10 contests to support multiple concurrent contests
+  const ethNextId = await ethEscrow.nextContestId();
   const MAX_CONTESTS_TO_CHECK = 10n;
-  const startId = nextContestId > MAX_CONTESTS_TO_CHECK ? nextContestId - MAX_CONTESTS_TO_CHECK : 1n;
+  const ethStartId = ethNextId > MAX_CONTESTS_TO_CHECK ? ethNextId - MAX_CONTESTS_TO_CHECK : 1n;
 
-  console.log(`\n🔍 Checking contests ${startId} to ${nextContestId - 1n}...`);
+  console.log(`\n🔍 Checking ETH contests ${ethStartId} to ${ethNextId - 1n}...`);
 
-  for (let i = startId; i < nextContestId; i++) {
+  for (let i = ethStartId; i < ethNextId; i++) {
     try {
-      const canFinalize = await contestEscrow.canFinalize(i);
+      const canFinalize = await ethEscrow.canFinalize(i);
 
       if (canFinalize) {
-        console.log(`\n📋 Contest #${i} is ready to finalize`);
-        const result = await checkAndFinalizeContest(Number(i));
+        console.log(`\n📋 ETH Contest #${i} is ready to finalize`);
+        const result = await checkAndFinalizeContest(Number(i), false);
         results.push(result);
       }
     } catch (e) {
-      // Skip contests that throw errors (likely old/corrupted data)
-      console.log(`   Skipping contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
+      console.log(`   Skipping ETH contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
+      continue;
+    }
+  }
+
+  // Check NFT contests
+  const nftEscrow = new ethers.Contract(
+    CONFIG.NFT_CONTEST_ESCROW,
+    NFT_CONTEST_ESCROW_ABI,
+    provider
+  );
+
+  const nftNextId = await nftEscrow.nextContestId();
+  const nftStartId = nftNextId > MAX_CONTESTS_TO_CHECK ? nftNextId - MAX_CONTESTS_TO_CHECK : 1n;
+
+  console.log(`\n🔍 Checking NFT contests ${nftStartId} to ${nftNextId - 1n}...`);
+
+  for (let i = nftStartId; i < nftNextId; i++) {
+    try {
+      // NFT contract doesn't have canFinalize, so check status and endTime manually
+      const contest = await nftEscrow.getContest(i);
+      const status = contest[10]; // status is at index 10 for NFT contests
+      const endTime = contest[6]; // endTime is at index 6
+
+      const now = Math.floor(Date.now() / 1000);
+      const canFinalize = status === 0n && now >= Number(endTime);
+
+      if (canFinalize) {
+        console.log(`\n📋 NFT Contest #${i} is ready to finalize`);
+        const result = await checkAndFinalizeContest(Number(i), true);
+        results.push(result);
+      }
+    } catch (e) {
+      console.log(`   Skipping NFT contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
       continue;
     }
   }
@@ -737,8 +796,10 @@ module.exports = async (req, res) => {
 
   try {
     // GET: Finalize specific contest
+    // Usage: /api/finalize-contest?contestId=1&nft=true (for NFT contests)
     if (req.method === 'GET') {
       const contestId = parseInt(req.query.contestId);
+      const isNftContest = req.query.nft === 'true' || req.query.nft === '1';
 
       if (!contestId || isNaN(contestId)) {
         return res.status(400).json({
@@ -746,7 +807,7 @@ module.exports = async (req, res) => {
         });
       }
 
-      const result = await checkAndFinalizeContest(contestId);
+      const result = await checkAndFinalizeContest(contestId, isNftContest);
       return res.status(result.success ? 200 : 400).json(result);
     }
 
