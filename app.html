@@ -459,14 +459,19 @@
     }
 
     // Check eligibility function
-    async function checkEligibility(contestId) {
+    async function checkEligibility(contestId, isNftContest = false) {
       showToast('Checking eligibility...', 'info');
 
       try {
         // Use FID if available, otherwise use wallet address
-        const params = state.userFid
+        let params = state.userFid
           ? `contestId=${contestId}&fid=${state.userFid}`
           : `contestId=${contestId}&address=${state.userAddress}`;
+
+        // Add nft parameter for NFT contests
+        if (isNftContest) {
+          params += '&nft=true';
+        }
 
         const response = await fetch(`/api/check-eligibility?${params}`);
         const data = await response.json();
@@ -540,9 +545,14 @@
 
       for (const contest of activeContests) {
         try {
-          const params = state.userFid
+          let params = state.userFid
             ? `contestId=${contest.contestId}&fid=${state.userFid}`
             : `contestId=${contest.contestId}&address=${state.userAddress}`;
+
+          // Add nft parameter for NFT contests
+          if (contest.isNft) {
+            params += '&nft=true';
+          }
 
           const response = await fetch(`/api/check-eligibility?${params}`);
           const data = await response.json();
