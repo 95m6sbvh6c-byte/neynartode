@@ -4388,7 +4388,7 @@ ${reactLine}`;
             state.tokenTicker = 'NEYNARTODES';
             state.tokenImage = '';
             state.tokenSearch = '';
-            state.minTradeVolume = '10'; // Reset volume
+            state.minTradeVolume = '20'; // Reset volume
           }
           render();
         };
@@ -4585,16 +4585,16 @@ ${reactLine}`;
                 return;
               }
             } else {
-              // Default NEYNARTODES: fixed cap at $10
-              if (volumeReq > 10) {
-                showToast('Volume requirement cannot exceed $10 for NEYNARTODES!', 'error');
+              // Default NEYNARTODES: fixed cap at $20
+              if (volumeReq > 20) {
+                showToast('Volume requirement cannot exceed $20 for NEYNARTODES!', 'error');
                 return;
               }
             }
           } else {
-            // NFT contests: volume requirement is in USD, capped at $10
-            if (volumeReq > 10) {
-              showToast('Volume requirement cannot exceed $10 for NFT contests!', 'error');
+            // NFT contests: volume requirement is in USD, capped at $20
+            if (volumeReq > 20) {
+              showToast('Volume requirement cannot exceed $20 for NFT contests!', 'error');
               return;
             }
           }
@@ -4786,9 +4786,9 @@ ${reactLine}`;
         let volumeRequirement = ethers.BigNumber.from(0);
         if (state.tokenomicsEnabled && state.tokenEnabled && state.minTradeVolume) {
           try {
-            // For NEYNARTODES, lock at $10
+            // For NEYNARTODES, lock at $20
             if (state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase()) {
-              volumeRequirement = ethers.utils.parseEther('10');
+              volumeRequirement = ethers.utils.parseEther('20');
             } else {
               // Clean the input - remove any invalid chars and limit decimals
               const cleanVolume = parseFloat(state.minTradeVolume).toFixed(18).replace(/\.?0+$/, '');
