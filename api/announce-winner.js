@@ -132,9 +132,12 @@ async function getUserByWallet(walletAddress) {
 }
 
 /**
- * Post a cast as a reply to the original contest cast
+ * Post a winner announcement as a new cast that quotes the original contest cast
+ * @param {string} quotedCastHash - The original contest cast hash to quote
+ * @param {string} message - The announcement message
+ * @param {string} signerUuid - Neynar signer UUID
  */
-async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
+async function postWinnerAnnouncement(quotedCastHash, message, signerUuid) {
   try {
     // Need a signer UUID to post casts - this should be set up in Neynar dashboard
     if (!signerUuid) {
@@ -142,6 +145,10 @@ async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
       return { success: false, error: 'No signer configured' };
     }
 
+    // Build the Warpcast URL for the quoted cast
+    const quotedCastUrl = `https://warpcast.com/~/conversations/${quotedCastHash}`;
+
+    // Post as a new cast (not a reply) with the original cast embedded as a quote
     const response = await fetch('https://api.neynar.com/v2/farcaster/cast', {
       method: 'POST',
       headers: {
@@ -151,7 +158,9 @@ async function postWinnerAnnouncement(parentCastHash, message, signerUuid) {
       body: JSON.stringify({
         signer_uuid: signerUuid,
         text: message,
-        parent: parentCastHash
+        embeds: [
+          { url: quotedCastUrl }  // This embeds the original cast as a quote
+        ]
       })
     });
 
@@ -290,7 +299,8 @@ async function announceWinner(contestId) {
   announcement += `💰 Prize: ${prizeDisplay}\n`;
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n\n`;
-  announcement += `Congrats ${winnerTag}! 🦎`;
+  announcement += `Congrats ${winnerTag}! 🦎\n\n`;
+  announcement += `Launch your own contest: https://neynartodes.xyz`;
 
   console.log(`   Message: ${announcement.slice(0, 100)}...`);
 
@@ -440,7 +450,8 @@ async function announceNftWinner(contestId) {
   announcement += `🖼️ Prize: ${prizeDisplay}\n`;
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n\n`;
-  announcement += `Congrats ${winnerTag}! 🦎`;
+  announcement += `Congrats ${winnerTag}! 🦎\n\n`;
+  announcement += `Launch your own contest: https://neynartodes.xyz`;
 
   console.log(`   Message: ${announcement.slice(0, 100)}...`);
 
