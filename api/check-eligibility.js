@@ -164,37 +164,48 @@ async function checkSocialRequirements(castHash, fid, requirements) {
         }
       }
 
-      // Search for casts that embed/quote this cast using multiple search strategies
-      // Strategy 1: Search by warpcast conversation URL format
-      const warpcastUrl = `warpcast.com/~/conversations/${castHash}`;
-      const searchResponse1 = await fetch(
-        `https://api.neynar.com/v2/farcaster/cast/search?q=${encodeURIComponent(warpcastUrl)}&limit=50`,
+      // Strategy 1: Get original cast author and check their recent casts for quote casts
+      const originalCastResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash`,
         { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
       );
 
-      if (searchResponse1.ok) {
-        const searchData = await searchResponse1.json();
-        for (const cast of searchData.result?.casts || []) {
-          // Check if this cast embeds our original cast
-          if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
-            if (!castsToCheck.includes(cast.hash)) {
-              castsToCheck.push(cast.hash);
+      if (originalCastResponse.ok) {
+        const originalCastData = await originalCastResponse.json();
+        const authorFid = originalCastData.cast?.author?.fid;
+
+        if (authorFid) {
+          // Get author's recent casts to find any that quote the original
+          const authorCastsResponse = await fetch(
+            `https://api.neynar.com/v2/farcaster/feed/user/casts?fid=${authorFid}&limit=50`,
+            { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+          );
+
+          if (authorCastsResponse.ok) {
+            const authorCastsData = await authorCastsResponse.json();
+            for (const cast of authorCastsData.casts || []) {
+              // Check if this cast embeds the original
+              if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
+                if (!castsToCheck.includes(cast.hash)) {
+                  castsToCheck.push(cast.hash);
+                }
+              }
             }
           }
         }
       }
 
-      // Strategy 2: Search by hash directly
-      const searchResponse2 = await fetch(
-        `https://api.neynar.com/v2/farcaster/cast/search?q=${castHash}&limit=25`,
+      // Strategy 2: Search for casts with NEYNARtodes contest pattern
+      const searchResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast/search?q=${encodeURIComponent('NEYNARtodes Contest')}&limit=50`,
         { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
       );
 
-      if (searchResponse2.ok) {
-        const searchData = await searchResponse2.json();
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json();
         for (const cast of searchData.result?.casts || []) {
           // Check if this cast quotes our original
-          if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash || e.url?.includes(castHash))) {
+          if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
             if (!castsToCheck.includes(cast.hash)) {
               castsToCheck.push(cast.hash);
             }
