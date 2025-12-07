@@ -2438,7 +2438,7 @@ ${reactLine}`;
             hash: cast.hash,
             text: cast.text?.substring(0, 80) + (cast.text?.length > 80 ? '...' : '') || '',
             timestamp: new Date(cast.timestamp).toLocaleDateString(),
-            url: `https://warpcast.com/${state.userProfile?.username || 'user'}/${cast.hash}`
+            url: `https://farcaster.id/cast/${cast.hash}`
           }));
         } else {
           const errorText = await response.text();
