@@ -253,7 +253,7 @@ async function checkSocialRequirements(castHash, fid, requirements) {
         for (const reply of replies) {
           if (reply.author?.fid === fid) {
             const wordCount = (reply.text || '').trim().split(/\s+/).length;
-            if (wordCount >= 4) {
+            if (wordCount >= 2) {
               result.replied = true;
               break;
             }

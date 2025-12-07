@@ -191,7 +191,7 @@ async function getCastEngagement(castId) {
 
       for (const reply of replies) {
         const wordCount = (reply.text || '').trim().split(/\s+/).length;
-        if (wordCount >= 4) {
+        if (wordCount >= 2) {
           addUserEngagement(reply.author, 'reply', wordCount);
         }
       }
@@ -435,7 +435,7 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
 
   console.log(`   Unique users: ${uniqueUsers}`);
   console.log(`   Recasters: ${recasterCount} users (${engagement.recasters.length} addresses)`);
-  console.log(`   Repliers (4+ words): ${replierCount} users`);
+  console.log(`   Repliers (2+ words): ${replierCount} users`);
   console.log(`   Likers: ${likerCount} users (${engagement.likers.length} addresses)`);
 
   // ═══════════════════════════════════════════════════════════════════
@@ -445,7 +445,7 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
   // ═══════════════════════════════════════════════════════════════════
   let socialRequirements = {
     requireRecast: true,    // Default: must recast
-    requireReply: true,     // Default: must reply (4-word minimum)
+    requireReply: true,     // Default: must reply (2-word minimum)
     requireLike: false,     // Default: like not required
   };
 
@@ -533,7 +533,7 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
         success: true,
         contestId,
         action: 'cancelled',
-        reason: 'No qualified participants (no one did recast + 4-word reply)',
+        reason: 'No qualified participants (no one did recast + 2-word reply)',
         txHash: receipt.hash
       };
     } catch (cancelError) {
