@@ -74,27 +74,6 @@ async function getTokenPriceUSD(provider) {
 }
 
 /**
- * Get historical price at a specific block
- */
-async function getHistoricalTokenPriceUSD(provider, blockNumber) {
-  try {
-    const ethPriceUSD = await getETHPriceUSD(provider);
-    const stateView = new ethers.Contract(CONFIG.V4_STATE_VIEW, V4_STATE_VIEW_ABI, provider);
-    const slot0 = await stateView.getSlot0(CONFIG.NEYNARTODES_POOL_ID, { blockTag: blockNumber });
-
-    if (slot0.sqrtPriceX96 === 0n) return 0;
-
-    const sqrtPriceX96 = slot0.sqrtPriceX96;
-    const price = Number(sqrtPriceX96) / (2 ** 96);
-    const priceSquared = price * price;
-    const priceInETH = 1 / priceSquared;
-    return priceInETH * ethPriceUSD;
-  } catch (e) {
-    return await getTokenPriceUSD(provider);
-  }
-}
-
-/**
  * Get user addresses from FID
  */
 async function getUserAddresses(fid) {
@@ -270,13 +249,14 @@ async function checkSocialRequirements(castHash, fid, requirements) {
 
 /**
  * Get transfers during contest period
+ * @param {string} tokenAddress - The token to check transfers for (custom or NEYNARTODES)
  */
-async function getContestTransfers(provider, addresses, fromBlock, toBlock) {
+async function getContestTransfers(provider, tokenAddress, addresses, fromBlock, toBlock) {
   const transfers = [];
 
   try {
     const tokenContract = new ethers.Contract(
-      CONFIG.NEYNARTODES,
+      tokenAddress, // Use the contest's token requirement
       ['event Transfer(address indexed from, address indexed to, uint256 value)'],
       provider
     );
@@ -323,20 +303,110 @@ async function getContestTransfers(provider, addresses, fromBlock, toBlock) {
 
 /**
  * Calculate volume in USD using historical prices
+ * @param {string} tokenAddress - Token to get price for (custom or NEYNARTODES)
  */
-async function calculateVolumeUSD(provider, transfers, startTime, endTime) {
+async function calculateVolumeUSD(provider, tokenAddress, transfers, startTime, endTime) {
   let volumeTokens = 0;
   let volumeUSD = 0;
+
+  // Get current price - for eligibility check we use current price as approximation
+  // (finalize-contest uses historical prices from uniswap-volume.js)
+  const tokenPriceUSD = await getTokenPriceForAddress(provider, tokenAddress);
 
   for (const tx of transfers) {
     if (tx.timestamp >= startTime && tx.timestamp <= endTime) {
       volumeTokens += tx.amount;
-      const price = await getHistoricalTokenPriceUSD(provider, tx.blockNumber);
-      volumeUSD += tx.amount * price;
+      volumeUSD += tx.amount * tokenPriceUSD;
     }
   }
 
   return { volumeTokens, volumeUSD };
+}
+
+/**
+ * Get token price for any token address (custom or NEYNARTODES)
+ */
+async function getTokenPriceForAddress(provider, tokenAddress) {
+  // If it's NEYNARTODES, use the V4 pool we know about
+  if (tokenAddress.toLowerCase() === CONFIG.NEYNARTODES.toLowerCase()) {
+    return await getTokenPriceUSD(provider);
+  }
+
+  // For custom tokens, try to find a Uniswap V2/V3 pool with WETH
+  const WETH = '0x4200000000000000000000000000000000000006';
+  const ethPriceUSD = await getETHPriceUSD(provider);
+
+  // Try V2 factories
+  const V2_FACTORIES = [
+    '0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6', // Uniswap V2 on Base
+    '0x420DD381b31aEf6683db6B902084cB0FFECe40Da', // Aerodrome
+  ];
+
+  const V2_FACTORY_ABI = ['function getPair(address, address) view returns (address)'];
+  const V2_PAIR_ABI = [
+    'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+    'function token0() view returns (address)'
+  ];
+
+  for (const factoryAddr of V2_FACTORIES) {
+    try {
+      const factory = new ethers.Contract(factoryAddr, V2_FACTORY_ABI, provider);
+      const pairAddress = await factory.getPair(tokenAddress, WETH);
+
+      if (pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000') {
+        const pair = new ethers.Contract(pairAddress, V2_PAIR_ABI, provider);
+        const [token0, reserves] = await Promise.all([
+          pair.token0(),
+          pair.getReserves()
+        ]);
+
+        const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+        const tokenReserve = isToken0 ? reserves.reserve0 : reserves.reserve1;
+        const ethReserve = isToken0 ? reserves.reserve1 : reserves.reserve0;
+
+        if (tokenReserve > 0n && ethReserve > 0n) {
+          const tokenPriceInETH = Number(ethReserve) / Number(tokenReserve);
+          return tokenPriceInETH * ethPriceUSD;
+        }
+      }
+    } catch (e) {
+      // Continue to next factory
+    }
+  }
+
+  // Try V3
+  const V3_FACTORY = '0x33128a8fC17869897dcE68Ed026d694621f6FDfD';
+  const V3_FACTORY_ABI = ['function getPool(address, address, uint24) view returns (address)'];
+  const feeTiers = [10000, 3000, 500];
+
+  for (const fee of feeTiers) {
+    try {
+      const v3Factory = new ethers.Contract(V3_FACTORY, V3_FACTORY_ABI, provider);
+      const poolAddress = await v3Factory.getPool(tokenAddress, WETH, fee);
+
+      if (poolAddress && poolAddress !== '0x0000000000000000000000000000000000000000') {
+        const poolABI = [
+          'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
+          'function token0() view returns (address)'
+        ];
+        const pool = new ethers.Contract(poolAddress, poolABI, provider);
+        const [slot0, token0] = await Promise.all([pool.slot0(), pool.token0()]);
+
+        const sqrtPriceX96 = slot0.sqrtPriceX96;
+        const price = Number(sqrtPriceX96) / (2 ** 96);
+        const priceSquared = price * price;
+        const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+        const tokenPriceInETH = isToken0 ? priceSquared : 1 / priceSquared;
+
+        return tokenPriceInETH * ethPriceUSD;
+      }
+    } catch (e) {
+      // Continue to next fee tier
+    }
+  }
+
+  console.log(`Could not find price for token ${tokenAddress}`);
+  return 0;
 }
 
 module.exports = async (req, res) => {
@@ -397,7 +467,7 @@ module.exports = async (req, res) => {
     }
 
     // Get contest details - use different contract for NFT contests
-    let contestStartTime, contestEndTime, castId, volumeRequiredUSD;
+    let contestStartTime, contestEndTime, castId, tokenRequirement, volumeRequiredUSD;
 
     if (isNftContest) {
       const nftContract = new ethers.Contract(CONFIG.NFT_CONTEST_ESCROW, NFT_CONTEST_ESCROW_ABI, provider);
@@ -406,16 +476,20 @@ module.exports = async (req, res) => {
       contestStartTime = Number(contest[5]);
       contestEndTime = Number(contest[6]);
       castId = contest[7];
+      tokenRequirement = contest[8]; // Token address for volume requirement
       volumeRequiredUSD = Number(contest[9]) / 1e18;
     } else {
       const contract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
       const contest = await contract.getContest(contestId);
-      const [, , , startTime, endTime, castIdVal, , volumeReq] = contest;
+      const [, , , startTime, endTime, castIdVal, tokenReq, volumeReq] = contest;
       contestStartTime = Number(startTime);
       contestEndTime = Number(endTime);
       castId = castIdVal;
+      tokenRequirement = tokenReq; // Token address for volume requirement
       volumeRequiredUSD = Number(volumeReq) / 1e18;
     }
+
+    console.log(`Contest ${contestId} token requirement: ${tokenRequirement}`);
 
     // Parse cast hash and requirements from castId
     let castHash = castId;
@@ -442,10 +516,10 @@ module.exports = async (req, res) => {
     const blocksElapsed = Math.floor(elapsedTime / 2);
     const fromBlock = Math.max(0, currentBlock - blocksElapsed);
 
-    // Check volume
-    const transfers = await getContestTransfers(provider, addresses, fromBlock, currentBlock);
+    // Check volume - use the contest's tokenRequirement (could be custom token or NEYNARTODES)
+    const transfers = await getContestTransfers(provider, tokenRequirement, addresses, fromBlock, currentBlock);
     const { volumeTokens, volumeUSD } = await calculateVolumeUSD(
-      provider, transfers, contestStartTime, contestEndTime
+      provider, tokenRequirement, transfers, contestStartTime, contestEndTime
     );
     const volumeMet = volumeRequiredUSD === 0 || volumeUSD >= volumeRequiredUSD;
 
