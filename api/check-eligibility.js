@@ -302,21 +302,28 @@ async function getContestTransfers(provider, tokenAddress, addresses, fromBlock,
 }
 
 /**
- * Calculate volume in USD using historical prices
+ * Calculate volume in USD using historical prices at time of each trade
  * @param {string} tokenAddress - Token to get price for (custom or NEYNARTODES)
  */
 async function calculateVolumeUSD(provider, tokenAddress, transfers, startTime, endTime) {
   let volumeTokens = 0;
   let volumeUSD = 0;
 
-  // Get current price - for eligibility check we use current price as approximation
-  // (finalize-contest uses historical prices from uniswap-volume.js)
-  const tokenPriceUSD = await getTokenPriceForAddress(provider, tokenAddress);
+  // Cache prices by block to avoid redundant calls
+  const priceCache = new Map();
 
   for (const tx of transfers) {
     if (tx.timestamp >= startTime && tx.timestamp <= endTime) {
       volumeTokens += tx.amount;
-      volumeUSD += tx.amount * tokenPriceUSD;
+
+      // Get historical price at the block when trade occurred
+      let price = priceCache.get(tx.blockNumber);
+      if (price === undefined) {
+        price = await getHistoricalTokenPriceForAddress(provider, tokenAddress, tx.blockNumber);
+        priceCache.set(tx.blockNumber, price);
+      }
+
+      volumeUSD += tx.amount * price;
     }
   }
 
@@ -407,6 +414,117 @@ async function getTokenPriceForAddress(provider, tokenAddress) {
 
   console.log(`Could not find price for token ${tokenAddress}`);
   return 0;
+}
+
+/**
+ * Get historical token price at a specific block
+ * @param {string} tokenAddress - Token to get price for
+ * @param {number} blockNumber - Block number to get price at
+ */
+async function getHistoricalTokenPriceForAddress(provider, tokenAddress, blockNumber) {
+  const WETH = '0x4200000000000000000000000000000000000006';
+
+  try {
+    // Get ETH price (use current - Chainlink doesn't easily support historical)
+    const ethPriceUSD = await getETHPriceUSD(provider);
+
+    // If it's NEYNARTODES, use the V4 pool with historical block
+    if (tokenAddress.toLowerCase() === CONFIG.NEYNARTODES.toLowerCase()) {
+      try {
+        const stateView = new ethers.Contract(CONFIG.V4_STATE_VIEW, V4_STATE_VIEW_ABI, provider);
+        const slot0 = await stateView.getSlot0(CONFIG.NEYNARTODES_POOL_ID, { blockTag: blockNumber });
+
+        if (slot0.sqrtPriceX96 === 0n) {
+          return await getTokenPriceForAddress(provider, tokenAddress); // Fallback to current
+        }
+
+        const sqrtPriceX96 = slot0.sqrtPriceX96;
+        const price = Number(sqrtPriceX96) / (2 ** 96);
+        const priceSquared = price * price;
+        const priceInETH = 1 / priceSquared;
+        return priceInETH * ethPriceUSD;
+      } catch (e) {
+        return await getTokenPriceForAddress(provider, tokenAddress); // Fallback to current
+      }
+    }
+
+    // For custom tokens, try V2 pools with historical block
+    const V2_FACTORIES = [
+      '0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6', // Uniswap V2 on Base
+      '0x420DD381b31aEf6683db6B902084cB0FFECe40Da', // Aerodrome
+    ];
+
+    const V2_FACTORY_ABI = ['function getPair(address, address) view returns (address)'];
+    const V2_PAIR_ABI = [
+      'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+      'function token0() view returns (address)'
+    ];
+
+    for (const factoryAddr of V2_FACTORIES) {
+      try {
+        const factory = new ethers.Contract(factoryAddr, V2_FACTORY_ABI, provider);
+        const pairAddress = await factory.getPair(tokenAddress, WETH);
+
+        if (pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000') {
+          const pair = new ethers.Contract(pairAddress, V2_PAIR_ABI, provider);
+          const [token0, reserves] = await Promise.all([
+            pair.token0(),
+            pair.getReserves({ blockTag: blockNumber }) // Historical reserves
+          ]);
+
+          const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+          const tokenReserve = isToken0 ? reserves.reserve0 : reserves.reserve1;
+          const ethReserve = isToken0 ? reserves.reserve1 : reserves.reserve0;
+
+          if (tokenReserve > 0n && ethReserve > 0n) {
+            const tokenPriceInETH = Number(ethReserve) / Number(tokenReserve);
+            return tokenPriceInETH * ethPriceUSD;
+          }
+        }
+      } catch (e) {
+        // Continue to next factory
+      }
+    }
+
+    // Try V3 with historical block
+    const V3_FACTORY = '0x33128a8fC17869897dcE68Ed026d694621f6FDfD';
+    const V3_FACTORY_ABI = ['function getPool(address, address, uint24) view returns (address)'];
+    const feeTiers = [10000, 3000, 500];
+
+    for (const fee of feeTiers) {
+      try {
+        const v3Factory = new ethers.Contract(V3_FACTORY, V3_FACTORY_ABI, provider);
+        const poolAddress = await v3Factory.getPool(tokenAddress, WETH, fee);
+
+        if (poolAddress && poolAddress !== '0x0000000000000000000000000000000000000000') {
+          const poolABI = [
+            'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
+            'function token0() view returns (address)'
+          ];
+          const pool = new ethers.Contract(poolAddress, poolABI, provider);
+          const [slot0, token0] = await Promise.all([
+            pool.slot0({ blockTag: blockNumber }), // Historical slot0
+            pool.token0()
+          ]);
+
+          const sqrtPriceX96 = slot0.sqrtPriceX96;
+          const price = Number(sqrtPriceX96) / (2 ** 96);
+          const priceSquared = price * price;
+          const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+          const tokenPriceInETH = isToken0 ? priceSquared : 1 / priceSquared;
+
+          return tokenPriceInETH * ethPriceUSD;
+        }
+      } catch (e) {
+        // Continue to next fee tier
+      }
+    }
+  } catch (e) {
+    console.error(`Error getting historical price at block ${blockNumber}:`, e.message);
+  }
+
+  // Fallback to current price if historical lookup fails
+  return await getTokenPriceForAddress(provider, tokenAddress);
 }
 
 module.exports = async (req, res) => {
