@@ -799,6 +799,7 @@ ${reactLine}`;
       // Tokenomics (can be toggled off for 0.01 ETH, free for dev)
       tokenomicsEnabled: true, // Main toggle for tokenomics section
       tokenEnabled: true,
+      useCustomTokenMode: false, // Whether user has checked "Custom token" checkbox
       tokenAddress: '0x8de1622fe07f56cda2e2273e615a513f1d828b07', // Default to NEYNARTODES
       tokenTicker: 'NEYNARTODES',
       tokenImage: '',
@@ -3941,11 +3942,11 @@ ${reactLine}`;
                     <!-- Custom Token Option -->
                     <div class="p-4 border border-dashed border-[var(--border-light)] rounded-xl">
                       <div class="flex items-center gap-2 mb-3">
-                        <input type="checkbox" id="useCustomToken" ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? 'checked' : ''} class="w-4 h-4 rounded border-[var(--border-light)] text-[var(--accent)] focus:ring-[var(--accent)]" />
+                        <input type="checkbox" id="useCustomToken" ${state.useCustomTokenMode || (state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase()) ? 'checked' : ''} class="w-4 h-4 rounded border-[var(--border-light)] text-[var(--accent)] focus:ring-[var(--accent)]" />
                         <label for="useCustomToken" class="text-sm text-[var(--text-secondary)]">Custom token <span class="text-[var(--warning)]">(+0.01 ETH)</span></label>
                       </div>
 
-                      <div id="customTokenSection" class="${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? '' : 'hidden'}">
+                      <div id="customTokenSection" class="${state.useCustomTokenMode || (state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase()) ? '' : 'hidden'}">
                         <div class="relative mb-3">
                           <input type="text" id="tokenSearch" value="${state.tokenSearch}" placeholder="Search token..." class="input-modern" />
                           ${state.showTokenSuggestions ? `
@@ -4388,12 +4389,17 @@ ${reactLine}`;
       const useCustomToken = document.getElementById('useCustomToken');
       if (useCustomToken) {
         useCustomToken.onchange = (e) => {
-          const customSection = document.getElementById('customTokenSection');
           if (e.target.checked) {
-            customSection?.classList.remove('hidden');
+            // Set state to show we want custom token mode
+            state.useCustomTokenMode = true;
+            // Clear the current token to trigger custom section display
+            state.tokenAddress = '';
+            state.tokenTicker = '';
+            state.tokenImage = '';
+            state.tokenSearch = '';
           } else {
-            customSection?.classList.add('hidden');
             // Reset to default NEYNARTODES
+            state.useCustomTokenMode = false;
             state.tokenAddress = CONFIG.CONTRACTS.neynartodes;
             state.tokenTicker = 'NEYNARTODES';
             state.tokenImage = '';
@@ -5559,12 +5565,17 @@ ${reactLine}`;
 
     // Show custom token modal (for mini app compatibility - no prompt() dialogs)
     window.showCustomTokenModal = () => {
-      state.showTokenSuggestions = false;
-      state.showCustomTokenModal = true;
-      state.customTokenInput = '';
-      state.customTokenTickerInput = '';
-      updateTokenDropdown();
-      renderCustomTokenModal();
+      try {
+        state.showTokenSuggestions = false;
+        state.showCustomTokenModal = true;
+        state.customTokenInput = '';
+        state.customTokenTickerInput = '';
+        updateTokenDropdown();
+        renderCustomTokenModal();
+      } catch (err) {
+        console.error('showCustomTokenModal error:', err);
+        showToast('Error opening custom token modal: ' + err.message, 'error');
+      }
     };
 
     window.closeCustomTokenModal = () => {
