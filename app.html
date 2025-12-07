@@ -796,7 +796,7 @@ ${reactLine}`;
       minRecasts: '0',
       minReplies: '0',
 
-      // Tokenomics (can be toggled off for 0.001 ETH)
+      // Tokenomics (can be toggled off for 0.01 ETH, free for dev)
       tokenomicsEnabled: true, // Main toggle for tokenomics section
       tokenEnabled: true,
       tokenAddress: '0x8de1622fe07f56cda2e2273e615a513f1d828b07', // Default to NEYNARTODES
@@ -3921,7 +3921,7 @@ ${reactLine}`;
                         <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
                         <div class="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--accent)]"></div>
                       </div>
-                      ${!isDevWallet(state.userAddress) && !state.tokenomicsEnabled ? `<span class="text-xs text-[var(--warning)]">-0.001 ETH</span>` : ''}
+                      ${!isDevWallet(state.userAddress) && !state.tokenomicsEnabled ? `<span class="text-xs text-[var(--warning)]">-0.01 ETH</span>` : ''}
                     </label>
                   </div>
 
@@ -3942,7 +3942,7 @@ ${reactLine}`;
                     <div class="p-4 border border-dashed border-[var(--border-light)] rounded-xl">
                       <div class="flex items-center gap-2 mb-3">
                         <input type="checkbox" id="useCustomToken" ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? 'checked' : ''} class="w-4 h-4 rounded border-[var(--border-light)] text-[var(--accent)] focus:ring-[var(--accent)]" />
-                        <label for="useCustomToken" class="text-sm text-[var(--text-secondary)]">Custom token <span class="text-[var(--warning)]">(+0.001 ETH)</span></label>
+                        <label for="useCustomToken" class="text-sm text-[var(--text-secondary)]">Custom token <span class="text-[var(--warning)]">(+0.01 ETH)</span></label>
                       </div>
 
                       <div id="customTokenSection" class="${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? '' : 'hidden'}">
@@ -3972,7 +3972,7 @@ ${reactLine}`;
                           <div class="p-3 bg-[var(--bg-tertiary)] rounded-lg flex items-center gap-3">
                             <img src="${state.tokenImage}" alt="${state.tokenTicker}" class="w-8 h-8 rounded-full" onerror="this.style.display='none'" />
                             <div class="flex-1">
-                              <div class="text-xs text-[var(--warning)] mb-0.5">Custom (+0.001 ETH)</div>
+                              <div class="text-xs text-[var(--warning)] mb-0.5">Custom (+0.01 ETH)</div>
                               <div class="font-medium text-[var(--text-primary)]">${state.tokenTicker}</div>
                             </div>
                           </div>
@@ -4335,16 +4335,16 @@ ${reactLine}`;
             return;
           }
 
-          // Regular users must pay 0.001 ETH to disable
+          // Regular users must pay 0.01 ETH to disable
           if (wantsDisable) {
-            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.001 ETH\n\nProceed?');
+            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.01 ETH\n\nProceed?');
             if (!confirmed) {
               e.target.checked = true; // Revert toggle
               return;
             }
 
             try {
-              // Send 0.001 ETH to treasury
+              // Send 0.01 ETH to treasury
               const ethProvider = window.activeEthProvider || window.ethereum;
               if (!ethProvider) {
                 showToast('No wallet connected!', 'error');
@@ -4354,9 +4354,9 @@ ${reactLine}`;
 
               const provider = new ethers.providers.Web3Provider(ethProvider);
               const signer = provider.getSigner();
-              const fee = ethers.utils.parseEther('0.001');
+              const fee = ethers.utils.parseEther('0.01');
 
-              showToast('Sending 0.001 ETH fee... Confirm in wallet!', 'info');
+              showToast('Sending 0.01 ETH fee... Confirm in wallet!', 'info');
 
               const tx = await signer.sendTransaction({
                 to: CONFIG.CONTRACTS.treasury,
@@ -5496,7 +5496,7 @@ ${reactLine}`;
         } else if (error.message?.includes('Prize required')) {
           showToast('Prize amount required! Please enter an amount greater than 0.', 'error');
         } else if (error.message?.includes('Include custom token fee')) {
-          showToast('Custom token fee required! Using a custom token costs 0.001 ETH.', 'error');
+          showToast('Custom token fee required! Using a custom token costs 0.01 ETH.', 'error');
         } else if (error.message?.includes('Invalid duration')) {
           showToast('Invalid duration! Contest duration must be greater than 0.', 'error');
         } else {
