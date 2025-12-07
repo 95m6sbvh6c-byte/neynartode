@@ -5348,16 +5348,19 @@ ${reactLine}`;
 
         // Parse contest ID from event
         let contestId = 'Unknown';
+        const isNftContest = state.prizeType === 'nft';
 
         if (receipt?.logs) {
-          // Parse from raw logs using contract interface
-          const parseIface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
+          // Parse from raw logs using appropriate contract interface
+          const parseIface = new ethers.utils.Interface(isNftContest ? NFT_CONTEST_ESCROW_ABI : CONTEST_ESCROW_ABI);
+          const eventName = isNftContest ? 'NFTContestCreated' : 'ContestCreated';
+
           for (const log of receipt.logs) {
             try {
               const parsed = parseIface.parseLog(log);
-              if (parsed.name === 'ContestCreated') {
+              if (parsed.name === eventName) {
                 contestId = parsed.args.contestId.toString();
-                console.log('✅ Found contestId via interface.parseLog:', contestId);
+                console.log(`✅ Found contestId via interface.parseLog (${eventName}):`, contestId);
                 break;
               }
             } catch (e) {
@@ -5367,13 +5370,18 @@ ${reactLine}`;
 
           // Method 2: Direct topic parsing as last resort
           if (contestId === 'Unknown' && receipt.logs.length > 0) {
+            // Try both event signatures
             const contestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,address,uint256,uint256,string)');
-            const eventLog = receipt.logs.find(log => log.topics[0] === contestCreatedTopic);
+            const nftContestCreatedTopic = ethers.utils.id('NFTContestCreated(uint256,address,uint8,address,uint256,uint256,uint256,string)');
+
+            const eventLog = receipt.logs.find(log =>
+              log.topics[0] === contestCreatedTopic || log.topics[0] === nftContestCreatedTopic
+            );
             if (eventLog && eventLog.topics[1]) {
               contestId = ethers.BigNumber.from(eventLog.topics[1]).toString();
               console.log('✅ Found contestId from raw topic:', contestId);
             } else {
-              console.log('⚠️ Could not find ContestCreated event');
+              console.log('⚠️ Could not find ContestCreated or NFTContestCreated event');
               console.log('   Available logs:', receipt.logs.map(l => l.topics[0]));
             }
           }
