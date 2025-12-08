@@ -243,8 +243,9 @@ async function getCastEngagement(castId) {
 
     console.log(`   Found ${quoteCasts.length} quote casts to check`);
 
-    // Get reactions on all quote casts
+    // Get reactions AND replies on all quote casts
     for (const quoteHash of quoteCasts) {
+      // Get reactions (likes/recasts)
       const quoteReactionsResponse = await fetch(
         `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100`,
         { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
@@ -256,6 +257,30 @@ async function getCastEngagement(castId) {
           addUserEngagement(reaction.user, reaction.reaction_type);
         }
         console.log(`   - ${quoteHash.slice(0, 10)}...: ${quoteReactionsData.reactions?.length || 0} reactions`);
+      }
+
+      await new Promise(r => setTimeout(r, 100)); // Rate limit
+
+      // Get replies on quote cast
+      const quoteRepliesResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${quoteHash}&type=hash&reply_depth=1&limit=50`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (quoteRepliesResponse.ok) {
+        const quoteRepliesData = await quoteRepliesResponse.json();
+        const quoteReplies = quoteRepliesData.conversation?.cast?.direct_replies || [];
+        let quoteReplyCount = 0;
+        for (const reply of quoteReplies) {
+          const wordCount = (reply.text || '').trim().split(/\s+/).length;
+          if (wordCount >= 2) {
+            addUserEngagement(reply.author, 'reply', wordCount);
+            quoteReplyCount++;
+          }
+        }
+        if (quoteReplyCount > 0) {
+          console.log(`   - ${quoteHash.slice(0, 10)}...: ${quoteReplyCount} qualifying replies`);
+        }
       }
 
       await new Promise(r => setTimeout(r, 100)); // Rate limit
