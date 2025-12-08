@@ -9,8 +9,8 @@
  *   GET /api/get-user-nfts?address=0x...&pageKey=abc123 (for pagination)
  */
 
-// Extract Alchemy API key from RPC URL
-const ALCHEMY_API_KEY = (process.env.BASE_RPC_URL || '').split('/v2/')[1] || 'QooWtq9nKQlkeqKF_-rvC';
+// Alchemy API key - use from env or fallback to hardcoded key
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
 const ALCHEMY_BASE_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
 
 /**
