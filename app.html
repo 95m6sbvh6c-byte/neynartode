@@ -1153,21 +1153,20 @@ ${reactLine}`;
           throw new Error('Could not fetch token URI - may not be a valid NFT');
         }
 
-        // Convert IPFS URLs to gateway
-        if (tokenUri.startsWith('ipfs://')) {
-          tokenUri = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        // Use server-side proxy to avoid CORS issues (e.g., base.org Basename metadata)
+        // The proxy handles IPFS conversion and follows redirects
+        const proxyUrl = `/api/fetch-nft-metadata?url=${encodeURIComponent(tokenUri)}`;
+        const metadataResponse = await fetch(proxyUrl);
+        const proxyResult = await metadataResponse.json();
+
+        if (!proxyResult.success) {
+          throw new Error(proxyResult.error || 'Failed to fetch metadata');
         }
 
-        // Fetch metadata JSON
-        const metadataResponse = await fetch(tokenUri);
-        if (!metadataResponse.ok) throw new Error('Failed to fetch metadata');
-        const metadata = await metadataResponse.json();
+        const metadata = proxyResult.metadata;
 
-        // Get image URL
+        // Get image URL (proxy already converts IPFS)
         let imageUrl = metadata.image || metadata.image_url || '';
-        if (imageUrl.startsWith('ipfs://')) {
-          imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
-        }
 
         return {
           success: true,
