@@ -4301,9 +4301,17 @@ ${reactLine}`;
       // Suggestions form handlers
       const suggestionInput = document.getElementById('suggestionInput');
       if (suggestionInput) {
+        // Restore value from state (preserves text across renders)
+        suggestionInput.value = state.suggestionText;
+        // Update state on input but DON'T re-render (prevents keyboard closing on mobile)
         suggestionInput.oninput = (e) => {
           state.suggestionText = e.target.value;
-          render();
+          // Update character count without full re-render
+          const charCount = document.querySelector('#suggestionInput + div .text-xs');
+          if (charCount) charCount.textContent = `${e.target.value.length}/1000`;
+          // Update button disabled state
+          const submitBtn = document.getElementById('submitSuggestion');
+          if (submitBtn) submitBtn.disabled = e.target.value.trim().length < 10;
         };
       }
 
