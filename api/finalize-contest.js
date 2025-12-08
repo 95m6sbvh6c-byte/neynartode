@@ -215,6 +215,52 @@ async function getCastEngagement(castId) {
       castAuthorAddresses.push(...cast.author.verified_addresses.eth_addresses.map(a => a.toLowerCase()));
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // CHECK QUOTE CASTS USING NEYNAR QUOTES API
+    // Returns ALL casts that quote the original (from any user)
+    // ═══════════════════════════════════════════════════════════════════
+    const quoteCasts = [];
+
+    try {
+      console.log(`   Fetching quote casts via Neynar API...`);
+      const quotesResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/cast/quotes?identifier=${castId}&type=hash&limit=100`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (quotesResponse.ok) {
+        const quotesData = await quotesResponse.json();
+        for (const quoteCast of quotesData.casts || []) {
+          if (!quoteCasts.includes(quoteCast.hash)) {
+            quoteCasts.push(quoteCast.hash);
+            console.log(`   Found quote cast: ${quoteCast.hash.slice(0, 10)}... by @${quoteCast.author?.username}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('   Error fetching quote casts:', e.message);
+    }
+
+    console.log(`   Found ${quoteCasts.length} quote casts to check`);
+
+    // Get reactions on all quote casts
+    for (const quoteHash of quoteCasts) {
+      const quoteReactionsResponse = await fetch(
+        `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      );
+
+      if (quoteReactionsResponse.ok) {
+        const quoteReactionsData = await quoteReactionsResponse.json();
+        for (const reaction of quoteReactionsData.reactions || []) {
+          addUserEngagement(reaction.user, reaction.reaction_type);
+        }
+        console.log(`   - ${quoteHash.slice(0, 10)}...: ${quoteReactionsData.reactions?.length || 0} reactions`);
+      }
+
+      await new Promise(r => setTimeout(r, 100)); // Rate limit
+    }
+
     // Build legacy arrays for backward compatibility (addresses only)
     // These are used for logging but raffle uses usersByFid
     const likers = [];

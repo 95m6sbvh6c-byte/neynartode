@@ -655,7 +655,10 @@ ${reactLine}`;
 
       // Quote the original cast
       if (castId) {
-        embeds.push(`https://warpcast.com/~/conversations/${castId}`);
+        // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
+        // Extract just the hash part (before any | character) for the embed URL
+        const castHash = castId.split('|')[0];
+        embeds.push(`https://warpcast.com/~/conversations/${castHash}`);
       }
 
       console.log('Sharing contest:', { contestId, isNft, embeds });
@@ -3234,9 +3237,11 @@ ${reactLine}`;
             reqTags = '<span class="tag" style="background: var(--bg-tertiary); color: var(--text-secondary);">Open to all</span>';
           }
 
-          const viewBtn = contest.castId ? `
+          // Extract just the cast hash (before any | character) from castId
+          const castHashForView = contest.castId ? contest.castId.split('|')[0] : '';
+          const viewBtn = castHashForView ? `
             <a
-              href="https://warpcast.com/~/conversations/${contest.castId}"
+              href="https://warpcast.com/~/conversations/${castHashForView}"
               target="_blank"
               class="btn-secondary text-sm py-2 px-4"
             >

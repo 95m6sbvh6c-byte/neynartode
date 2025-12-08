@@ -101,7 +101,12 @@ async function getUserAddresses(fid) {
 
 /**
  * Check social requirements (recast, like, reply)
- * Also checks reactions on quote casts of the original cast
+ *
+ * FLOW:
+ * 1. Check original post for engagement
+ * 2. Find all quote casts of original post (host's reposts + others)
+ * 3. Check each quote cast for engagement
+ * 4. Deduplicate (user only needs to engage on ONE cast)
  */
 async function checkSocialRequirements(castHash, fid, requirements) {
   const result = {
@@ -111,135 +116,129 @@ async function checkSocialRequirements(castHash, fid, requirements) {
   };
 
   try {
-    // Build list of casts to check (original + quote casts)
-    const castsToCheck = [castHash];
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 1: Check original post for engagement
+    // ═══════════════════════════════════════════════════════════════════
+    console.log(`   Step 1: Checking original cast ${castHash.slice(0, 10)}...`);
 
-    // Get quote casts of the original cast
-    try {
-      const quotesResponse = await fetch(
-        `https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      );
+    const origReactionsResponse = await fetch(
+      `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castHash}&types=likes,recasts&limit=100`,
+      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+    );
 
-      if (quotesResponse.ok) {
-        const castData = await quotesResponse.json();
-        // The cast object has a "quotes" field with quote cast hashes
-        // Also check conversation for quotes
-        const conversationResponse = await fetch(
-          `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&include_chronological_parent_casts=false&limit=50`,
+    if (origReactionsResponse.ok) {
+      const origReactionsData = await origReactionsResponse.json();
+      for (const reaction of origReactionsData.reactions || []) {
+        if (reaction.user?.fid === fid) {
+          if (reaction.reaction_type === 'like') result.liked = true;
+          if (reaction.reaction_type === 'recast') result.recasted = true;
+        }
+      }
+    }
+
+    // Check replies on original
+    const origRepliesResponse = await fetch(
+      `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=50`,
+      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+    );
+
+    if (origRepliesResponse.ok) {
+      const origRepliesData = await origRepliesResponse.json();
+      const replies = origRepliesData.conversation?.cast?.direct_replies || [];
+      for (const reply of replies) {
+        if (reply.author?.fid === fid) {
+          const wordCount = (reply.text || '').trim().split(/\s+/).length;
+          if (wordCount >= 2) {
+            result.replied = true;
+            break;
+          }
+        }
+      }
+    }
+
+    console.log(`   After original: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
+
+    // If already found all required engagement, return early
+    if (result.recasted && result.liked && result.replied) {
+      return result;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 2: Find all quote casts of original post using Neynar API
+    // ═══════════════════════════════════════════════════════════════════
+    console.log(`   Step 2: Finding quote casts...`);
+    const quoteCasts = [];
+
+    // Use Neynar's dedicated cast quotes endpoint - returns ALL casts that quote the original
+    const quotesResponse = await fetch(
+      `https://api.neynar.com/v2/farcaster/cast/quotes?identifier=${castHash}&type=hash&limit=100`,
+      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+    );
+
+    if (quotesResponse.ok) {
+      const quotesData = await quotesResponse.json();
+      for (const quoteCast of quotesData.casts || []) {
+        if (!quoteCasts.includes(quoteCast.hash)) {
+          quoteCasts.push(quoteCast.hash);
+          console.log(`   Found quote cast: ${quoteCast.hash.slice(0, 10)}... by @${quoteCast.author?.username}`);
+        }
+      }
+    }
+
+    console.log(`   Found ${quoteCasts.length} quote casts to check`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 3: Check each quote cast for engagement
+    // ═══════════════════════════════════════════════════════════════════
+    for (const quoteHash of quoteCasts) {
+      // Stop early if we've found all engagement
+      if (result.recasted && result.liked && result.replied) break;
+
+      console.log(`   Step 3: Checking quote cast ${quoteHash.slice(0, 10)}...`);
+
+      // Check reactions
+      if (!result.recasted || !result.liked) {
+        const reactionsResponse = await fetch(
+          `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100`,
           { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
         );
 
-        if (conversationResponse.ok) {
-          const convData = await conversationResponse.json();
-          // Check for quote casts in replies (they have embeds with the original cast)
-          const replies = convData.conversation?.cast?.direct_replies || [];
-          for (const reply of replies) {
-            // Quote casts have the original cast in their embeds
-            if (reply.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
-              castsToCheck.push(reply.hash);
+        if (reactionsResponse.ok) {
+          const reactionsData = await reactionsResponse.json();
+          for (const reaction of reactionsData.reactions || []) {
+            if (reaction.user?.fid === fid) {
+              if (reaction.reaction_type === 'like') result.liked = true;
+              if (reaction.reaction_type === 'recast') result.recasted = true;
             }
           }
         }
       }
 
-      // Strategy 1: Get original cast author and check their recent casts for quote casts
-      const originalCastResponse = await fetch(
-        `https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      );
+      // Check replies
+      if (!result.replied) {
+        const repliesResponse = await fetch(
+          `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${quoteHash}&type=hash&reply_depth=1&limit=50`,
+          { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+        );
 
-      if (originalCastResponse.ok) {
-        const originalCastData = await originalCastResponse.json();
-        const authorFid = originalCastData.cast?.author?.fid;
-
-        if (authorFid) {
-          // Get author's recent casts to find any that quote the original
-          const authorCastsResponse = await fetch(
-            `https://api.neynar.com/v2/farcaster/feed/user/casts?fid=${authorFid}&limit=50`,
-            { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-          );
-
-          if (authorCastsResponse.ok) {
-            const authorCastsData = await authorCastsResponse.json();
-            for (const cast of authorCastsData.casts || []) {
-              // Check if this cast embeds the original
-              if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
-                if (!castsToCheck.includes(cast.hash)) {
-                  castsToCheck.push(cast.hash);
-                }
+        if (repliesResponse.ok) {
+          const repliesData = await repliesResponse.json();
+          const replies = repliesData.conversation?.cast?.direct_replies || [];
+          for (const reply of replies) {
+            if (reply.author?.fid === fid) {
+              const wordCount = (reply.text || '').trim().split(/\s+/).length;
+              if (wordCount >= 2) {
+                result.replied = true;
+                break;
               }
             }
           }
         }
       }
 
-      // Strategy 2: Search for casts with NEYNARtodes contest pattern
-      const searchResponse = await fetch(
-        `https://api.neynar.com/v2/farcaster/cast/search?q=${encodeURIComponent('NEYNARtodes Contest')}&limit=50`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      );
-
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json();
-        for (const cast of searchData.result?.casts || []) {
-          // Check if this cast quotes our original
-          if (cast.embeds?.some(e => e.cast_id?.hash === castHash || e.cast?.hash === castHash)) {
-            if (!castsToCheck.includes(cast.hash)) {
-              castsToCheck.push(cast.hash);
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Error fetching quote casts:', e.message);
+      console.log(`   After ${quoteHash.slice(0, 10)}: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
     }
 
-    console.log(`Checking ${castsToCheck.length} casts for eligibility (1 original + ${castsToCheck.length - 1} quote casts)`);
-
-    // Check reactions on all casts (original + quote casts)
-    for (const hash of castsToCheck) {
-      if (result.recasted && result.liked) break; // Already found both
-
-      const reactionsResponse = await fetch(
-        `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${hash}&types=likes,recasts&limit=100`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      );
-
-      if (reactionsResponse.ok) {
-        const reactionsData = await reactionsResponse.json();
-        for (const reaction of reactionsData.reactions || []) {
-          if (reaction.user?.fid === fid) {
-            if (reaction.reaction_type === 'like') result.liked = true;
-            if (reaction.reaction_type === 'recast') result.recasted = true;
-          }
-        }
-      }
-    }
-
-    // Check replies on all casts (original + quote casts)
-    for (const hash of castsToCheck) {
-      if (result.replied) break; // Already found
-
-      const repliesResponse = await fetch(
-        `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${hash}&type=hash&reply_depth=1&limit=50`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      );
-
-      if (repliesResponse.ok) {
-        const repliesData = await repliesResponse.json();
-        const replies = repliesData.conversation?.cast?.direct_replies || [];
-        for (const reply of replies) {
-          if (reply.author?.fid === fid) {
-            const wordCount = (reply.text || '').trim().split(/\s+/).length;
-            if (wordCount >= 2) {
-              result.replied = true;
-              break;
-            }
-          }
-        }
-      }
-    }
   } catch (e) {
     console.error('Error checking social requirements:', e.message);
   }
