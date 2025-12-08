@@ -1113,6 +1113,10 @@ ${reactLine}`;
         const contract721 = new ethers.Contract(contractAddress, erc721ABI, rpcProvider);
         const contract1155 = new ethers.Contract(contractAddress, erc1155ABI, rpcProvider);
 
+        // Convert tokenId to BigNumber for large IDs (like Basenames with 78-digit token IDs)
+        // ethers.js v5 needs BigNumber for contract calls with uint256
+        const tokenIdBN = ethers.BigNumber.from(tokenId.toString());
+
         let tokenUri = null;
         let nftType = '';
         let collectionName = '';
@@ -1122,7 +1126,7 @@ ${reactLine}`;
           const is721 = await contract721.supportsInterface('0x80ac58cd');
           if (is721) {
             nftType = 'ERC721';
-            tokenUri = await contract721.tokenURI(tokenId);
+            tokenUri = await contract721.tokenURI(tokenIdBN);
             collectionName = await contract721.name().catch(() => 'NFT Collection');
           }
         } catch (e) {
@@ -1135,9 +1139,9 @@ ${reactLine}`;
             const is1155 = await contract721.supportsInterface('0xd9b67a26');
             if (is1155) {
               nftType = 'ERC1155';
-              tokenUri = await contract1155.uri(tokenId);
+              tokenUri = await contract1155.uri(tokenIdBN);
               // ERC1155 URIs often have {id} placeholder
-              tokenUri = tokenUri.replace('{id}', tokenId.toString().padStart(64, '0'));
+              tokenUri = tokenUri.replace('{id}', tokenIdBN.toString().padStart(64, '0'));
               collectionName = await contract721.name().catch(() => 'NFT Collection');
             }
           } catch (e) {
