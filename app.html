@@ -4169,13 +4169,8 @@ ${reactLine}`;
                     <!-- Volume Input -->
                     <div>
                       <label class="block text-sm text-[var(--text-secondary)] mb-2">Min Volume ($)</label>
-                      ${state.tokenAddress && state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
-                        <input type="number" id="minTradeVolume" value="20" readonly class="input-modern opacity-60 cursor-not-allowed" />
-                        <p class="text-xs text-[var(--text-muted)] mt-1">NEYNARTODES locked at $20</p>
-                      ` : `
-                        <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="0" class="input-modern" />
-                        <p class="text-xs text-[var(--text-muted)] mt-1">Max = prize amount</p>
-                      `}
+                        <input type="number" id="minTradeVolume" value="${state.minTradeVolume}" placeholder="20" min="20" max="100" class="input-modern" />
+                        <p class="text-xs text-[var(--text-muted)] mt-1">Min $20, Max $100</p>
                     </div>
                   </div>
                   ` : `
@@ -4572,7 +4567,7 @@ ${reactLine}`;
           } else {
             // Enabling is free
             state.tokenomicsEnabled = true;
-            state.minTradeVolume = '10'; // Reset to default
+            state.minTradeVolume = '20'; // Reset to default
             render();
           }
         };
@@ -4761,32 +4756,15 @@ ${reactLine}`;
           // Store the validated hash (use resolved full hash if available)
           state.castHash = castValidation.hash || extractedHash;
 
-          // Volume requirement validation (only for token contests)
+          // Volume requirement validation - $20 minimum, $100 maximum
           const volumeReq = parseFloat(state.minTradeVolume) || 0;
-
-          if (state.prizeType !== 'nft') {
-            const prizeAmount = parseFloat(state.prizeTokenAmount) || 0;
-            const isCustomToken = state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase();
-
-            if (isCustomToken) {
-              // Custom token: volume must be <= prize amount
-              if (volumeReq > prizeAmount) {
-                showToast(`Volume requirement cannot exceed prize amount (${prizeAmount} ${state.prizeTokenTicker})`, 'error');
-                return;
-              }
-            } else {
-              // Default NEYNARTODES: fixed cap at $20
-              if (volumeReq > 20) {
-                showToast('Volume requirement cannot exceed $20 for NEYNARTODES!', 'error');
-                return;
-              }
-            }
-          } else {
-            // NFT contests: volume requirement is in USD, capped at $20
-            if (volumeReq > 20) {
-              showToast('Volume requirement cannot exceed $20 for NFT contests!', 'error');
-              return;
-            }
+          if (volumeReq < 20) {
+            showToast('Volume requirement must be at least $20!', 'error');
+            return;
+          }
+          if (volumeReq > 100) {
+            showToast('Volume requirement cannot exceed $100!', 'error');
+            return;
           }
 
           // Ensure token address defaults to NEYNARTODES if not set
@@ -4827,12 +4805,8 @@ ${reactLine}`;
             requireRecast: parseInt(state.minRecasts) > 0,
             requireLike: parseInt(state.minLikes) > 0,
             requireReply: parseInt(state.minReplies) > 0,
-            // Volume is locked at $10 for NEYNARTODES token, otherwise use user input
-            volumeRequirement: state.tokenomicsEnabled && state.tokenEnabled ? (
-              state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase()
-                ? 10
-                : parseFloat(state.minTradeVolume) || 0
-            ) : 0,
+            // Volume requirement from user input, capped at $100
+            volumeRequirement: state.tokenomicsEnabled && state.tokenEnabled ? (parseFloat(state.minTradeVolume) || 0) : 0,
             tokenRequirementSymbol: state.tokenomicsEnabled && state.tokenEnabled ? state.tokenTicker : null,
             status: 0, // Active
             participantCount: 0
