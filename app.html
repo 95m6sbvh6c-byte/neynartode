@@ -1346,7 +1346,8 @@ ${reactLine}`;
 
       try {
         const signerAddress = state.userAddress;
-        const tokenId = parseInt(state.prizeNftTokenId) || 0;
+        // Use BigInt for large token IDs (e.g., Basenames)
+        const tokenId = state.prizeNftTokenId ? BigInt(state.prizeNftTokenId) : 0n;
 
         console.log('NFT Approval Debug:', {
           nftAddress: state.prizeNftAddress,
@@ -1516,7 +1517,8 @@ ${reactLine}`;
           rpcProvider
         );
 
-        const tokenId = parseInt(state.prizeNftTokenId) || 0;
+        // Use BigInt for large token IDs (e.g., Basenames)
+        const tokenId = state.prizeNftTokenId ? BigInt(state.prizeNftTokenId) : 0n;
         let isApproved = false;
 
         if (state.prizeNftType === 'ERC721') {
@@ -5254,7 +5256,8 @@ ${reactLine}`;
           const contestFee = await nftEscrowRead.contestFee();
           console.log('NFT Contest Fee:', ethers.utils.formatEther(contestFee), 'ETH');
 
-          const tokenId = parseInt(state.prizeNftTokenId) || 0;
+          // Use BigInt for large token IDs (e.g., Basenames)
+          const tokenId = state.prizeNftTokenId ? BigInt(state.prizeNftTokenId) : 0n;
 
           if (state.prizeNftType === 'ERC721') {
             // ERC721 NFT - V3 uses two-step flow for restricted NFTs
