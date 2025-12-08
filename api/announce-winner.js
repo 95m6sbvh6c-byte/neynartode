@@ -58,6 +58,51 @@ const ERC1155_ABI = [
   'function uri(uint256 id) view returns (string)',
 ];
 
+/**
+ * Fetch NFT image URL from token URI metadata
+ * Handles IPFS, HTTP, and data URIs
+ */
+async function fetchNftImage(tokenUri) {
+  try {
+    if (!tokenUri) return null;
+
+    // Handle IPFS URLs
+    let metadataUrl = tokenUri;
+    if (tokenUri.startsWith('ipfs://')) {
+      metadataUrl = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+    }
+
+    // Handle data URIs (base64 encoded JSON)
+    if (tokenUri.startsWith('data:application/json')) {
+      const base64Data = tokenUri.split(',')[1];
+      const jsonString = Buffer.from(base64Data, 'base64').toString('utf-8');
+      const metadata = JSON.parse(jsonString);
+      let imageUrl = metadata.image || metadata.image_url;
+      if (imageUrl?.startsWith('ipfs://')) {
+        imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+      }
+      return imageUrl;
+    }
+
+    // Fetch metadata from HTTP/HTTPS URL
+    const response = await fetch(metadataUrl, { timeout: 5000 });
+    if (!response.ok) return null;
+
+    const metadata = await response.json();
+    let imageUrl = metadata.image || metadata.image_url;
+
+    // Handle IPFS image URLs
+    if (imageUrl?.startsWith('ipfs://')) {
+      imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+    }
+
+    return imageUrl;
+  } catch (e) {
+    console.log(`   Error fetching NFT metadata: ${e.message}`);
+    return null;
+  }
+}
+
 // Track announced contests using KV for persistence across serverless cold starts
 async function isAlreadyAnnounced(contestId, isNftContest = false) {
   try {
@@ -136,8 +181,9 @@ async function getUserByWallet(walletAddress) {
  * @param {string} quotedCastHash - The original contest cast hash to quote
  * @param {string} message - The announcement message
  * @param {string} signerUuid - Neynar signer UUID
+ * @param {string} nftImageUrl - Optional NFT image URL to embed
  */
-async function postWinnerAnnouncement(quotedCastHash, message, signerUuid) {
+async function postWinnerAnnouncement(quotedCastHash, message, signerUuid, nftImageUrl = null) {
   try {
     // Need a signer UUID to post casts - this should be set up in Neynar dashboard
     if (!signerUuid) {
@@ -147,6 +193,13 @@ async function postWinnerAnnouncement(quotedCastHash, message, signerUuid) {
 
     // Build the Warpcast URL for the quoted cast
     const quotedCastUrl = `https://warpcast.com/~/conversations/${quotedCastHash}`;
+
+    // Build embeds array - quote cast first, then NFT image if available
+    const embeds = [{ url: quotedCastUrl }];
+    if (nftImageUrl) {
+      embeds.push({ url: nftImageUrl });
+      console.log(`   Embedding NFT image: ${nftImageUrl}`);
+    }
 
     // Post as a new cast (not a reply) with the original cast embedded as a quote
     const response = await fetch('https://api.neynar.com/v2/farcaster/cast', {
@@ -158,9 +211,7 @@ async function postWinnerAnnouncement(quotedCastHash, message, signerUuid) {
       body: JSON.stringify({
         signer_uuid: signerUuid,
         text: message,
-        embeds: [
-          { url: quotedCastUrl }  // This embeds the original cast as a quote
-        ]
+        embeds: embeds
       })
     });
 
@@ -300,7 +351,7 @@ async function announceWinner(contestId) {
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n\n`;
   announcement += `Congrats ${winnerTag}! 🦎\n\n`;
-  announcement += `Launch your own contest: https://neynartodes.xyz`;
+  announcement += `Launch your own contest: https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
 
   console.log(`   Message: ${announcement.slice(0, 100)}...`);
 
@@ -409,8 +460,9 @@ async function announceNftWinner(contestId) {
   const winnerUser = await getUserByWallet(winner);
   const winnerTag = winnerUser ? `@${winnerUser.username}` : winner.slice(0, 10) + '...';
 
-  // Get NFT info for prize display
+  // Get NFT info for prize display and image
   let prizeDisplay = '';
+  let nftImageUrl = null;
   const nftTypeName = nftType === 0n ? 'ERC721' : 'ERC1155';
 
   try {
@@ -419,13 +471,32 @@ async function announceNftWinner(contestId) {
       const nftContractInstance = new ethers.Contract(nftContract, ERC721_ABI, provider);
       const name = await nftContractInstance.name();
       prizeDisplay = `${name} #${tokenId}`;
+
+      // Try to get token URI for image
+      try {
+        const tokenUri = await nftContractInstance.tokenURI(tokenId);
+        nftImageUrl = await fetchNftImage(tokenUri);
+      } catch (e) {
+        console.log(`   Could not fetch tokenURI: ${e.message}`);
+      }
     } else {
       // ERC1155
       prizeDisplay = `${Number(amount)}x NFT #${tokenId}`;
+
+      // Try to get URI for image
+      try {
+        const nftContractInstance = new ethers.Contract(nftContract, ERC1155_ABI, provider);
+        const uri = await nftContractInstance.uri(tokenId);
+        nftImageUrl = await fetchNftImage(uri);
+      } catch (e) {
+        console.log(`   Could not fetch ERC1155 URI: ${e.message}`);
+      }
     }
   } catch (e) {
     prizeDisplay = `${nftTypeName} #${tokenId}`;
   }
+
+  console.log(`   NFT Image URL: ${nftImageUrl || 'not found'}`)
 
   // Get qualified entries count
   const qualifiedEntries = await nftEscrow.getQualifiedEntries(contestId);
@@ -451,7 +522,7 @@ async function announceNftWinner(contestId) {
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n\n`;
   announcement += `Congrats ${winnerTag}! 🦎\n\n`;
-  announcement += `Launch your own contest: https://neynartodes.xyz`;
+  announcement += `Launch your own contest: https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
 
   console.log(`   Message: ${announcement.slice(0, 100)}...`);
 
@@ -482,7 +553,7 @@ async function announceNftWinner(contestId) {
     };
   }
 
-  const postResult = await postWinnerAnnouncement(actualCastHash, announcement, signerUuid);
+  const postResult = await postWinnerAnnouncement(actualCastHash, announcement, signerUuid, nftImageUrl);
 
   if (postResult.success) {
     await markAsAnnounced(contestId, true);
@@ -495,6 +566,7 @@ async function announceNftWinner(contestId) {
     winner,
     winnerUsername: winnerUser?.username,
     prize: prizeDisplay,
+    nftImageUrl: nftImageUrl,
     participants: participantCount,
     message: announcement,
     posted: postResult.success,
