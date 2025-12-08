@@ -4103,9 +4103,9 @@ ${reactLine}`;
                 <div class="space-y-4">
                   <div class="flex items-center justify-between">
                     <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Volume Requirement</h3>
-                    <label class="flex items-center gap-2 cursor-pointer">
+                    <label for="tokenomicsToggle" class="flex items-center gap-2 cursor-pointer">
                       <span class="text-sm text-[var(--text-secondary)]">Enable</span>
-                      <div class="relative">
+                      <div class="relative pointer-events-none">
                         <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
                         <div class="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--accent)]"></div>
                       </div>
@@ -4512,6 +4512,7 @@ ${reactLine}`;
       const tokenomicsToggle = document.getElementById('tokenomicsToggle');
       if (tokenomicsToggle) {
         tokenomicsToggle.onchange = async (e) => {
+          console.log('Tokenomics toggle changed:', e.target.checked);
           const wantsDisable = !e.target.checked;
 
           // Dev wallet can toggle freely
