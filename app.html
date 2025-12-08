@@ -5629,7 +5629,7 @@ ${reactLine}`;
         const apiBaseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
         if (state.customMessage && contestId !== 'Unknown') {
           try {
-            await fetch(`${apiBaseUrl}/api/store-message`, {
+            await fetch(`${apiBaseUrl}/api/store?type=message`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -5646,7 +5646,7 @@ ${reactLine}`;
         // Store token price at contest creation (for fair volume calculations)
         if (contestId !== 'Unknown' && tokenRequirement !== ethers.constants.AddressZero) {
           try {
-            await fetch(`${apiBaseUrl}/api/store-contest-price`, {
+            await fetch(`${apiBaseUrl}/api/store?type=price`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
