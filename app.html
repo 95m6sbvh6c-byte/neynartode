@@ -799,7 +799,7 @@ ${reactLine}`;
       minRecasts: '0',
       minReplies: '0',
 
-      // Tokenomics (can be toggled off for 0.01 ETH, free for dev)
+      // Tokenomics (can be toggled off for 0.001 ETH, free for dev)
       tokenomicsEnabled: true, // Main toggle for tokenomics section
       tokenEnabled: true,
       useCustomTokenMode: false, // Whether user has checked "Custom token" checkbox
@@ -3927,7 +3927,7 @@ ${reactLine}`;
                         <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
                         <div class="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--accent)]"></div>
                       </div>
-                      ${!isDevWallet(state.userAddress) && !state.tokenomicsEnabled ? `<span class="text-xs text-[var(--warning)]">-0.01 ETH</span>` : ''}
+                      ${!isDevWallet(state.userAddress) && !state.tokenomicsEnabled ? `<span class="text-xs text-[var(--warning)]">-0.001 ETH</span>` : ''}
                     </label>
                   </div>
 
@@ -4341,16 +4341,16 @@ ${reactLine}`;
             return;
           }
 
-          // Regular users must pay 0.01 ETH to disable
+          // Regular users must pay 0.001 ETH to disable
           if (wantsDisable) {
-            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.01 ETH\n\nProceed?');
+            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.001 ETH\n\nProceed?');
             if (!confirmed) {
               e.target.checked = true; // Revert toggle
               return;
             }
 
             try {
-              // Send 0.01 ETH to treasury
+              // Send 0.001 ETH to treasury
               const ethProvider = window.activeEthProvider || window.ethereum;
               if (!ethProvider) {
                 showToast('No wallet connected!', 'error');
@@ -4360,9 +4360,9 @@ ${reactLine}`;
 
               const provider = new ethers.providers.Web3Provider(ethProvider);
               const signer = provider.getSigner();
-              const fee = ethers.utils.parseEther('0.01');
+              const fee = ethers.utils.parseEther('0.001');
 
-              showToast('Sending 0.01 ETH fee... Confirm in wallet!', 'info');
+              showToast('Sending 0.001 ETH fee... Confirm in wallet!', 'info');
 
               const tx = await signer.sendTransaction({
                 to: CONFIG.CONTRACTS.treasury,
