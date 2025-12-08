@@ -693,6 +693,7 @@ ${reactLine}`;
     const CONFIG = {
       NEYNAR_API_KEY: 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
       BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+      CHAIN_ID: 8453, // Base chain ID
       CONTRACTS: {
         prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
         votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8', // V2 deployed 2025-11-29
@@ -723,6 +724,39 @@ ${reactLine}`;
 
     // ===== SHARED RPC PROVIDER (reduces duplicate connections) =====
     const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+
+    // ===== API CACHE (reduces duplicate Neynar calls) =====
+    const apiCache = new Map();
+    function getCached(key, ttlMs = 60000) {
+      const entry = apiCache.get(key);
+      if (entry && Date.now() - entry.ts < ttlMs) return entry.data;
+      return null;
+    }
+    function setCache(key, data, ttlMs = 60000) {
+      apiCache.set(key, { data, ts: Date.now() });
+      // Cleanup old entries if cache gets too large
+      if (apiCache.size > 500) {
+        const now = Date.now();
+        for (const [k, v] of apiCache) {
+          if (now - v.ts > ttlMs * 2) apiCache.delete(k);
+        }
+      }
+    }
+
+    // Cached Neynar API helper
+    async function neynarFetch(endpoint, cacheTtlMs = 30000) {
+      const cacheKey = `neynar:${endpoint}`;
+      const cached = getCached(cacheKey, cacheTtlMs);
+      if (cached) return cached;
+
+      const res = await fetch(`https://api.neynar.com/v2/farcaster/${endpoint}`, {
+        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+      });
+      if (!res.ok) throw new Error(`Neynar API error: ${res.status}`);
+      const data = await res.json();
+      setCache(cacheKey, data, cacheTtlMs);
+      return data;
+    }
 
     // Dev wallets with unlimited privileges (no contest launch limit, no voting limit)
     const DEV_WALLETS = [
@@ -1343,17 +1377,17 @@ ${reactLine}`;
         console.log('  Owner:', signerAddress);
         console.log('  Operator (escrow):', CONFIG.CONTRACTS.nftContestEscrow);
 
+        // Use shared rpcProvider instead of creating new one each iteration
+        const verifyContract = new ethers.Contract(
+          state.prizeNftAddress,
+          state.prizeNftType === 'ERC721' ? ERC721_ABI : ERC1155_ABI,
+          rpcProvider
+        );
+
         for (let i = 0; i < 10; i++) {
           await new Promise(r => setTimeout(r, 2000));
 
-          const freshProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-          const freshContract = new ethers.Contract(
-            state.prizeNftAddress,
-            state.prizeNftType === 'ERC721' ? ERC721_ABI : ERC1155_ABI,
-            freshProvider
-          );
-
-          const nowApproved = await freshContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          const nowApproved = await verifyContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
           console.log(`Approval check attempt ${i + 1}: isApprovedForAll =`, nowApproved);
           if (nowApproved) {
             console.log('=== APPROVAL CONFIRMED ===');
@@ -4174,10 +4208,10 @@ ${reactLine}`;
       const buyTokenButton = document.getElementById('buyTokenButton');
       if (buyTokenButton) {
         buyTokenButton.onclick = async () => {
-          const tokenAddress = '0x8de1622fe07f56cda2e2273e615a513f1d828b07';
+          // Use CONFIG for token address and chain ID
+          const tokenAddress = CONFIG.CONTRACTS.neynartodes;
           // CAIP-19 format: eip155:{chainId}/erc20:{tokenAddress}
-          // Base chain ID is 8453
-          const buyTokenCaip19 = `eip155:8453/erc20:${tokenAddress}`;
+          const buyTokenCaip19 = `eip155:${CONFIG.CHAIN_ID}/erc20:${tokenAddress}`;
           const sdk = window.FarcasterSDK;
 
           if (sdk && sdk.actions && sdk.actions.swapToken) {
@@ -4693,7 +4727,15 @@ ${reactLine}`;
         };
       }
 
-      // Close dropdowns when clicking outside
+      // Note: Document-level click listener for dropdown close is attached once in initDropdownCloseHandler()
+    }
+
+    // Close dropdowns when clicking outside - attached ONCE, not on every render
+    let dropdownCloseHandlerAttached = false;
+    function initDropdownCloseHandler() {
+      if (dropdownCloseHandlerAttached) return;
+      dropdownCloseHandlerAttached = true;
+
       document.addEventListener('click', (e) => {
         const prizeTokenSearch = document.getElementById('prizeTokenSearch');
         const tokenSearch = document.getElementById('tokenSearch');
@@ -5812,6 +5854,9 @@ ${reactLine}`;
     // ===== INIT =====
     // Load token list from Base on startup
     fetchBaseTokens().catch(err => console.warn('Token list fetch failed:', err));
+
+    // Attach document-level event handlers ONCE (not on every render)
+    initDropdownCloseHandler();
 
     // Initial render
     render();
