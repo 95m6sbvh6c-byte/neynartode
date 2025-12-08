@@ -109,12 +109,24 @@ async function getCastEngagement(castId) {
 
       if (addresses.length === 0) return;
 
+      // Determine primary address for prize delivery (prefer verified over custody)
+      // Priority: 1) Primary verified address, 2) First verified address, 3) Custody address
+      let primaryAddress = null;
+      if (user?.verified_addresses?.primary?.eth_address) {
+        primaryAddress = user.verified_addresses.primary.eth_address.toLowerCase();
+      } else if (user?.verified_addresses?.eth_addresses?.length > 0) {
+        primaryAddress = user.verified_addresses.eth_addresses[0].toLowerCase();
+      } else if (user?.custody_address) {
+        primaryAddress = user.custody_address.toLowerCase();
+      }
+
       // Get or create user entry
       let userData = usersByFid.get(fid);
       if (!userData) {
         userData = {
           fid,
           addresses: [],
+          primaryAddress: primaryAddress, // Address for prize delivery
           username: user?.username || '',
           liked: false,
           recasted: false,
@@ -122,6 +134,9 @@ async function getCastEngagement(castId) {
           wordCount: 0
         };
         usersByFid.set(fid, userData);
+      } else if (primaryAddress && !userData.primaryAddress) {
+        // Update primary address if we didn't have one before
+        userData.primaryAddress = primaryAddress;
       }
 
       // Add any new addresses
@@ -574,11 +589,13 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
     }
 
     if (meetsRequirements && userData.addresses.length > 0) {
+      // Use primaryAddress (verified wallet) for raffle entry, fallback to first address
+      const prizeAddress = userData.primaryAddress || userData.addresses[0];
       qualifiedUsers.push({
         fid: userData.fid,
         username: userData.username,
         addresses: userData.addresses, // All addresses for volume check
-        primaryAddress: userData.addresses[0] // First address for raffle entry
+        primaryAddress: prizeAddress // Verified address for raffle entry (prize delivery)
       });
     }
   }
