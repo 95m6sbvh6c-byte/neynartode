@@ -4,7 +4,7 @@
 
 NEYNARtodes lets you create contests tied to your Farcaster casts. Reward your community for engagement - likes, recasts, replies, and trading volume. Winners are selected randomly via Chainlink VRF.
 
-**Live App:** [frame-opal-eight.vercel.app/app](https://frame-opal-eight.vercel.app/app)
+**Live App:** [farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes](https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes)
 
 ---
 
@@ -16,7 +16,8 @@ NEYNARtodes is a gamified social engagement platform built on Farcaster and Base
 
 | Feature | Description |
 |---------|-------------|
-| **Create Contests** | Lock prizes in escrow, set engagement requirements |
+| **Create Contests** | Lock ERC-20 or NFT prizes in escrow, set engagement requirements |
+| **NFT Contests** | Award NFTs as prizes with built-in NFT picker from your wallet |
 | **Chainlink VRF** | Provably fair random winner selection |
 | **Vote on Hosts** | Upvote/downvote creators, burn tokens |
 | **Season Rewards** | Top hosts win the prize pool |
@@ -27,7 +28,7 @@ NEYNARtodes is a gamified social engagement platform built on Farcaster and Base
 
 ### For Users
 
-1. Open NEYNARtodes in Warpcast
+1. Open NEYNARtodes in Farcaster (via mini app or direct link)
 2. Connect with your Farcaster wallet
 3. You need:
    - 20,000+ NEYNARTODES tokens
@@ -60,7 +61,8 @@ Create new contests with custom prizes and requirements.
 **Features:**
 - Start immediately or schedule for later
 - Set duration (hours + minutes)
-- Choose any ERC-20 token as prize
+- Choose ERC-20 tokens or NFTs as prizes
+- **NFT Picker**: Browse your wallet's NFTs with "My NFTs" button
 - Require likes, recasts, and/or replies
 - Optional trading volume requirement
 
@@ -193,7 +195,7 @@ Neynar    Alchemy RPC
 ```
 frame/
 ├── index.html          # Frame entry point
-├── app.html            # Main Mini App (~3700 lines)
+├── app.html            # Main Mini App
 ├── vercel.json         # Vercel config
 ├── package.json        # Dependencies
 ├── docs/
@@ -203,10 +205,18 @@ frame/
 │   ├── GUIDE_HISTORY.md
 │   └── GUIDE_LEADERBOARD.md
 └── api/
-    ├── image.js        # Frame image generator
-    ├── leaderboard.js  # Leaderboard API
-    ├── finalize.js     # Contest finalization
-    └── ...
+    ├── announce-winner.js   # Winner announcement casts
+    ├── check-eligibility.js # Participant validation
+    ├── contest-history.js   # Contest data fetching
+    ├── finalize-contest.js  # Contest finalization + VRF
+    ├── get-user-nfts.js     # NFT picker API (Alchemy)
+    ├── image.js             # Frame image generator
+    ├── leaderboard.js       # Leaderboard API
+    ├── store.js             # Consolidated storage API
+    └── lib/
+        ├── config.js        # Shared configuration
+        ├── utils.js         # Shared utilities
+        └── uniswap-volume.js # Volume calculations
 ```
 
 ---
@@ -229,10 +239,12 @@ frame/
 | Layer | Technology |
 |-------|------------|
 | Frontend | Vanilla JS + Tailwind CSS |
-| Web3 | ethers.js v5 |
+| Web3 | ethers.js v6 |
 | Social | Neynar API (Farcaster) |
+| NFT Data | Alchemy NFT API |
 | Blockchain | Base Mainnet |
 | Randomness | Chainlink VRF v2.5 |
+| Storage | Vercel KV (Upstash Redis) |
 | Hosting | Vercel |
 | Analytics | Vercel Analytics |
 

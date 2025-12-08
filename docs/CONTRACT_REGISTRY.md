@@ -1,6 +1,6 @@
 # NEYNARtodes Contract Registry
 
-> Last Updated: December 2, 2025
+> Last Updated: December 8, 2025
 > Network: Base Mainnet (Chain ID: 8453)
 
 ## Active Contracts (Season 0 Beta)
@@ -8,7 +8,8 @@
 | Contract | Address | Version | Deployed |
 |----------|---------|---------|----------|
 | **NEYNARTODES Token** | `0x8de1622fe07f56cda2e2273e615a513f1d828b07` | - | Launch |
-| **Contest Escrow** | `0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A` | V1 | 2025-11-28 |
+| **Contest Escrow (ETH)** | `0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A` | V1 | 2025-11-28 |
+| **NFT Contest Escrow** | `0xFD6e84d4396Ecaa144771C65914b2a345305F922` | V3 | 2025-12-05 |
 | **Prize NFT Season 0** | `0x54E3972839A79fB4D1b0F70418141723d02E56e1` | V2 | 2025-12-01 |
 | **Voting Manager** | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` | V2 | 2025-11-29 |
 | **Treasury** | `0xd4d84f3477eb482783aAB48F00e357C801c48928` | V2 | 2025-12-01 |
@@ -27,14 +28,23 @@
   - Used for voting (1000 tokens per vote)
   - Prize token for contests
 
-### Contest Escrow
-- **Type**: Prize custody + VRF winner selection
-- **Purpose**: Trustless contest management with Chainlink VRF
+### Contest Escrow (ETH)
+- **Type**: ERC-20 prize custody + VRF winner selection
+- **Purpose**: Trustless contest management for token prizes with Chainlink VRF
 - **Features**:
-  - Holds prizes in escrow until contest ends
+  - Holds ERC-20 prizes in escrow until contest ends
   - Integrates with Chainlink VRF v2.5 for random winner selection
-  - Supports ETH and ERC-20 token prizes
+  - Supports any ERC-20 token on Base
   - Automatic prize distribution to winners
+
+### NFT Contest Escrow
+- **Type**: NFT prize custody + VRF winner selection
+- **Purpose**: Trustless NFT contest management with Chainlink VRF
+- **Features**:
+  - Holds ERC-721 NFTs in escrow until contest ends
+  - Supports two-step flow for restricted NFTs
+  - Integrates with Chainlink VRF v2.5 for random winner selection
+  - Automatic NFT transfer to winner upon completion
 
 ### Prize NFT Season 0
 - **Type**: Season rewards manager
@@ -95,7 +105,8 @@
 All contracts are verified on BaseScan:
 
 - [NEYNARTODES Token](https://basescan.org/token/0x8de1622fe07f56cda2e2273e615a513f1d828b07)
-- [Contest Escrow](https://basescan.org/address/0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A)
+- [Contest Escrow (ETH)](https://basescan.org/address/0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A)
+- [NFT Contest Escrow](https://basescan.org/address/0xFD6e84d4396Ecaa144771C65914b2a345305F922)
 - [Prize NFT Season 0](https://basescan.org/address/0x54E3972839A79fB4D1b0F70418141723d02E56e1)
 - [Voting Manager](https://basescan.org/address/0x267Bd7ae64DA1060153b47d6873a8830dA4236f8)
 - [Treasury](https://basescan.org/address/0xd4d84f3477eb482783aAB48F00e357C801c48928)
@@ -118,6 +129,7 @@ All contracts are verified on BaseScan:
 const CONTRACTS = {
   neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   contestEscrow: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+  nftContestEscrow: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
   prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
   votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
   treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928',

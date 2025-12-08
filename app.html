@@ -801,7 +801,6 @@ ${reactLine}`;
       endDate: '',
       durationHours: '1',
       durationMinutes: '0',
-      lastLaunchDate: null, // Track last contest launch per wallet
       upcomingContests: [], // Array of scheduled contests
       prizeType: 'token', // 'token' or 'nft'
       prizeTokenAddress: '',
@@ -4697,25 +4696,6 @@ ${reactLine}`;
             const statusDiv = document.getElementById('launchStatus');
             if (statusDiv) statusDiv.textContent = 'Step 1: Launch clicked...';
 
-            // Check if dev wallet (unlimited contest launches)
-            const isDev = isDevWallet(state.userAddress);
-
-          // Check if user already launched a contest today (skip for dev wallet)
-          if (!isDev) {
-            const now = new Date();
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-            if (state.lastLaunchDate) {
-              const lastLaunch = new Date(state.lastLaunchDate);
-              const lastLaunchDay = new Date(lastLaunch.getFullYear(), lastLaunch.getMonth(), lastLaunch.getDate());
-
-              if (today.getTime() === lastLaunchDay.getTime()) {
-                showToast('Daily Contest Limit! You can only launch 1 contest per day. Try again tomorrow!', 'warning');
-                return;
-              }
-            }
-          }
-
           // Validate duration
           const hours = parseInt(state.durationHours) || 0;
           const minutes = parseInt(state.durationMinutes) || 0;
@@ -4824,9 +4804,6 @@ ${reactLine}`;
             startTime = new Date();
             endTime = new Date(startTime.getTime() + totalMinutes * 60 * 1000);
           }
-
-          // Record this launch
-          state.lastLaunchDate = new Date();
 
           // Add to upcoming contests
           const newContest = {
@@ -5659,9 +5636,6 @@ ${reactLine}`;
         contest.contestId = contestId !== 'Unknown' ? parseInt(contestId) : null;
         state.upcomingContests.push(contest);
         state.upcomingContests.sort((a, b) => a.startTime - b.startTime);
-
-        // Update last launch date
-        state.lastLaunchDate = new Date();
 
         // Show success screen (don't use alert - Warpcast blocks it)
         // Save all contest details BEFORE form reset for Cast It

@@ -1,6 +1,6 @@
 # NEYNARtodes System Architecture
 
-> Last Updated: December 2, 2025
+> Last Updated: December 8, 2025
 
 ## Overview
 
@@ -22,19 +22,20 @@ NEYNARtodes is a Farcaster Mini App for hosting social contests on Base. Users c
 |   (app.html - Frontend)   |
 +------------+--------------+
              |
-     +-------+-------+
-     |               |
-     v               v
-+----------+   +-----------+
-| Neynar   |   | Alchemy   |
-| API      |   | RPC       |
-| (Social) |   | (Chain)   |
-+----------+   +-----------+
+     +-------+-------+-------+
+     |               |       |
+     v               v       v
++----------+   +-----------+   +------------+
+| Neynar   |   | Alchemy   |   | Vercel KV  |
+| API      |   | RPC + NFT |   | (Storage)  |
+| (Social) |   | (Chain)   |   |            |
++----------+   +-----------+   +------------+
                     |
                     v
 +---------------------------+
 |   Base Mainnet Contracts  |
-|   - Contest Escrow        |
+|   - Contest Escrow (ETH)  |
+|   - NFT Escrow            |
 |   - Voting Manager        |
 |   - Prize NFT             |
 |   - Treasury              |
@@ -51,7 +52,7 @@ NEYNARtodes is a Farcaster Mini App for hosting social contests on Base. Users c
 
 ## Core Flows
 
-### 1. Contest Creation Flow
+### 1a. ETH Contest Creation Flow
 
 ```
 Host                    Frontend                Escrow Contract         VRF
@@ -60,6 +61,19 @@ Host                    Frontend                Escrow Contract         VRF
  |                         |--Approve Token---------->|                  |
  |                         |--createContestERC20()--->|                  |
  |                         |                          |--Lock Prize----->|
+ |                         |<--Contest ID-------------|                  |
+ |<--Success---------------|                          |                  |
+```
+
+### 1b. NFT Contest Creation Flow
+
+```
+Host                    Frontend               NFT Escrow Contract      VRF
+ |                         |                          |                  |
+ |--Create NFT Contest---->|                          |                  |
+ |                         |--Approve NFT------------>|                  |
+ |                         |--createContestNFT()----->|                  |
+ |                         |                          |--Transfer NFT--->|
  |                         |<--Contest ID-------------|                  |
  |<--Success---------------|                          |                  |
 ```
@@ -111,13 +125,23 @@ const state = {
   currentView: 'create' | 'history' | 'leaderboard',
 
   // Contest Creation
+  prizeType: 'eth' | 'nft',           // NEW: Prize type selection
   startMode: 'now' | 'scheduled',
   durationHours: number,
   durationMinutes: number,
   prizeTokenAddress: string,
   prizeTokenAmount: number,
+  nftContractAddress: string,         // NEW: NFT contract
+  nftTokenId: string,                 // NEW: NFT token ID
+  selectedNft: Object | null,         // NEW: Selected NFT from picker
   castHash: string,
   tokenomicsEnabled: boolean,
+
+  // NFT Picker                        // NEW SECTION
+  showNftPicker: boolean,
+  userNfts: NFT[],
+  nftLoading: boolean,
+  nftPageKey: string | null,
 
   // Leaderboard
   leaderboardData: Host[],
@@ -164,14 +188,16 @@ struct Contest {
 | `/v2/farcaster/user/bulk` | Fetch user profiles by FID |
 | `/v2/farcaster/cast` | Get cast details and engagement |
 | `/v2/farcaster/cast/conversation` | Get replies to a cast |
+| `/v2/farcaster/cast` (POST) | Post winner announcement casts |
 
-### Alchemy RPC (Blockchain Data)
+### Alchemy API (Blockchain + NFT Data)
 
 | Method | Purpose |
 |--------|---------|
 | `eth_call` | Read contract state |
 | `eth_sendTransaction` | Submit transactions |
 | `eth_getTransactionReceipt` | Confirm transactions |
+| `getNFTsForOwner` | Fetch user's NFTs for picker |
 
 ### Uniswap Subgraph
 
@@ -179,6 +205,13 @@ struct Contest {
 |-------|---------|
 | `swaps` | Calculate trading volume |
 | `token` | Get token metadata |
+
+### Vercel KV (Storage)
+
+| Key Pattern | Purpose |
+|-------------|---------|
+| `contest_message_{id}` | Contest custom messages |
+| `contest_price_{id}` | Captured token prices at contest creation |
 
 ---
 
@@ -243,15 +276,42 @@ GitHub Repo
      |
      +---> /           (index.html - Frame entry)
      +---> /app        (app.html - Mini App)
-     +---> /api/*      (Serverless functions)
+     +---> /api/*      (Serverless functions - 11 total)
 ```
+
+### Serverless Functions (API)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/api/announce-winner` | Post winner announcement casts |
+| `/api/check-access` | Verify whitelist + token gate |
+| `/api/check-eligibility` | Validate participant requirements |
+| `/api/connect` | Wallet connection |
+| `/api/contest-history` | Fetch contest data |
+| `/api/finalize-contest` | Contest finalization + VRF |
+| `/api/get-user-nfts` | NFT picker (Alchemy API) |
+| `/api/image` | Frame OG image generator |
+| `/api/leaderboard` | Leaderboard rankings |
+| `/api/store?type=message` | Contest message storage |
+| `/api/store?type=price` | Token price capture |
+
+### Shared Libraries (api/lib/)
+
+| File | Purpose |
+|------|---------|
+| `config.js` | Shared RPC URLs, contract addresses |
+| `utils.js` | Helper functions (formatting, validation) |
+| `uniswap-volume.js` | Trading volume calculations |
 
 ### Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
 | `NEYNAR_API_KEY` | Farcaster API access |
-| `ALCHEMY_API_KEY` | RPC access (in code) |
+| `BASE_RPC_URL` | Alchemy RPC (includes API key) |
+| `KV_REST_API_URL` | Vercel KV storage |
+| `KV_REST_API_TOKEN` | Vercel KV auth |
+| `PRIVATE_KEY` | Transaction signing |
 
 ---
 
@@ -263,18 +323,23 @@ GitHub Repo
 app.html
 ├── <head>
 │   ├── Farcaster Mini App meta tags
-│   ├── Ethers.js v5 (CDN)
+│   ├── Ethers.js v6 (CDN)
 │   ├── Tailwind CSS (CDN)
 │   ├── Farcaster SDK (ESM)
 │   └── Vercel Analytics
 ├── <body>
 │   ├── Toast container
+│   ├── NFT Picker modal
 │   └── #app (React-like render target)
 └── <script>
     ├── CONFIG (contracts, API keys)
     ├── STATE (reactive state object)
-    ├── API Functions (Neynar, RPC)
+    ├── API Functions (Neynar, RPC, Alchemy NFT)
     ├── Contract Interactions
+    ├── NFT Picker Functions
+    │   ├── loadUserNfts()
+    │   ├── renderNftPicker()
+    │   └── selectNft()
     ├── Render Functions
     │   ├── renderLoginPage()
     │   ├── renderCreateContest()

@@ -8,13 +8,19 @@
 
 The Create page lets you launch contests that reward your Farcaster community for engagement. Winners are selected randomly via Chainlink VRF from participants who meet your requirements.
 
+**Prize Types:**
+- **ETH Contests** - Award ERC-20 tokens as prizes
+- **NFT Contests** - Award NFTs (ERC-721) as prizes
+
 ---
 
 ## Before You Start
 
-1. **Post your contest announcement on Warpcast first** - You'll need the cast URL
-2. **Have prize tokens ready** - The tokens will be locked in escrow
-3. **Approve token spending** - You'll be prompted to approve before creating
+1. **Post your contest announcement on Farcaster first** - You'll need the cast URL
+2. **Have prizes ready:**
+   - For ETH contests: ERC-20 tokens in your wallet
+   - For NFT contests: An NFT you own
+3. **Approve spending** - You'll be prompted to approve before creating
 
 ---
 
@@ -33,7 +39,15 @@ The Create page lets you launch contests that reward your Farcaster community fo
 
 ---
 
-### 2. Prize Settings
+### 2. Prize Type Selection
+
+First, choose your prize type using the toggle buttons:
+- **ETH** - Award ERC-20 tokens
+- **NFT** - Award an NFT from your wallet
+
+---
+
+### 2a. ETH Prize Settings
 
 **Search for your prize token:**
 1. Type the token name or ticker in the search box
@@ -48,10 +62,34 @@ The Create page lets you launch contests that reward your Farcaster community fo
 
 ---
 
+### 2b. NFT Prize Settings
+
+**Two ways to select your NFT:**
+
+**Option 1: My NFTs Button (Recommended)**
+1. Click "My NFTs" to open the NFT picker
+2. Browse all NFTs in your connected wallet
+3. View collection names, images, and floor prices
+4. Click on an NFT to select it
+5. NFT details auto-populate in the form
+
+**Option 2: Manual Entry**
+1. Enter the NFT contract address
+2. Enter the Token ID
+
+**Supported NFTs:**
+- ERC-721 NFTs on Base
+- Displays image preview when selected
+- Shows collection name and metadata
+
+**Note:** NFTs are transferred to the NFT Escrow contract and held until the winner is selected.
+
+---
+
 ### 3. Social Dynamics (Required)
 
 **Contest Cast URL:**
-- Paste the full Warpcast URL: `https://warpcast.com/username/0x1234abcd`
+- Paste the full Farcaster URL: `https://warpcast.com/username/0x1234abcd`
 - Or just the hash: `0x1234abcd`
 
 This cast is where participants engage. The system tracks:
@@ -84,10 +122,18 @@ This cast is where participants engage. The system tracks:
 
 ## Launch Process
 
+### For ETH Contests:
 1. **Review all settings** - Check the summary at bottom
 2. **Click "Launch Contest"**
 3. **Approve token** - First transaction approves spending
 4. **Create contest** - Second transaction creates and locks prize
+5. **Wait for confirmation** - Takes ~15-30 seconds on Base
+
+### For NFT Contests:
+1. **Review all settings** - Check the summary at bottom
+2. **Click "Launch Contest"**
+3. **Approve NFT** - First transaction approves the NFT transfer
+4. **Create contest** - Second transaction creates contest and transfers NFT to escrow
 5. **Wait for confirmation** - Takes ~15-30 seconds on Base
 
 ---
@@ -104,6 +150,7 @@ This cast is where participants engage. The system tracks:
 2. Participants engage with your cast
 3. When time ends, Chainlink VRF selects a winner
 4. Prize automatically transfers to winner
+5. Winner announcement cast is posted with the prize details (NFT image included for NFT prizes)
 
 ---
 
@@ -145,3 +192,13 @@ During beta, these protections are active:
 **"Not enough balance"**
 - You need the exact prize amount in your wallet
 - Plus a small amount of ETH for gas (~$0.10)
+
+**"NFT not showing in picker"**
+- Make sure the NFT is in your connected wallet
+- Try refreshing the NFT list
+- Some NFTs may take time to appear after minting
+
+**"NFT approval failed"**
+- Check you own the NFT
+- Ensure you haven't already transferred it
+- Try disconnecting and reconnecting wallet
