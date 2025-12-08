@@ -819,6 +819,12 @@ ${reactLine}`;
       prizeNftType: '', // 'ERC721' or 'ERC1155'
       prizeNftAmount: '1', // For ERC1155
       loadingNftMetadata: false,
+      // NFT Picker (browse user's wallet)
+      showNftPicker: false,
+      userNfts: [],
+      loadingUserNfts: false,
+      nftPickerPageKey: null, // For pagination
+      nftPickerMode: 'picker', // 'picker' or 'manual'
       // NFT Approval state (two-step flow for reliable wallet handling)
       nftApprovalStatus: 'none', // 'none', 'pending', 'approved'
       nftApprovalTxHash: '',
@@ -1217,6 +1223,92 @@ ${reactLine}`;
         showToast(`Failed to load NFT: ${result.error}`, 'error');
       }
 
+      render();
+    }
+
+    // Fetch user's NFTs from their wallet
+    async function fetchUserNfts(loadMore = false) {
+      if (!state.userAddress) {
+        showToast('Please connect your wallet first', 'warning');
+        return;
+      }
+
+      state.loadingUserNfts = true;
+      if (!loadMore) {
+        state.userNfts = [];
+        state.nftPickerPageKey = null;
+      }
+      render();
+
+      try {
+        let url = `/api/get-user-nfts?address=${state.userAddress}`;
+        if (loadMore && state.nftPickerPageKey) {
+          url += `&pageKey=${state.nftPickerPageKey}`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.success) {
+          if (loadMore) {
+            state.userNfts = [...state.userNfts, ...data.nfts];
+          } else {
+            state.userNfts = data.nfts;
+          }
+          state.nftPickerPageKey = data.pageKey;
+
+          if (data.nfts.length === 0 && !loadMore) {
+            showToast('No NFTs found in your wallet', 'info');
+          }
+        } else {
+          showToast('Failed to load NFTs: ' + data.error, 'error');
+        }
+      } catch (error) {
+        console.error('Error fetching user NFTs:', error);
+        showToast('Failed to load NFTs', 'error');
+      }
+
+      state.loadingUserNfts = false;
+      render();
+    }
+
+    // Select an NFT from the picker
+    function selectNftFromPicker(nft) {
+      state.prizeNftAddress = nft.contractAddress;
+      state.prizeNftTokenId = nft.tokenId;
+      state.prizeNftImage = nft.image;
+      state.prizeNftName = nft.name;
+      state.prizeNftCollection = nft.collection;
+      state.prizeNftType = nft.tokenType;
+      state.prizeNftAmount = nft.tokenType === 'ERC1155' ? String(nft.balance) : '1';
+      state.showNftPicker = false;
+      state.nftApprovalStatus = 'none';
+
+      showToast(`Selected: ${nft.name}`, 'success');
+
+      // Check approval status for the selected NFT
+      checkNftApprovalStatus();
+      render();
+    }
+
+    // Toggle NFT picker mode
+    function toggleNftPickerMode() {
+      state.nftPickerMode = state.nftPickerMode === 'picker' ? 'manual' : 'picker';
+      render();
+    }
+
+    // Open NFT picker
+    function openNftPicker() {
+      state.showNftPicker = true;
+      if (state.userNfts.length === 0 && !state.loadingUserNfts) {
+        fetchUserNfts();
+      }
+      render();
+    }
+
+    // Close NFT picker
+    function closeNftPicker() {
+      state.showNftPicker = false;
       render();
     }
 
@@ -3813,39 +3905,100 @@ ${reactLine}`;
                   ` : `
                     <!-- NFT Prize -->
                     <div class="space-y-3">
-                      <div>
-                        <label class="block text-sm text-[var(--text-secondary)] mb-2">NFT Contract Address</label>
-                        <input type="text" id="prizeNftAddress" value="${state.prizeNftAddress}" placeholder="0x..." class="input-modern" />
+                      <!-- Mode Toggle -->
+                      <div class="flex gap-2 mb-2">
+                        <button onclick="state.nftPickerMode = 'picker'; render();" class="flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${state.nftPickerMode === 'picker' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}">
+                          My NFTs
+                        </button>
+                        <button onclick="state.nftPickerMode = 'manual'; render();" class="flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${state.nftPickerMode === 'manual' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}">
+                          Enter Manually
+                        </button>
                       </div>
-                      <div>
-                        <label class="block text-sm text-[var(--text-secondary)] mb-2">Token ID</label>
-                        <div class="flex gap-2">
-                          <input type="text" id="prizeNftTokenId" value="${state.prizeNftTokenId}" placeholder="1" class="input-modern flex-1" />
-                          <button onclick="loadNftMetadata()" class="btn-primary px-4 py-2 text-sm whitespace-nowrap" ${state.loadingNftMetadata ? 'disabled' : ''}>
-                            ${state.loadingNftMetadata ? '<span class="animate-spin">...</span>' : 'Load NFT'}
-                          </button>
+
+                      ${state.nftPickerMode === 'picker' ? `
+                        <!-- NFT Picker Mode -->
+                        <div class="p-4 bg-[var(--bg-secondary)] rounded-xl">
+                          <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-medium text-[var(--text-primary)]">Select from your wallet</span>
+                            <button onclick="fetchUserNfts()" class="text-xs px-3 py-1 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-dark)] transition-colors flex items-center gap-1" ${state.loadingUserNfts ? 'disabled' : ''}>
+                              ${state.loadingUserNfts ? '<span class="animate-spin">⏳</span> Loading...' : '🔄 Refresh'}
+                            </button>
+                          </div>
+
+                          ${state.loadingUserNfts && state.userNfts.length === 0 ? `
+                            <div class="text-center py-8">
+                              <div class="animate-spin text-2xl mb-2">⏳</div>
+                              <div class="text-sm text-[var(--text-muted)]">Loading your NFTs...</div>
+                            </div>
+                          ` : state.userNfts.length === 0 ? `
+                            <div class="text-center py-6 text-[var(--text-muted)]">
+                              <div class="text-3xl mb-2">🖼️</div>
+                              <div class="text-sm">No NFTs found in your wallet</div>
+                              <button onclick="fetchUserNfts()" class="mt-3 text-xs px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-dark)] transition-colors">
+                                Load NFTs
+                              </button>
+                            </div>
+                          ` : `
+                            <div class="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                              ${state.userNfts.map((nft, idx) => `
+                                <button onclick="selectNftFromPicker(state.userNfts[${idx}])" class="p-2 rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--accent)] hover:bg-opacity-20 transition-colors text-left group ${state.prizeNftAddress === nft.contractAddress && state.prizeNftTokenId === nft.tokenId ? 'ring-2 ring-[var(--accent)]' : ''}">
+                                  <div class="aspect-square rounded-lg overflow-hidden mb-1 bg-[var(--bg-primary)]">
+                                    ${nft.image ? `
+                                      <img src="${nft.image}" alt="${nft.name}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<div class=\\'flex items-center justify-center h-full text-2xl\\'>🖼️</div>'" />
+                                    ` : `
+                                      <div class="flex items-center justify-center h-full text-2xl">🖼️</div>
+                                    `}
+                                  </div>
+                                  <div class="text-xs font-medium text-[var(--text-primary)] truncate">${nft.name}</div>
+                                  <div class="text-xs text-[var(--text-muted)] truncate">${nft.collection}</div>
+                                </button>
+                              `).join('')}
+                            </div>
+                            ${state.nftPickerPageKey ? `
+                              <button onclick="fetchUserNfts(true)" class="w-full mt-3 py-2 text-sm text-[var(--accent-light)] hover:text-[var(--accent)] transition-colors" ${state.loadingUserNfts ? 'disabled' : ''}>
+                                ${state.loadingUserNfts ? 'Loading more...' : 'Load More NFTs'}
+                              </button>
+                            ` : ''}
+                          `}
                         </div>
-                      </div>
+                      ` : `
+                        <!-- Manual Entry Mode -->
+                        <div>
+                          <label class="block text-sm text-[var(--text-secondary)] mb-2">NFT Contract Address</label>
+                          <input type="text" id="prizeNftAddress" value="${state.prizeNftAddress}" placeholder="0x..." class="input-modern" />
+                        </div>
+                        <div>
+                          <label class="block text-sm text-[var(--text-secondary)] mb-2">Token ID</label>
+                          <div class="flex gap-2">
+                            <input type="text" id="prizeNftTokenId" value="${state.prizeNftTokenId}" placeholder="1" class="input-modern flex-1" />
+                            <button onclick="loadNftMetadata()" class="btn-primary px-4 py-2 text-sm whitespace-nowrap" ${state.loadingNftMetadata ? 'disabled' : ''}>
+                              ${state.loadingNftMetadata ? '<span class="animate-spin">...</span>' : 'Load NFT'}
+                            </button>
+                          </div>
+                        </div>
+                      `}
 
                       ${state.prizeNftImage ? `
                         <div class="p-4 bg-[var(--bg-secondary)] rounded-xl">
                           <div class="flex gap-4">
                             <img src="${state.prizeNftImage}" alt="${state.prizeNftName}" class="w-24 h-24 rounded-xl object-cover" onerror="this.src='https://via.placeholder.com/96/8b5cf6/ffffff?text=NFT'" />
                             <div class="flex-1">
-                              <div class="text-xs text-[var(--success)] mb-1">NFT Loaded</div>
+                              <div class="text-xs text-[var(--success)] mb-1">NFT Selected</div>
                               <div class="font-medium text-[var(--text-primary)] mb-1">${state.prizeNftName}</div>
                               <div class="text-xs text-[var(--text-muted)]">${state.prizeNftCollection}</div>
+                              <div class="text-xs text-[var(--text-muted)] font-mono mt-1">#${state.prizeNftTokenId}</div>
                               <div class="mt-2">
                                 <span class="tag tag-accent">${state.prizeNftType}</span>
                               </div>
                             </div>
+                            <button onclick="state.prizeNftAddress=''; state.prizeNftTokenId=''; state.prizeNftImage=''; state.prizeNftName=''; state.prizeNftCollection=''; state.prizeNftType=''; state.nftApprovalStatus='none'; render();" class="text-[var(--text-muted)] hover:text-[var(--error)] transition-colors self-start" title="Clear selection">✕</button>
                           </div>
                         </div>
-                      ` : `
+                      ` : state.nftPickerMode === 'manual' ? `
                         <div class="p-4 bg-[var(--bg-secondary)] rounded-xl text-center text-[var(--text-muted)] text-sm">
                           Enter contract address and token ID, then click "Load NFT" to preview
                         </div>
-                      `}
+                      ` : ''}
 
                       ${state.prizeNftType === 'ERC1155' ? `
                         <div>
