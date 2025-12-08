@@ -3854,15 +3854,9 @@ ${reactLine}`;
                     <button onclick="state.prizeType = 'token'; render();" class="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all ${state.prizeType === 'token' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}">
                       Token
                     </button>
-                    ${isDevWallet(state.userAddress) ? `
-                      <button onclick="state.prizeType = 'nft'; render();" class="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all ${state.prizeType === 'nft' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}">
-                        NFT (Dev)
-                      </button>
-                    ` : `
-                      <button disabled class="flex-1 py-3 px-4 rounded-xl text-sm font-medium bg-[var(--bg-secondary)] text-[var(--text-muted)] opacity-50 cursor-not-allowed" title="Coming soon">
-                        NFT (Soon)
-                      </button>
-                    `}
+                    <button onclick="state.prizeType = 'nft'; render();" class="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all ${state.prizeType === 'nft' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}">
+                      NFT
+                    </button>
                   </div>
 
                   ${state.prizeType === 'token' ? `
