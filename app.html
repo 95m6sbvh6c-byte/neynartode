@@ -1095,87 +1095,26 @@ ${reactLine}`;
       ).slice(0, 20); // Limit to 20 results for performance
     }
 
-    // Fetch NFT metadata from contract or Alchemy
+    // Fetch NFT metadata using Alchemy API (handles all NFT types, avoids CORS issues)
     async function fetchNftMetadata(contractAddress, tokenId) {
       try {
-        // First try to get metadata directly from contract tokenURI
-        const erc721ABI = [
-          'function tokenURI(uint256 tokenId) view returns (string)',
-          'function name() view returns (string)',
-          'function ownerOf(uint256 tokenId) view returns (address)',
-          'function supportsInterface(bytes4 interfaceId) view returns (bool)'
-        ];
-        const erc1155ABI = [
-          'function uri(uint256 tokenId) view returns (string)',
-          'function balanceOf(address account, uint256 id) view returns (uint256)'
-        ];
+        // Use our server-side API which calls Alchemy's getNFTMetadata
+        const url = `/api/get-user-nfts?contract=${contractAddress}&tokenId=${encodeURIComponent(tokenId)}`;
+        const response = await fetch(url);
+        const result = await response.json();
 
-        const contract721 = new ethers.Contract(contractAddress, erc721ABI, rpcProvider);
-        const contract1155 = new ethers.Contract(contractAddress, erc1155ABI, rpcProvider);
-
-        // Convert tokenId to BigNumber for large IDs (like Basenames with 78-digit token IDs)
-        // ethers.js v5 needs BigNumber for contract calls with uint256
-        const tokenIdBN = ethers.BigNumber.from(tokenId.toString());
-
-        let tokenUri = null;
-        let nftType = '';
-        let collectionName = '';
-
-        // Check if ERC721 (interface ID: 0x80ac58cd)
-        try {
-          const is721 = await contract721.supportsInterface('0x80ac58cd');
-          if (is721) {
-            nftType = 'ERC721';
-            tokenUri = await contract721.tokenURI(tokenIdBN);
-            collectionName = await contract721.name().catch(() => 'NFT Collection');
-          }
-        } catch (e) {
-          // Not ERC721, try ERC1155
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to fetch NFT metadata');
         }
-
-        // Check if ERC1155 (interface ID: 0xd9b67a26)
-        if (!nftType) {
-          try {
-            const is1155 = await contract721.supportsInterface('0xd9b67a26');
-            if (is1155) {
-              nftType = 'ERC1155';
-              tokenUri = await contract1155.uri(tokenIdBN);
-              // ERC1155 URIs often have {id} placeholder
-              tokenUri = tokenUri.replace('{id}', tokenIdBN.toString().padStart(64, '0'));
-              collectionName = await contract721.name().catch(() => 'NFT Collection');
-            }
-          } catch (e) {
-            // Not ERC1155 either
-          }
-        }
-
-        if (!tokenUri) {
-          throw new Error('Could not fetch token URI - may not be a valid NFT');
-        }
-
-        // Use server-side proxy to avoid CORS issues (e.g., base.org Basename metadata)
-        // The proxy handles IPFS conversion and follows redirects
-        const proxyUrl = `/api/fetch-nft-metadata?url=${encodeURIComponent(tokenUri)}`;
-        const metadataResponse = await fetch(proxyUrl);
-        const proxyResult = await metadataResponse.json();
-
-        if (!proxyResult.success) {
-          throw new Error(proxyResult.error || 'Failed to fetch metadata');
-        }
-
-        const metadata = proxyResult.metadata;
-
-        // Get image URL (proxy already converts IPFS)
-        let imageUrl = metadata.image || metadata.image_url || '';
 
         return {
           success: true,
-          name: metadata.name || `${collectionName} #${tokenId}`,
-          collection: collectionName,
-          image: imageUrl,
-          type: nftType,
-          description: metadata.description || '',
-          attributes: metadata.attributes || [],
+          name: result.name,
+          collection: result.collection,
+          image: result.image,
+          type: result.tokenType,
+          description: result.description || '',
+          attributes: result.attributes || [],
         };
       } catch (error) {
         console.error('NFT metadata fetch error:', error);

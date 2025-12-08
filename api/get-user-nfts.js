@@ -4,14 +4,67 @@
  * Fetches NFTs owned by a wallet address using Alchemy's NFT API.
  * Used to provide a simplified NFT selection experience.
  *
+ * Also fetches individual NFT metadata by contract+tokenId.
+ *
  * Usage:
  *   GET /api/get-user-nfts?address=0x...
  *   GET /api/get-user-nfts?address=0x...&pageKey=abc123 (for pagination)
+ *   GET /api/get-user-nfts?contract=0x...&tokenId=123 (get single NFT metadata)
  */
 
 // Alchemy API key - use from env or fallback to hardcoded key
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
 const ALCHEMY_BASE_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
+
+/**
+ * Fetch single NFT metadata using Alchemy NFT API
+ */
+async function getNftMetadata(contractAddress, tokenId) {
+  try {
+    const url = `${ALCHEMY_BASE_URL}/getNFTMetadata?contractAddress=${contractAddress}&tokenId=${tokenId}&refreshCache=false`;
+
+    console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId}...`);
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Alchemy API error:', errorText);
+      throw new Error(`Alchemy API error: ${response.status}`);
+    }
+
+    const nft = await response.json();
+
+    // Get the best image URL
+    let imageUrl = nft.image?.cachedUrl ||
+                   nft.image?.thumbnailUrl ||
+                   nft.image?.pngUrl ||
+                   nft.image?.originalUrl ||
+                   nft.raw?.metadata?.image ||
+                   null;
+
+    // Handle IPFS URLs
+    if (imageUrl && imageUrl.startsWith('ipfs://')) {
+      imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+    }
+
+    return {
+      success: true,
+      contractAddress: nft.contract?.address,
+      tokenId: nft.tokenId,
+      name: nft.name || nft.raw?.metadata?.name || `#${tokenId}`,
+      collection: nft.contract?.name || nft.contract?.openSeaMetadata?.collectionName || 'Unknown Collection',
+      image: imageUrl,
+      tokenType: nft.contract?.tokenType || 'ERC721',
+      description: nft.description || nft.raw?.metadata?.description || '',
+      attributes: nft.raw?.metadata?.attributes || [],
+    };
+
+  } catch (error) {
+    console.error('Error fetching NFT metadata:', error);
+    throw error;
+  }
+}
 
 /**
  * Fetch NFTs owned by an address using Alchemy NFT API
@@ -99,10 +152,29 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { address, pageKey } = req.query;
+  const { address, pageKey, contract, tokenId } = req.query;
 
+  // Mode 1: Get single NFT metadata by contract + tokenId
+  if (contract && tokenId) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(contract)) {
+      return res.status(400).json({ error: 'Invalid contract address format' });
+    }
+
+    try {
+      const result = await getNftMetadata(contract, tokenId);
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('API error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+
+  // Mode 2: Get all NFTs for a wallet address
   if (!address) {
-    return res.status(400).json({ error: 'Missing address parameter' });
+    return res.status(400).json({ error: 'Missing address parameter (or use contract+tokenId for single NFT)' });
   }
 
   // Validate address format
