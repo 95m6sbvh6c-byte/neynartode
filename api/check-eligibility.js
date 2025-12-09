@@ -102,11 +102,8 @@ async function getUserAddresses(fid) {
 /**
  * Check social requirements (recast, like, reply)
  *
- * FLOW:
- * 1. Check original post for engagement
- * 2. Find all quote casts of original post (host's reposts + others)
- * 3. Check each quote cast for engagement
- * 4. Deduplicate (user only needs to engage on ONE cast)
+ * OPTIMIZED: Fetches original post engagement + quote casts in PARALLEL
+ * Then checks all quote casts in parallel if needed
  */
 async function checkSocialRequirements(castHash, fid, requirements) {
   const result = {
@@ -117,15 +114,26 @@ async function checkSocialRequirements(castHash, fid, requirements) {
 
   try {
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 1: Check original post for engagement
+    // STEP 1: Fetch original reactions, replies, AND quote casts in PARALLEL
     // ═══════════════════════════════════════════════════════════════════
-    console.log(`   Step 1: Checking original cast ${castHash.slice(0, 10)}...`);
+    console.log(`   Checking cast ${castHash.slice(0, 10)}... (parallel fetch)`);
 
-    const origReactionsResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castHash}&types=likes,recasts&limit=100`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
+    const [origReactionsResponse, origRepliesResponse, quotesResponse] = await Promise.all([
+      fetch(
+        `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castHash}&types=likes,recasts&limit=100`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      ),
+      fetch(
+        `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=50`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      ),
+      fetch(
+        `https://api.neynar.com/v2/farcaster/cast/quotes?identifier=${castHash}&type=hash&limit=100`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      ),
+    ]);
 
+    // Process original reactions
     if (origReactionsResponse.ok) {
       const origReactionsData = await origReactionsResponse.json();
       for (const reaction of origReactionsData.reactions || []) {
@@ -136,12 +144,7 @@ async function checkSocialRequirements(castHash, fid, requirements) {
       }
     }
 
-    // Check replies on original
-    const origRepliesResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=50`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
-
+    // Process original replies
     if (origRepliesResponse.ok) {
       const origRepliesData = await origRepliesResponse.json();
       const replies = origRepliesData.conversation?.cast?.direct_replies || [];
@@ -164,80 +167,79 @@ async function checkSocialRequirements(castHash, fid, requirements) {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 2: Find all quote casts of original post using Neynar API
+    // STEP 2: Get quote casts from already-fetched response
     // ═══════════════════════════════════════════════════════════════════
-    console.log(`   Step 2: Finding quote casts...`);
     const quoteCasts = [];
-
-    // Use Neynar's dedicated cast quotes endpoint - returns ALL casts that quote the original
-    const quotesResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/cast/quotes?identifier=${castHash}&type=hash&limit=100`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
-
     if (quotesResponse.ok) {
       const quotesData = await quotesResponse.json();
       for (const quoteCast of quotesData.casts || []) {
         if (!quoteCasts.includes(quoteCast.hash)) {
           quoteCasts.push(quoteCast.hash);
-          console.log(`   Found quote cast: ${quoteCast.hash.slice(0, 10)}... by @${quoteCast.author?.username}`);
         }
       }
     }
 
-    console.log(`   Found ${quoteCasts.length} quote casts to check`);
+    if (quoteCasts.length === 0) {
+      return result;
+    }
+
+    console.log(`   Checking ${quoteCasts.length} quote casts in parallel...`);
 
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 3: Check each quote cast for engagement
+    // STEP 3: Check ALL quote casts in PARALLEL
     // ═══════════════════════════════════════════════════════════════════
-    for (const quoteHash of quoteCasts) {
-      // Stop early if we've found all engagement
-      if (result.recasted && result.liked && result.replied) break;
+    const quoteCheckPromises = quoteCasts.map(async (quoteHash) => {
+      const checkResult = { recasted: false, liked: false, replied: false };
 
-      console.log(`   Step 3: Checking quote cast ${quoteHash.slice(0, 10)}...`);
-
-      // Check reactions
-      if (!result.recasted || !result.liked) {
-        const reactionsResponse = await fetch(
+      // Fetch reactions and replies for this quote in parallel
+      const [reactionsRes, repliesRes] = await Promise.all([
+        fetch(
           `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100`,
           { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-        );
-
-        if (reactionsResponse.ok) {
-          const reactionsData = await reactionsResponse.json();
-          for (const reaction of reactionsData.reactions || []) {
-            if (reaction.user?.fid === fid) {
-              if (reaction.reaction_type === 'like') result.liked = true;
-              if (reaction.reaction_type === 'recast') result.recasted = true;
-            }
-          }
-        }
-      }
-
-      // Check replies
-      if (!result.replied) {
-        const repliesResponse = await fetch(
+        ).catch(() => null),
+        fetch(
           `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${quoteHash}&type=hash&reply_depth=1&limit=50`,
           { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-        );
+        ).catch(() => null),
+      ]);
 
-        if (repliesResponse.ok) {
-          const repliesData = await repliesResponse.json();
-          const replies = repliesData.conversation?.cast?.direct_replies || [];
-          for (const reply of replies) {
-            if (reply.author?.fid === fid) {
-              const wordCount = (reply.text || '').trim().split(/\s+/).length;
-              if (wordCount >= 2) {
-                result.replied = true;
-                break;
-              }
+      if (reactionsRes?.ok) {
+        const reactionsData = await reactionsRes.json();
+        for (const reaction of reactionsData.reactions || []) {
+          if (reaction.user?.fid === fid) {
+            if (reaction.reaction_type === 'like') checkResult.liked = true;
+            if (reaction.reaction_type === 'recast') checkResult.recasted = true;
+          }
+        }
+      }
+
+      if (repliesRes?.ok) {
+        const repliesData = await repliesRes.json();
+        const replies = repliesData.conversation?.cast?.direct_replies || [];
+        for (const reply of replies) {
+          if (reply.author?.fid === fid) {
+            const wordCount = (reply.text || '').trim().split(/\s+/).length;
+            if (wordCount >= 2) {
+              checkResult.replied = true;
+              break;
             }
           }
         }
       }
 
-      console.log(`   After ${quoteHash.slice(0, 10)}: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
+      return checkResult;
+    });
+
+    const quoteResults = await Promise.all(quoteCheckPromises);
+
+    // Merge results from all quote casts
+    for (const qr of quoteResults) {
+      if (qr.recasted) result.recasted = true;
+      if (qr.liked) result.liked = true;
+      if (qr.replied) result.replied = true;
     }
+
+    console.log(`   Final: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
 
   } catch (e) {
     console.error('Error checking social requirements:', e.message);
@@ -248,6 +250,7 @@ async function checkSocialRequirements(castHash, fid, requirements) {
 
 /**
  * Get transfers during contest period
+ * OPTIMIZED: Fetches all addresses in parallel, batch fetches block timestamps
  * @param {string} tokenAddress - The token to check transfers for (custom or NEYNARTODES)
  */
 async function getContestTransfers(provider, tokenAddress, addresses, fromBlock, toBlock) {
@@ -255,43 +258,44 @@ async function getContestTransfers(provider, tokenAddress, addresses, fromBlock,
 
   try {
     const tokenContract = new ethers.Contract(
-      tokenAddress, // Use the contest's token requirement
+      tokenAddress,
       ['event Transfer(address indexed from, address indexed to, uint256 value)'],
       provider
     );
 
-    for (const addr of addresses) {
-      // Sells
-      const sellEvents = await tokenContract.queryFilter(
-        tokenContract.filters.Transfer(addr, null),
-        fromBlock,
-        toBlock
-      );
+    // Fetch all sell and buy events for ALL addresses in PARALLEL
+    const eventPromises = addresses.flatMap(addr => [
+      tokenContract.queryFilter(tokenContract.filters.Transfer(addr, null), fromBlock, toBlock),
+      tokenContract.queryFilter(tokenContract.filters.Transfer(null, addr), fromBlock, toBlock),
+    ]);
 
-      for (const event of sellEvents) {
-        const block = await event.getBlock();
-        transfers.push({
-          amount: Number(ethers.formatEther(event.args.value)),
-          timestamp: block.timestamp,
-          blockNumber: event.blockNumber,
-        });
-      }
+    const allEventArrays = await Promise.all(eventPromises);
+    const allEvents = allEventArrays.flat();
 
-      // Buys
-      const buyEvents = await tokenContract.queryFilter(
-        tokenContract.filters.Transfer(null, addr),
-        fromBlock,
-        toBlock
-      );
+    if (allEvents.length === 0) {
+      return transfers;
+    }
 
-      for (const event of buyEvents) {
-        const block = await event.getBlock();
-        transfers.push({
-          amount: Number(ethers.formatEther(event.args.value)),
-          timestamp: block.timestamp,
-          blockNumber: event.blockNumber,
-        });
-      }
+    // Get unique block numbers and fetch timestamps in parallel
+    const uniqueBlocks = [...new Set(allEvents.map(e => e.blockNumber))];
+    const blockPromises = uniqueBlocks.map(blockNum =>
+      provider.getBlock(blockNum).then(block => ({ blockNum, timestamp: block.timestamp }))
+    );
+    const blockResults = await Promise.all(blockPromises);
+
+    // Create block timestamp lookup map
+    const blockTimestamps = {};
+    for (const { blockNum, timestamp } of blockResults) {
+      blockTimestamps[blockNum] = timestamp;
+    }
+
+    // Build transfers array using cached timestamps
+    for (const event of allEvents) {
+      transfers.push({
+        amount: Number(ethers.formatEther(event.args.value)),
+        timestamp: blockTimestamps[event.blockNumber],
+        blockNumber: event.blockNumber,
+      });
     }
   } catch (e) {
     console.error('Error fetching transfers:', e.message);
@@ -633,19 +637,23 @@ module.exports = async (req, res) => {
     const blocksElapsed = Math.floor(elapsedTime / 2);
     const fromBlock = Math.max(0, currentBlock - blocksElapsed);
 
-    // Check volume - use the contest's tokenRequirement (could be custom token or NEYNARTODES)
-    const transfers = await getContestTransfers(provider, tokenRequirement, addresses, fromBlock, currentBlock);
-    const { volumeTokens, volumeUSD } = await calculateVolumeUSD(
-      provider, tokenRequirement, transfers, contestStartTime, contestEndTime
-    );
-    const volumeMet = volumeRequiredUSD === 0 || volumeUSD >= volumeRequiredUSD;
+    // Check volume AND social requirements in PARALLEL (they're independent)
+    const [volumeResult, social] = await Promise.all([
+      // Volume check
+      (async () => {
+        const transfers = await getContestTransfers(provider, tokenRequirement, addresses, fromBlock, currentBlock);
+        return calculateVolumeUSD(provider, tokenRequirement, transfers, contestStartTime, contestEndTime);
+      })(),
+      // Social check
+      userFid ? checkSocialRequirements(castHash, userFid, {
+        requireRecast,
+        requireLike,
+        requireReply,
+      }) : Promise.resolve({ recasted: false, liked: false, replied: false }),
+    ]);
 
-    // Check social requirements
-    const social = userFid ? await checkSocialRequirements(castHash, userFid, {
-      requireRecast,
-      requireLike,
-      requireReply,
-    }) : { recasted: false, liked: false, replied: false };
+    const { volumeTokens, volumeUSD } = volumeResult;
+    const volumeMet = volumeRequiredUSD === 0 || volumeUSD >= volumeRequiredUSD;
 
     const socialMet =
       (!requireRecast || social.recasted) &&
