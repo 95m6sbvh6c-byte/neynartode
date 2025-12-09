@@ -373,6 +373,8 @@ module.exports = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 50); // Max 50
     const hostFilter = req.query.host?.toLowerCase();
     const includeUsers = req.query.includeUsers !== 'false'; // Default true
+    // Status filter: 'active' = only active/pending, 'history' = only completed/cancelled (default), 'all' = everything
+    const statusFilter = req.query.status || 'history';
 
     // Get total contest counts from both contracts
     const [tokenNextId, nftNextId] = await Promise.all([
@@ -444,9 +446,16 @@ module.exports = async (req, res) => {
     // Sort by endTime descending (newest first)
     allContests.sort((a, b) => b.endTime - a.endTime);
 
-    // Apply filters and limit
-    // Only show completed (status 2) or cancelled (status 3) contests in history
-    let filteredContests = allContests.filter(c => c.status === 2 || c.status === 3);
+    // Apply status filter
+    let filteredContests = allContests;
+    if (statusFilter === 'active') {
+      // Only active (status 0) and pending VRF (status 1) contests
+      filteredContests = allContests.filter(c => c.status === 0 || c.status === 1);
+    } else if (statusFilter === 'history') {
+      // Only completed (status 2) or cancelled (status 3) contests (default for history tab)
+      filteredContests = allContests.filter(c => c.status === 2 || c.status === 3);
+    }
+    // 'all' returns everything without filtering
 
     if (hostFilter) {
       filteredContests = filteredContests.filter(c => c.host.toLowerCase() === hostFilter);

@@ -2222,12 +2222,11 @@ ${reactLine}`;
       // Fetch active contests from contest-history API
       try {
         const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
-        const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=20&includeUsers=true`);
+        const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=20&includeUsers=true&status=active`);
         if (historyResponse.ok) {
           const historyData = await historyResponse.json();
-          // Filter to only active (status 0) and pending VRF (status 1) contests
+          // API already filters to active/pending contests when status=active
           state.upcomingContests = (historyData.contests || [])
-            .filter(c => c.status === 0 || c.status === 1)
             .map(c => ({
               contestId: c.contestId,
               host: c.host,
@@ -3460,12 +3459,8 @@ ${reactLine}`;
                 <div class="stat-value stat-value-sm text-[var(--success)]">${(state.historyData || []).filter(c => c.status === 2).length}</div>
               </div>
               <div class="stat-card">
-                <div class="stat-label">Active</div>
-                <div class="stat-value stat-value-sm text-[var(--info)]">${(state.historyData || []).filter(c => c.status === 0).length}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Pending VRF</div>
-                <div class="stat-value stat-value-sm text-[var(--warning)]">${(state.historyData || []).filter(c => c.status === 1).length}</div>
+                <div class="stat-label">Cancelled</div>
+                <div class="stat-value stat-value-sm text-[var(--warning)]">${(state.historyData || []).filter(c => c.status === 3).length}</div>
               </div>
             </div>
 
