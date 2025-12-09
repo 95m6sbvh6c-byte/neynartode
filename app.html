@@ -645,20 +645,26 @@ ${reactLine}`;
       // Build embeds array (max 2 per Farcaster limits)
       const embeds = [];
 
-      // Add NFT image as embed if available
-      if (isNft && nftImage) {
+      // Extract cast hash for quoting
+      // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
+      const castHash = castId ? castId.split('|')[0] : null;
+
+      // Add cast URL as FIRST embed to create quote-cast (not reply)
+      // Using embeds instead of parent parameter creates a quote-cast, not a reply
+      if (castHash && hostUsername) {
+        embeds.push(`https://warpcast.com/${hostUsername}/${castHash}`);
+      }
+
+      // Add NFT image as second embed if available (max 2 embeds)
+      if (isNft && nftImage && embeds.length < 2) {
         // Proxy through our server to avoid IPFS gateway 403 errors
         const proxyUrl = `https://frame-opal-eight.vercel.app/api/image?url=${encodeURIComponent(nftImage)}`;
         embeds.push(proxyUrl);
       }
 
-      // Extract cast hash for quoting (use parent parameter, not embed)
-      // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
-      const castHash = castId ? castId.split('|')[0] : null;
-
       console.log('Sharing contest:', { contestId, isNft, embeds, castHash });
 
-      // Use SDK composeCast with parent parameter for quoting
+      // Use SDK composeCast - embeds create quote-cast, NOT parent parameter (which creates reply)
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
         try {
@@ -666,18 +672,12 @@ ${reactLine}`;
             text: text,
           };
 
-          // Add embeds if any (NFT image)
+          // Add embeds (quote-cast URL + optional NFT image)
           if (embeds.length > 0) {
             composeOptions.embeds = embeds;
           }
 
-          // Use parent parameter to quote the original cast (not as embed)
-          if (castHash) {
-            composeOptions.parent = {
-              type: 'cast',
-              hash: castHash
-            };
-          }
+          // NO parent parameter - that creates a reply, not a quote-cast
 
           await sdk.actions.composeCast(composeOptions);
           return;
