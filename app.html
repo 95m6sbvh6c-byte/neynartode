@@ -642,7 +642,7 @@ ${prizeLine}
 ${reqsLine}
 ${reactLine}`;
 
-      // Build embeds array
+      // Build embeds array (max 2 per Farcaster limits)
       const embeds = [];
 
       // Add NFT image as embed if available
@@ -652,36 +652,49 @@ ${reactLine}`;
         embeds.push(proxyUrl);
       }
 
-      // Quote the original cast
-      if (castId && hostUsername) {
-        // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
-        // Extract just the hash part (before any | character) for the embed URL
-        const castHash = castId.split('|')[0];
-        // Use full URL format with username for proper quote embedding
-        embeds.push(`https://warpcast.com/${hostUsername}/${castHash}`);
-      }
+      // Extract cast hash for quoting (use parent parameter, not embed)
+      // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
+      const castHash = castId ? castId.split('|')[0] : null;
 
-      console.log('Sharing contest:', { contestId, isNft, embeds });
+      console.log('Sharing contest:', { contestId, isNft, embeds, castHash });
 
-      // Use SDK composeCast
+      // Use SDK composeCast with parent parameter for quoting
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
         try {
-          await sdk.actions.composeCast({
+          const composeOptions = {
             text: text,
-            embeds: embeds.length > 0 ? embeds : undefined
-          });
+          };
+
+          // Add embeds if any (NFT image)
+          if (embeds.length > 0) {
+            composeOptions.embeds = embeds;
+          }
+
+          // Use parent parameter to quote the original cast (not as embed)
+          if (castHash) {
+            composeOptions.parent = {
+              type: 'cast',
+              hash: castHash
+            };
+          }
+
+          await sdk.actions.composeCast(composeOptions);
           return;
         } catch (e) {
           console.log('composeCast failed, falling back to URL:', e);
         }
       }
 
-      // Fallback: Build Warpcast compose URL
+      // Fallback: Build Warpcast compose URL with embeds
       let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
       embeds.forEach(embed => {
         warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
       });
+      // Add cast quote as embed for fallback (URL method)
+      if (castHash && hostUsername) {
+        warpcastUrl += `&embeds[]=${encodeURIComponent(`https://warpcast.com/${hostUsername}/${castHash}`)}`;
+      }
 
       window.open(warpcastUrl, '_blank');
     }
