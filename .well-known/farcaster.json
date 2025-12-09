@@ -12,5 +12,9 @@
     "splashImageUrl": "https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png",
     "splashBackgroundColor": "#0f0a1e",
     "webhookUrl": "https://frame-opal-eight.vercel.app/api/webhook"
+  },
+  "notificationDetails": {
+    "url": "https://frame-opal-eight.vercel.app/api/webhook",
+    "targetUrl": "https://frame-opal-eight.vercel.app/"
   }
 }

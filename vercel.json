@@ -1,6 +1,16 @@
 {
   "version": 2,
   "public": true,
+  "crons": [
+    {
+      "path": "/api/cron-notifications",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/announce-winner",
+      "schedule": "*/10 * * * *"
+    }
+  ],
   "builds": [
     {
       "src": "index.html",

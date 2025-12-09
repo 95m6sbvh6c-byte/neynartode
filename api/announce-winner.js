@@ -384,6 +384,18 @@ async function announceWinner(contestId) {
 
   if (postResult.success) {
     await markAsAnnounced(contestId);
+
+    // Send push notification to all subscribers
+    try {
+      const { sendNotification } = require('./send-notification');
+      await sendNotification('contest_completed', {
+        contestId,
+        winnerUsername: winnerUser?.username,
+        prize: prizeDisplay,
+      });
+    } catch (e) {
+      console.log('   Could not send push notification:', e.message);
+    }
   }
 
   return {
@@ -546,6 +558,19 @@ async function announceNftWinner(contestId) {
 
   if (postResult.success) {
     await markAsAnnounced(contestId, true);
+
+    // Send push notification to all subscribers
+    try {
+      const { sendNotification } = require('./send-notification');
+      await sendNotification('contest_completed', {
+        contestId,
+        isNft: true,
+        winnerUsername: winnerUser?.username,
+        prize: prizeDisplay,
+      });
+    } catch (e) {
+      console.log('   Could not send push notification:', e.message);
+    }
   }
 
   return {
