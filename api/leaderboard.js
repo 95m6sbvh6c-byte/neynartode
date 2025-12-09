@@ -26,6 +26,18 @@ const CONFIG = {
   CURRENT_SEASON: 2, // Default active season
 };
 
+// Excluded from leaderboard and season prizes (devs/admins who shouldn't compete)
+const EXCLUDED_FIDS = [
+  1188162, // cb91waverider (project owner)
+];
+
+const EXCLUDED_ADDRESSES = [
+  '0x78eeaa6f014667a339fcf8b4ecd74743366603fb', // Dev wallet
+  '0x6b814f71712ad9e5b2299676490ce530797f9ec7', // cb91waverider custody
+  '0xab4f21321a7a16eb57171994c7d7d1c808506e5d', // cb91waverider verified
+  '0x64cb30c6d5e1dc5e675296cf13d547150c71c2b1', // cb91waverider verified
+];
+
 const CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
   'function nextContestId() external view returns (uint256)',
@@ -201,6 +213,11 @@ module.exports = async (req, res) => {
         seasonContestCount++;
         const hostLower = host.toLowerCase();
 
+        // Skip excluded addresses (devs/admins who shouldn't compete)
+        if (EXCLUDED_ADDRESSES.includes(hostLower)) {
+          continue;
+        }
+
         if (!hostStats[hostLower]) {
           hostStats[hostLower] = {
             address: host,
@@ -248,6 +265,11 @@ module.exports = async (req, res) => {
       // First, get the host's Farcaster info (we need their FID to verify cast authorship)
       const userInfo = await getUserByWallet(stats.address);
       const hostFid = userInfo?.fid || 0;
+
+      // Skip excluded FIDs (double-check for devs/admins)
+      if (EXCLUDED_FIDS.includes(hostFid)) {
+        continue;
+      }
 
       // Fetch engagement for each cast - only counts if host authored the cast
       let ownedCastsCount = 0;
