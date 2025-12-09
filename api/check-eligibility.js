@@ -653,7 +653,10 @@ module.exports = async (req, res) => {
     ]);
 
     const { volumeTokens, volumeUSD } = volumeResult;
-    const volumeMet = volumeRequiredUSD === 0 || volumeUSD >= volumeRequiredUSD;
+    // Use small tolerance (1%) to handle floating point precision issues
+    // e.g. $19.999 should count as meeting $20 requirement
+    const volumeTolerance = volumeRequiredUSD * 0.01;
+    const volumeMet = volumeRequiredUSD === 0 || volumeUSD >= (volumeRequiredUSD - volumeTolerance);
 
     const socialMet =
       (!requireRecast || social.recasted) &&
