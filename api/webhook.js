@@ -127,25 +127,28 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing event type' });
     }
 
+    // Handle both frame_* (v1) and miniapp_* (v2) event names
     switch (event) {
-      case 'frame_added': {
-        // User added the frame - they may have notification token
+      case 'frame_added':
+      case 'miniapp_added': {
+        // User added the frame/miniapp - they may have notification token
         const { fid, notificationDetails } = body;
 
         if (notificationDetails?.token && notificationDetails?.url) {
           await storeNotificationToken(fid, notificationDetails.token, notificationDetails.url);
-          console.log(`Frame added with notifications for FID ${fid}`);
+          console.log(`App added with notifications for FID ${fid}`);
         } else {
-          console.log(`Frame added without notifications for FID ${fid}`);
+          console.log(`App added without notifications for FID ${fid}`);
         }
         break;
       }
 
-      case 'frame_removed': {
-        // User removed the frame - clean up their token
+      case 'frame_removed':
+      case 'miniapp_removed': {
+        // User removed the frame/miniapp - clean up their token
         const { fid } = body;
         await removeNotificationToken(fid);
-        console.log(`Frame removed for FID ${fid}`);
+        console.log(`App removed for FID ${fid}`);
         break;
       }
 

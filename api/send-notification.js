@@ -88,64 +88,68 @@ async function sendToUser(token, url, title, body, targetUrl) {
 }
 
 /**
+ * Truncate string to max length (for Farcaster notification limits)
+ * Title: max 32 chars, Body: max 128 chars
+ */
+function truncate(str, maxLen) {
+  if (!str || str.length <= maxLen) return str;
+  return str.slice(0, maxLen - 3) + '...';
+}
+
+/**
  * Build notification content based on type
  */
 function buildNotificationContent(type, data) {
   const baseUrl = 'https://frame-opal-eight.vercel.app/';
 
+  let title, body;
+
   switch (type) {
     case 'new_contest':
-      return {
-        title: 'New Contest Live!',
-        body: data.prize
-          ? `Win ${data.prize}! ${data.hostUsername ? `Hosted by @${data.hostUsername}` : ''}`
-          : 'A new contest is now live!',
-        targetUrl: baseUrl,
-      };
+      title = 'New Contest Live!';
+      body = data.prize
+        ? `Win ${data.prize}! ${data.hostUsername ? `Hosted by @${data.hostUsername}` : ''}`
+        : 'A new contest is now live!';
+      break;
 
     case 'contest_completed':
-      return {
-        title: 'Contest Winner Announced!',
-        body: data.winnerUsername
-          ? `@${data.winnerUsername} won ${data.prize || 'the contest'}!`
-          : `Contest #${data.contestId} has ended!`,
-        targetUrl: baseUrl,
-      };
+      title = 'Winner Announced!';
+      body = data.winnerUsername
+        ? `@${data.winnerUsername} won ${data.prize || 'the contest'}!`
+        : `Contest #${data.contestId} has ended!`;
+      break;
 
     case 'contest_ending_soon':
-      return {
-        title: 'Contest Ending Soon!',
-        body: data.prize
-          ? `1 hour left to win ${data.prize}!`
-          : `Contest #${data.contestId} ends in 1 hour!`,
-        targetUrl: baseUrl,
-      };
+      title = 'Contest Ending Soon!';
+      body = data.prize
+        ? `1 hour left to win ${data.prize}!`
+        : `Contest #${data.contestId} ends in 1 hour!`;
+      break;
 
     case 'new_leaderboard_leader':
-      return {
-        title: 'New Leaderboard Leader!',
-        body: data.username
-          ? `@${data.username} is now #1 on the leaderboard!`
-          : 'A new host has taken the #1 spot!',
-        targetUrl: baseUrl,
-      };
+      title = 'New #1 on Leaderboard!';
+      body = data.username
+        ? `@${data.username} is now #1!`
+        : 'A new host has taken the #1 spot!';
+      break;
 
     case 'prize_pool_funded':
-      return {
-        title: 'Prize Pool Funded!',
-        body: data.amount
-          ? `${data.amount} ETH added to the Season ${data.season || ''} prize pool!`
-          : 'The host prize pool has been funded!',
-        targetUrl: baseUrl,
-      };
+      title = 'Prize Pool Funded!';
+      body = data.amount
+        ? `${data.amount} ETH added to Season ${data.season || ''} pool!`
+        : 'The host prize pool has been funded!';
+      break;
 
     default:
-      return {
-        title: 'NEYNARtodes Update',
-        body: data.message || 'Something new is happening!',
-        targetUrl: baseUrl,
-      };
+      title = 'NEYNARtodes Update';
+      body = data.message || 'Something new is happening!';
   }
+
+  return {
+    title: truncate(title, 32),
+    body: truncate(body, 128),
+    targetUrl: baseUrl,
+  };
 }
 
 /**
