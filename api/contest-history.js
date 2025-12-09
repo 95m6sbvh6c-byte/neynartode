@@ -445,9 +445,11 @@ module.exports = async (req, res) => {
     allContests.sort((a, b) => b.endTime - a.endTime);
 
     // Apply filters and limit
-    let filteredContests = allContests;
+    // Only show completed (status 2) or cancelled (status 3) contests in history
+    let filteredContests = allContests.filter(c => c.status === 2 || c.status === 3);
+
     if (hostFilter) {
-      filteredContests = allContests.filter(c => c.host.toLowerCase() === hostFilter);
+      filteredContests = filteredContests.filter(c => c.host.toLowerCase() === hostFilter);
     }
     const limitedContests = filteredContests.slice(0, limit);
 
