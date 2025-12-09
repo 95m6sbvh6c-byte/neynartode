@@ -47,6 +47,10 @@ const ERC1155_ABI = [
   'function uri(uint256 tokenId) view returns (string)',
 ];
 
+// Alchemy API for NFT metadata (avoids CORS issues)
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
+const ALCHEMY_NFT_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
+
 // Status mapping
 const STATUS_MAP = {
   0: 'Active',
@@ -85,49 +89,42 @@ async function getUserByWallet(walletAddress) {
 }
 
 /**
- * Get NFT metadata (name, image) from contract
+ * Get NFT metadata (name, image) using Alchemy API
+ * This avoids CORS issues with direct metadata fetches (e.g., Basenames)
  */
 async function getNftMetadata(provider, nftContract, tokenId, nftType) {
   try {
-    let tokenUri = null;
-    let collectionName = 'NFT';
+    // Use Alchemy's getNFTMetadata API - handles all NFT types and caches images
+    const url = `${ALCHEMY_NFT_URL}/getNFTMetadata?contractAddress=${nftContract}&tokenId=${tokenId}&refreshCache=false`;
 
-    if (nftType === 0) { // ERC721
-      const nft = new ethers.Contract(nftContract, ERC721_ABI, provider);
-      tokenUri = await nft.tokenURI(tokenId).catch(() => null);
-      collectionName = await nft.name().catch(() => 'NFT Collection');
-    } else { // ERC1155
-      const nft = new ethers.Contract(nftContract, ERC1155_ABI, provider);
-      tokenUri = await nft.uri(tokenId).catch(() => null);
-      // Replace {id} placeholder in ERC1155 URIs
-      if (tokenUri) {
-        tokenUri = tokenUri.replace('{id}', tokenId.toString().padStart(64, '0'));
-      }
-    }
-
-    if (!tokenUri) {
-      return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
-    }
-
-    // Convert IPFS URLs
-    if (tokenUri.startsWith('ipfs://')) {
-      tokenUri = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
-    }
-
-    // Fetch metadata
-    const response = await fetch(tokenUri, { timeout: 5000 });
+    const response = await fetch(url);
     if (!response.ok) {
-      return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
+      console.error('Alchemy NFT API error:', response.status);
+      return { name: `NFT #${tokenId}`, image: '', collection: 'NFT' };
     }
 
-    const metadata = await response.json();
-    let imageUrl = metadata.image || metadata.image_url || '';
+    const nft = await response.json();
+
+    // Get collection name
+    const collectionName = nft.contract?.name ||
+                          nft.contract?.openSeaMetadata?.collectionName ||
+                          'NFT Collection';
+
+    // Get the best image URL (Alchemy provides cached versions)
+    let imageUrl = nft.image?.cachedUrl ||
+                   nft.image?.pngUrl ||
+                   nft.image?.thumbnailUrl ||
+                   nft.image?.originalUrl ||
+                   nft.raw?.metadata?.image ||
+                   '';
+
+    // Handle IPFS URLs (shouldn't happen with Alchemy cached URLs but just in case)
     if (imageUrl.startsWith('ipfs://')) {
       imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
     }
 
     return {
-      name: metadata.name || `${collectionName} #${tokenId}`,
+      name: nft.name || nft.raw?.metadata?.name || `${collectionName} #${tokenId}`,
       image: imageUrl,
       collection: collectionName,
     };

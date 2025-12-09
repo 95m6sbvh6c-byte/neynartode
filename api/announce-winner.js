@@ -58,47 +58,46 @@ const ERC1155_ABI = [
   'function uri(uint256 id) view returns (string)',
 ];
 
+// Alchemy API for NFT metadata (avoids CORS issues)
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
+const ALCHEMY_NFT_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
+
 /**
- * Fetch NFT image URL from token URI metadata
- * Handles IPFS, HTTP, and data URIs
+ * Fetch NFT image URL using Alchemy API
+ * This avoids CORS issues with direct metadata fetches (e.g., Basenames)
  */
-async function fetchNftImage(tokenUri) {
+async function fetchNftImage(nftContract, tokenId) {
   try {
-    if (!tokenUri) return null;
+    if (!nftContract || tokenId === undefined) return null;
+
+    const url = `${ALCHEMY_NFT_URL}/getNFTMetadata?contractAddress=${nftContract}&tokenId=${tokenId}&refreshCache=false`;
+    console.log(`   Fetching NFT image from Alchemy: ${nftContract} #${tokenId}`);
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.log(`   Alchemy API error: ${response.status}`);
+      return null;
+    }
+
+    const nft = await response.json();
+
+    // Get the best image URL (Alchemy provides cached versions)
+    let imageUrl = nft.image?.cachedUrl ||
+                   nft.image?.pngUrl ||
+                   nft.image?.thumbnailUrl ||
+                   nft.image?.originalUrl ||
+                   nft.raw?.metadata?.image ||
+                   null;
 
     // Handle IPFS URLs
-    let metadataUrl = tokenUri;
-    if (tokenUri.startsWith('ipfs://')) {
-      metadataUrl = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
-    }
-
-    // Handle data URIs (base64 encoded JSON)
-    if (tokenUri.startsWith('data:application/json')) {
-      const base64Data = tokenUri.split(',')[1];
-      const jsonString = Buffer.from(base64Data, 'base64').toString('utf-8');
-      const metadata = JSON.parse(jsonString);
-      let imageUrl = metadata.image || metadata.image_url;
-      if (imageUrl?.startsWith('ipfs://')) {
-        imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
-      }
-      return imageUrl;
-    }
-
-    // Fetch metadata from HTTP/HTTPS URL
-    const response = await fetch(metadataUrl, { timeout: 5000 });
-    if (!response.ok) return null;
-
-    const metadata = await response.json();
-    let imageUrl = metadata.image || metadata.image_url;
-
-    // Handle IPFS image URLs
     if (imageUrl?.startsWith('ipfs://')) {
       imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
     }
 
+    console.log(`   NFT image URL: ${imageUrl || 'not found'}`);
     return imageUrl;
   } catch (e) {
-    console.log(`   Error fetching NFT metadata: ${e.message}`);
+    console.log(`   Error fetching NFT metadata from Alchemy: ${e.message}`);
     return null;
   }
 }
@@ -460,40 +459,30 @@ async function announceNftWinner(contestId) {
   const winnerUser = await getUserByWallet(winner);
   const winnerTag = winnerUser ? `@${winnerUser.username}` : winner.slice(0, 10) + '...';
 
-  // Get NFT info for prize display and image
+  // Get NFT info for prize display and image using Alchemy
   let prizeDisplay = '';
   let nftImageUrl = null;
   const nftTypeName = nftType === 0n ? 'ERC721' : 'ERC1155';
 
   try {
+    // Get collection name from contract
+    const nftContractInstance = new ethers.Contract(nftContract, ERC721_ABI, provider);
+    const name = await nftContractInstance.name().catch(() => 'NFT');
+
     if (nftType === 0n) {
       // ERC721
-      const nftContractInstance = new ethers.Contract(nftContract, ERC721_ABI, provider);
-      const name = await nftContractInstance.name();
       prizeDisplay = `${name} #${tokenId}`;
-
-      // Try to get token URI for image
-      try {
-        const tokenUri = await nftContractInstance.tokenURI(tokenId);
-        nftImageUrl = await fetchNftImage(tokenUri);
-      } catch (e) {
-        console.log(`   Could not fetch tokenURI: ${e.message}`);
-      }
     } else {
       // ERC1155
-      prizeDisplay = `${Number(amount)}x NFT #${tokenId}`;
-
-      // Try to get URI for image
-      try {
-        const nftContractInstance = new ethers.Contract(nftContract, ERC1155_ABI, provider);
-        const uri = await nftContractInstance.uri(tokenId);
-        nftImageUrl = await fetchNftImage(uri);
-      } catch (e) {
-        console.log(`   Could not fetch ERC1155 URI: ${e.message}`);
-      }
+      prizeDisplay = `${Number(amount)}x ${name} #${tokenId}`;
     }
+
+    // Use Alchemy API to get NFT image (handles all NFT types, avoids CORS)
+    nftImageUrl = await fetchNftImage(nftContract, tokenId.toString());
   } catch (e) {
     prizeDisplay = `${nftTypeName} #${tokenId}`;
+    // Still try to get image via Alchemy even if name lookup failed
+    nftImageUrl = await fetchNftImage(nftContract, tokenId.toString());
   }
 
   console.log(`   NFT Image URL: ${nftImageUrl || 'not found'}`)
