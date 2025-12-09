@@ -621,8 +621,6 @@
     }
 
     async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage) {
-      const hostTag = hostUsername ? `@${hostUsername}` : 'a host';
-
       // Build requirements string
       const reqs = [];
       if (requireRecast) reqs.push('🔄 Recast');
@@ -636,7 +634,8 @@
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
 
-      const text = `🦎 Contest #${contestId} by ${hostTag} is LIVE on NEYNARtodes! 🔥
+      // Note: Host info shown via quoted cast embed, no @mention needed
+      const text = `🦎 Contest #${contestId} is LIVE on NEYNARtodes! 🔥
 
 ${prizeLine}
 ⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m
