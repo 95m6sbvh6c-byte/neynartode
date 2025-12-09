@@ -392,66 +392,103 @@ module.exports = async (req, res) => {
     }
 
     // Fetch all contests from both contracts
-    const allContests = [];
+    // Fetch all contests in PARALLEL for speed
+    const tokenContestPromises = [];
+    const nftContestPromises = [];
 
-    // Fetch token contests
-    for (let i = totalTokenContests; i >= 1; i--) {
-      const contest = await getContestDetails(provider, tokenContract, i);
-      if (contest) {
-        contest.contractType = 'token';
-        allContests.push(contest);
-      }
+    // Create promises for token contests (most recent first, limited)
+    const tokenStartId = Math.max(1, totalTokenContests - limit + 1);
+    for (let i = totalTokenContests; i >= tokenStartId; i--) {
+      tokenContestPromises.push(
+        getContestDetails(provider, tokenContract, i)
+          .then(contest => {
+            if (contest) {
+              contest.contractType = 'token';
+              return contest;
+            }
+            return null;
+          })
+          .catch(() => null)
+      );
     }
 
-    // Fetch NFT contests
-    for (let i = totalNftContests; i >= 1; i--) {
-      const contest = await getNftContestDetails(provider, nftContract, i);
-      if (contest) {
-        contest.contractType = 'nft';
-        // Use different ID namespace to avoid collisions (prefix with 'nft-')
-        contest.contestIdDisplay = `NFT-${contest.contestId}`;
-        allContests.push(contest);
-      }
+    // Create promises for NFT contests (most recent first, limited)
+    const nftStartId = Math.max(1, totalNftContests - limit + 1);
+    for (let i = totalNftContests; i >= nftStartId; i--) {
+      nftContestPromises.push(
+        getNftContestDetails(provider, nftContract, i)
+          .then(contest => {
+            if (contest) {
+              contest.contractType = 'nft';
+              contest.contestIdDisplay = `NFT-${contest.contestId}`;
+              return contest;
+            }
+            return null;
+          })
+          .catch(() => null)
+      );
     }
+
+    // Execute all contest fetches in parallel
+    const [tokenResults, nftResults] = await Promise.all([
+      Promise.all(tokenContestPromises),
+      Promise.all(nftContestPromises),
+    ]);
+
+    // Filter out nulls and combine
+    const allContests = [
+      ...tokenResults.filter(c => c !== null),
+      ...nftResults.filter(c => c !== null),
+    ];
 
     // Sort by endTime descending (newest first)
     allContests.sort((a, b) => b.endTime - a.endTime);
 
     // Apply filters and limit
-    const contests = [];
-    let fetched = 0;
+    let filteredContests = allContests;
+    if (hostFilter) {
+      filteredContests = allContests.filter(c => c.host.toLowerCase() === hostFilter);
+    }
+    const limitedContests = filteredContests.slice(0, limit);
 
-    for (const contest of allContests) {
-      if (contests.length >= limit) break;
-      fetched++;
+    // Fetch Farcaster user info for all hosts/winners in PARALLEL
+    if (includeUsers && limitedContests.length > 0) {
+      // Collect unique addresses to look up
+      const addressesToLookup = new Set();
+      limitedContests.forEach(contest => {
+        addressesToLookup.add(contest.host.toLowerCase());
+        if (contest.winner !== '0x0000000000000000000000000000000000000000') {
+          addressesToLookup.add(contest.winner.toLowerCase());
+        }
+      });
 
-      // Apply host filter if specified
-      if (hostFilter && contest.host.toLowerCase() !== hostFilter) {
-        continue;
-      }
+      // Fetch all users in parallel
+      const userPromises = Array.from(addressesToLookup).map(addr =>
+        getUserByWallet(addr).then(user => ({ addr, user })).catch(() => ({ addr, user: null }))
+      );
+      const userResults = await Promise.all(userPromises);
 
-      // Fetch Farcaster user info for host and winner if requested
-      if (includeUsers) {
-        const [hostUser, winnerUser] = await Promise.all([
-          getUserByWallet(contest.host),
-          contest.winner !== '0x0000000000000000000000000000000000000000'
-            ? getUserByWallet(contest.winner)
-            : Promise.resolve(null),
-        ]);
+      // Create lookup map
+      const userMap = {};
+      userResults.forEach(({ addr, user }) => {
+        userMap[addr] = user;
+      });
 
-        contest.hostUser = hostUser;
-        contest.winnerUser = winnerUser;
-      }
-
-      contests.push(contest);
+      // Assign users to contests
+      limitedContests.forEach(contest => {
+        contest.hostUser = userMap[contest.host.toLowerCase()] || null;
+        if (contest.winner !== '0x0000000000000000000000000000000000000000') {
+          contest.winnerUser = userMap[contest.winner.toLowerCase()] || null;
+        }
+      });
     }
 
     return res.status(200).json({
-      contests,
+      contests: limitedContests,
       total: totalContests,
       totalToken: totalTokenContests,
       totalNft: totalNftContests,
-      fetched: fetched,
+      fetched: limitedContests.length,
       limit,
     });
 
