@@ -4918,15 +4918,11 @@ ${reactLine}`;
         let volumeRequirement = ethers.BigNumber.from(0);
         if (state.tokenomicsEnabled && state.tokenEnabled && state.minTradeVolume) {
           try {
-            // For NEYNARTODES, lock at $20
-            if (state.tokenAddress.toLowerCase() === CONFIG.CONTRACTS.neynartodes.toLowerCase()) {
-              volumeRequirement = ethers.utils.parseEther('20');
-            } else {
-              // Clean the input - remove any invalid chars and limit decimals
-              const cleanVolume = parseFloat(state.minTradeVolume).toFixed(18).replace(/\.?0+$/, '');
-              if (cleanVolume && !isNaN(parseFloat(cleanVolume))) {
-                volumeRequirement = ethers.utils.parseEther(cleanVolume);
-              }
+            // Use user's input value with $20 minimum
+            const userVolume = parseFloat(state.minTradeVolume) || 20;
+            const cleanVolume = Math.max(20, userVolume).toFixed(18).replace(/\.?0+$/, '');
+            if (cleanVolume && !isNaN(parseFloat(cleanVolume))) {
+              volumeRequirement = ethers.utils.parseEther(cleanVolume);
             }
           } catch (e) {
             console.error('Invalid volume format:', e);
