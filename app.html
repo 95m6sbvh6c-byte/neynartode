@@ -686,6 +686,30 @@ ${reactLine}`;
       window.open(warpcastUrl, '_blank');
     }
 
+    // Open a cast in Warpcast using SDK (allows reactions) or fallback to new tab
+    async function openCastInWarpcast(castHash) {
+      if (!castHash) {
+        showToast('No cast to view', 'warning');
+        return;
+      }
+
+      const castUrl = `https://warpcast.com/~/conversations/${castHash}`;
+
+      // Try SDK openUrl first - this opens within Warpcast and allows reactions
+      const sdk = window.FarcasterSDK;
+      if (sdk && sdk.actions && typeof sdk.actions.openUrl === 'function') {
+        try {
+          await sdk.actions.openUrl(castUrl);
+          return;
+        } catch (e) {
+          console.log('SDK openUrl failed, falling back to window.open:', e);
+        }
+      }
+
+      // Fallback: open in new tab (reactions work if user is logged into Warpcast)
+      window.open(castUrl, '_blank');
+    }
+
   </script>
 
   <script>
@@ -3309,13 +3333,12 @@ ${reactLine}`;
           // Extract just the cast hash (before any | character) from castId
           const castHashForView = contest.castId ? contest.castId.split('|')[0] : '';
           const viewBtn = castHashForView ? `
-            <a
-              href="https://warpcast.com/~/conversations/${castHashForView}"
-              target="_blank"
+            <button
+              onclick="openCastInWarpcast('${castHashForView}')"
               class="btn-secondary text-sm py-2 px-4"
             >
-              View
-            </a>
+              View & React
+            </button>
           ` : '';
 
           return `
