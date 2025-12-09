@@ -654,11 +654,12 @@ ${reactLine}`;
       }
 
       // Quote the original cast
-      if (castId) {
+      if (castId && hostUsername) {
         // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
         // Extract just the hash part (before any | character) for the embed URL
         const castHash = castId.split('|')[0];
-        embeds.push(`https://warpcast.com/~/conversations/${castHash}`);
+        // Use full URL format with username for proper quote embedding
+        embeds.push(`https://warpcast.com/${hostUsername}/${castHash}`);
       }
 
       console.log('Sharing contest:', { contestId, isNft, embeds });
