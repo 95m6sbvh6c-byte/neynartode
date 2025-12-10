@@ -9,6 +9,10 @@
     {
       "path": "/api/announce-winner",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/finalize-contest",
+      "schedule": "*/2 * * * *"
     }
   ],
   "builds": [
