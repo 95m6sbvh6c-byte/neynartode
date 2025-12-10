@@ -812,7 +812,7 @@ async function checkAllPendingContests() {
   );
 
   const ethNextId = await ethEscrow.nextContestId();
-  const MAX_CONTESTS_TO_CHECK = 10n;
+  const MAX_CONTESTS_TO_CHECK = 15n;
   const ethStartId = ethNextId > MAX_CONTESTS_TO_CHECK ? ethNextId - MAX_CONTESTS_TO_CHECK : 1n;
 
   console.log(`\n🔍 Checking ETH contests ${ethStartId} to ${ethNextId - 1n}...`);
