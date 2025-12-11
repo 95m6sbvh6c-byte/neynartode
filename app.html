@@ -726,14 +726,28 @@ ${reactLine}`;
       const countdown = getSeasonCountdown();
       const timeLeft = countdown && !countdown.ended ? countdown.text : 'Season ended';
 
+      // Calculate vote score and net votes
+      const upvotes = host.upvotes || 0;
+      const downvotes = host.downvotes || 0;
+      const netVotes = upvotes - downvotes;
+      const voteScore = host.voteScore || (netVotes * 200);
+
       const text = `${rankEmoji} @${host.username} on the $NEYNARTODES Leaderboard!
 
 📊 Season ${state.currentSeason} Stats:
-🏆 Score: ${(host.totalScore || 0).toLocaleString()} pts
+🏆 Total Score: ${(host.totalScore || 0).toLocaleString()} pts
 🎯 Contests: ${host.completedContests || host.contests || 0} completed
-📈 Social: ${(host.socialScore || 0).toLocaleString()} | Token: ${(host.tokenScore || 0).toLocaleString()}
-⏱️ ${timeLeft} left in season
 
+📈 Score Breakdown:
+• Social: ${(host.socialScore || 0).toLocaleString()} (x3 = ${((host.socialScore || 0) * 3).toLocaleString()})
+• Token: ${(host.tokenScore || 0).toLocaleString()}
+• Host Bonus: ${(host.hostBonus || host.completedContests * 100 || 0).toLocaleString()}
+• Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} (${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()} pts)
+
+👍 ${upvotes} | 👎 ${downvotes}
+⭐ Neynar Score: ${host.neynarScore || 'N/A'}
+
+⏱️ ${timeLeft} left in season
 🦎 Check out the leaderboard!`;
 
       const sdk = window.FarcasterSDK;
