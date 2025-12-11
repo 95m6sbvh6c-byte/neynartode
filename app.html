@@ -37,6 +37,29 @@
         window.FarcasterUser = context.user;
         console.log('Farcaster user:', context.user);
       }
+
+      // Check for notification details and store them
+      const notifDetails = context?.client?.notificationDetails;
+      if (notifDetails?.token && notifDetails?.url && context?.user?.fid) {
+        console.log('Found notification details, storing...');
+        try {
+          await fetch('/api/webhook', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'notifications_enabled',
+              fid: context.user.fid,
+              notificationDetails: {
+                token: notifDetails.token,
+                url: notifDetails.url,
+              },
+            }),
+          });
+          console.log('Notification token stored for FID', context.user.fid);
+        } catch (e) {
+          console.log('Could not store notification token:', e);
+        }
+      }
     } catch (e) {
       console.log('Could not get Farcaster context:', e);
     }
