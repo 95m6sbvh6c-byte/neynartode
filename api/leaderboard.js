@@ -6,7 +6,9 @@
  *
  * Scoring System:
  *   Total Score = Contest Score + Vote Score
- *   Contest Score = (Social x 3) + Token
+ *   Contest Score = Host Bonus + (Social x Contests) + Token
+ *   Host Bonus = 100 points per completed contest
+ *   Social Multiplier = Social Score x completed contests (rewards active hosts)
  *   Vote Score = (Upvotes - Downvotes) x 200
  *   Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100
  *   Token = Volume Points x 50
@@ -305,8 +307,11 @@ module.exports = async (req, res) => {
       // Token = Volume Points x 50
       const tokenScore = stats.totalVolume * 50;
 
-      // Contest Score = Host Bonus + (Social x 3) + Token
-      const contestScore = hostBonus + (socialScore * 3) + tokenScore;
+      // Social Multiplier = number of completed contests (rewards active hosts)
+      const socialMultiplier = stats.completedContests;
+
+      // Contest Score = Host Bonus + (Social x completedContests) + Token
+      const contestScore = hostBonus + (socialScore * socialMultiplier) + tokenScore;
 
       // Vote Score = (Upvotes - Downvotes) x 200
       const voteScore = (stats.upvotes - stats.downvotes) * 200;
@@ -334,6 +339,7 @@ module.exports = async (req, res) => {
         // Score breakdown
         hostBonus,
         socialScore,
+        socialMultiplier,
         tokenScore,
         contestScore,
         voteScore,
@@ -356,8 +362,9 @@ module.exports = async (req, res) => {
       totalHosts: hostsWithScores.length,
       scoringFormula: {
         total: 'Contest Score + Vote Score',
-        contest: 'Host Bonus + (Social x 3) + Token',
+        contest: 'Host Bonus + (Social x Contests) + Token',
         hostBonus: '100 points per completed contest',
+        socialMultiplier: 'Social Score x completed contests',
         vote: '(Upvotes - Downvotes) x 200',
         social: '(Likes x 1 + Recasts x 2 + Replies x 3) x 100',
         token: 'Volume Points x 50',

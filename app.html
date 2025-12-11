@@ -737,18 +737,20 @@ ${reactLine}`;
       const recasts = host.recasts || 0;
       const replies = host.replies || 0;
       const socialRaw = (likes * 1) + (recasts * 2) + (replies * 3);
+      const completedContests = host.completedContests || host.contests || 0;
+      const socialMultiplier = host.socialMultiplier || completedContests;
 
       const text = `${rankEmoji} @${host.username} on the $NEYNARTODES Leaderboard!
 
 📊 Season ${state.currentSeason} Stats:
 🏆 Total Score: ${(host.totalScore || 0).toLocaleString()} pts
-🎯 Contests: ${host.completedContests || host.contests || 0} completed
+🎯 Contests: ${completedContests} completed
 
 📈 Score Breakdown:
 • Social: [❤️${likes}×1] + [🔁${recasts}×2] + [💬${replies}×3] = ${socialRaw} × 100 = ${(host.socialScore || 0).toLocaleString()}
-  → ×3 multiplier = ${((host.socialScore || 0) * 3).toLocaleString()} pts
+  → ×${socialMultiplier} (contests) = ${((host.socialScore || 0) * socialMultiplier).toLocaleString()} pts
 • 💰 Token: ${(host.tokenScore || 0).toLocaleString()} (volume × 50)
-• 🎯 Host Bonus: ${(host.hostBonus || host.completedContests * 100 || 0).toLocaleString()} (100/contest)
+• 🎯 Host Bonus: ${(host.hostBonus || completedContests * 100 || 0).toLocaleString()} (100/contest)
 • 🗳️ Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} × 200 = ${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()} pts
 
 👍 ${upvotes} | 👎 ${downvotes} | ⭐ Neynar: ${host.neynarScore || 'N/A'}
