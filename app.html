@@ -4667,6 +4667,9 @@ ${reactLine}`;
             const statusDiv = document.getElementById('launchStatus');
             if (statusDiv) statusDiv.textContent = 'Step 1: Launch clicked...';
 
+          // Check if user is dev wallet (bypasses own cast check)
+          const isDev = isDevWallet(state.userAddress);
+
           // Validate duration
           const hours = parseInt(state.durationHours) || 0;
           const minutes = parseInt(state.durationMinutes) || 0;
