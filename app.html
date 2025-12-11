@@ -649,10 +649,31 @@ ${reactLine}`;
       // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
       const castHash = castId ? castId.split('|')[0] : null;
 
+      // Look up the actual cast author (may differ from contest host)
+      // The cast URL needs the author's username, not the contest host
+      let castAuthorUsername = hostUsername;
+      if (castHash) {
+        try {
+          const castResponse = await fetch(
+            `https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash`,
+            { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+          );
+          if (castResponse.ok) {
+            const castData = await castResponse.json();
+            if (castData.cast?.author?.username) {
+              castAuthorUsername = castData.cast.author.username;
+              console.log(`Cast author: @${castAuthorUsername} (host: @${hostUsername})`);
+            }
+          }
+        } catch (e) {
+          console.log('Could not look up cast author, using host:', e);
+        }
+      }
+
       // Add cast URL as FIRST embed to create quote-cast (not reply)
       // Using embeds instead of parent parameter creates a quote-cast, not a reply
-      if (castHash && hostUsername) {
-        embeds.push(`https://warpcast.com/${hostUsername}/${castHash}`);
+      if (castHash && castAuthorUsername) {
+        embeds.push(`https://warpcast.com/${castAuthorUsername}/${castHash}`);
       }
 
       // Add NFT image as second embed if available (max 2 embeds)
