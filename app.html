@@ -720,6 +720,72 @@ ${reactLine}`;
       window.open(warpcastUrl, '_blank');
     }
 
+    // Share host leaderboard stats
+    async function shareHostStats(host) {
+      const rankEmoji = host.rank === 1 ? '🥇' : host.rank === 2 ? '🥈' : host.rank === 3 ? '🥉' : `#${host.rank}`;
+      const countdown = getSeasonCountdown();
+      const timeLeft = countdown && !countdown.ended ? countdown.text : 'Season ended';
+
+      const text = `${rankEmoji} @${host.username} on the $NEYNARTODES Leaderboard!
+
+📊 Season ${state.currentSeason} Stats:
+🏆 Score: ${(host.totalScore || 0).toLocaleString()} pts
+🎯 Contests: ${host.completedContests || host.contests || 0} completed
+📈 Social: ${(host.socialScore || 0).toLocaleString()} | Token: ${(host.tokenScore || 0).toLocaleString()}
+⏱️ ${timeLeft} left in season
+
+🦎 Check out the leaderboard!`;
+
+      const sdk = window.FarcasterSDK;
+      if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
+        try {
+          await sdk.actions.composeCast({
+            text: text,
+            embeds: ['https://frame-opal-eight.vercel.app/']
+          });
+          return;
+        } catch (e) {
+          console.log('composeCast failed, falling back to URL:', e);
+        }
+      }
+
+      // Fallback
+      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent('https://frame-opal-eight.vercel.app/')}`;
+      window.open(warpcastUrl, '_blank');
+    }
+
+    // Share season stats (prize pool, tokens burned, time remaining)
+    async function shareSeasonStats() {
+      const countdown = getSeasonCountdown();
+      const timeLeft = countdown && !countdown.ended ? countdown.text : 'Season ended';
+
+      const text = `🦎 $NEYNARTODES Season ${state.currentSeason} Stats!
+
+⏱️ Time Remaining: ${timeLeft}
+💰 Host Prize Pool: ${state.hostPoolETH.toFixed(4)} ETH
+🔥 Tokens Burned: ${Number(state.totalTokensBurned).toLocaleString()} $NEYNARTODES
+💎 All-Time Prizes: ${state.totalPrizesGiven.toFixed(4)} ETH
+
+Host contests to climb the leaderboard and win from the prize pool!`;
+
+      const sdk = window.FarcasterSDK;
+      if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
+        try {
+          await sdk.actions.composeCast({
+            text: text,
+            embeds: ['https://frame-opal-eight.vercel.app/']
+          });
+          return;
+        } catch (e) {
+          console.log('composeCast failed, falling back to URL:', e);
+        }
+      }
+
+      // Fallback
+      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent('https://frame-opal-eight.vercel.app/')}`;
+      window.open(warpcastUrl, '_blank');
+    }
+
     // Open a cast in Warpcast using SDK (allows reactions) or fallback to new tab
     async function openCastInWarpcast(castHash) {
       if (!castHash) {
@@ -3148,7 +3214,14 @@ ${reactLine}`;
                     <div class="stat-label">All-Time Prizes Distributed</div>
                     <div class="stat-value">${state.totalPrizesGiven.toFixed(4)} <span class="text-[var(--text-muted)] text-xl">ETH</span></div>
                   </div>
-                  <div class="text-4xl opacity-20">💎</div>
+                  <div class="flex items-center gap-3">
+                    <button
+                      onclick="shareSeasonStats()"
+                      class="px-4 py-2 rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--accent)] hover:bg-opacity-20 text-[var(--text-muted)] hover:text-[var(--accent-light)] transition-colors text-sm font-medium flex items-center gap-2"
+                      title="Share season stats"
+                    >📤 Share Stats</button>
+                    <div class="text-4xl opacity-20">💎</div>
+                  </div>
                 </div>
               </div>
 
@@ -3231,6 +3304,7 @@ ${reactLine}`;
                         <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Vote</th>
                         <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Contests</th>
                         <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Neynar</th>
+                        <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3288,6 +3362,13 @@ ${reactLine}`;
                           </td>
                           <td class="py-4 px-2 text-right">
                             <span class="tag tag-accent">${host.neynarScore}</span>
+                          </td>
+                          <td class="py-4 px-2 text-center">
+                            <button
+                              onclick='shareHostStats(${JSON.stringify(host).replace(/'/g, "\\'")})'
+                              class="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--accent)] hover:bg-opacity-20 text-[var(--text-muted)] hover:text-[var(--accent-light)] transition-colors text-sm"
+                              title="Share stats"
+                            >📤</button>
                           </td>
                         </tr>
                       `).join('')}
