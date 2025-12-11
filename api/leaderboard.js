@@ -354,6 +354,35 @@ module.exports = async (req, res) => {
       rank: idx + 1,
     }));
 
+    // Check if #1 leader has changed and send notification
+    if (topHosts.length > 0 && process.env.KV_REST_API_URL) {
+      try {
+        const { kv } = await import('@vercel/kv');
+        const currentLeader = topHosts[0];
+        const kvKey = `leaderboard_leader_s${requestedSeason}`;
+        const previousLeaderFid = await kv.get(kvKey);
+
+        // If leader changed (and not first time), send notification
+        if (previousLeaderFid && previousLeaderFid !== currentLeader.fid) {
+          console.log(`🏆 New #1 leader: ${currentLeader.username} (was FID ${previousLeaderFid})`);
+
+          // Send notification
+          const { sendNotification } = require('./send-notification');
+          await sendNotification('new_leaderboard_leader', {
+            username: currentLeader.username,
+            fid: currentLeader.fid,
+            score: currentLeader.totalScore,
+            season: requestedSeason,
+          });
+        }
+
+        // Store current leader
+        await kv.set(kvKey, currentLeader.fid);
+      } catch (e) {
+        console.log('Could not check/update leader:', e.message);
+      }
+    }
+
     return res.status(200).json({
       hosts: topHosts,
       season: seasonInfo,

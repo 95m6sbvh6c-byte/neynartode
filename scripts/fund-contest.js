@@ -196,6 +196,34 @@ async function main() {
   console.log(`   Host Pool:  ${ethers.formatEther(newSeason.hostPool)} ETH`);
   console.log(`   Voter Pool: ${ethers.formatEther(newSeason.voterPool)} ETH`);
 
+  // Send notification to subscribers
+  try {
+    const amountETH = ethers.formatEther(hostAmount);
+    const newTotalETH = ethers.formatEther(newSeason.hostPool);
+    console.log('\n📢 Sending notification to subscribers...');
+
+    const response = await fetch('https://frame-opal-eight.vercel.app/api/send-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer neynartodes-notif-secret'
+      },
+      body: JSON.stringify({
+        type: 'prize_pool_funded',
+        data: {
+          amount: amountETH,
+          total: newTotalETH,
+          season: config.seasonId,
+        }
+      })
+    });
+
+    const result = await response.json();
+    console.log(`   📢 Notification sent: ${result.sent || 0} users notified`);
+  } catch (e) {
+    console.log(`   ⚠️ Could not send notification: ${e.message}`);
+  }
+
   console.log('\n🎉 Treasury funds added successfully!');
 }
 

@@ -38,6 +38,10 @@ const ERC20_ABI = [
   'function decimals() view returns (uint8)',
 ];
 
+const ERC721_ABI = [
+  'function name() view returns (string)',
+];
+
 /**
  * Get user info by wallet
  */
@@ -164,7 +168,7 @@ async function checkContestsEndingSoon(provider) {
     for (let i = totalNftContests; i >= Math.max(1, totalNftContests - 10); i--) {
       try {
         const contest = await nftContract.getContest(i);
-        const [host, , , , , , endTime, , , , status] = contest;
+        const [host, , nftContractAddr, tokenId, , , endTime, , , , status] = contest;
 
         const contestEndTime = Number(endTime);
         const contestStatus = Number(status);
@@ -174,10 +178,19 @@ async function checkContestsEndingSoon(provider) {
 
           const hostUser = await getUserByWallet(host);
 
+          // Try to get NFT collection name
+          let nftName = 'NFT';
+          try {
+            const nftContract = new ethers.Contract(nftContractAddr, ERC721_ABI, provider);
+            nftName = await nftContract.name();
+          } catch (e) {
+            // Fallback to generic
+          }
+
           contestsEndingSoon.push({
             contestId: i,
             isNft: true,
-            prize: 'NFT Prize',
+            prize: `${nftName} #${Number(tokenId)}`,
             hostUsername: hostUser?.username,
             endTime: contestEndTime,
           });

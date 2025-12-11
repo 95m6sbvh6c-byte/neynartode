@@ -5,11 +5,11 @@
  * Can be called by other APIs or triggered by cron jobs.
  *
  * Notification Types:
- *   - new_contest: A new contest was created
- *   - contest_completed: A contest has ended and winner selected
- *   - contest_ending_soon: Contest ends in 1 hour
- *   - new_leaderboard_leader: New #1 on the leaderboard
- *   - prize_pool_funded: Host prize pool was funded
+ *   - new_contest: A new contest was created → Active Contests
+ *   - contest_ending_soon: Contest ends in 1 hour → Active Contests
+ *   - daily_active_contests: Daily update (12am UTC) → Active Contests
+ *   - new_leaderboard_leader: New #1 on the leaderboard → Leaderboard
+ *   - prize_pool_funded: Host prize pool was funded → Leaderboard
  *
  * Usage:
  *   POST /api/send-notification
@@ -102,28 +102,31 @@ function truncate(str, maxLen) {
 function buildNotificationContent(type, data) {
   const baseUrl = 'https://frame-opal-eight.vercel.app/';
 
-  let title, body;
+  let title, body, targetUrl;
 
   switch (type) {
     case 'new_contest':
-      title = 'New Contest Live!';
+      title = `Contest #${data.contestId || '?'} Live!`;
       body = data.prize
-        ? `Win ${data.prize}! ${data.hostUsername ? `Hosted by @${data.hostUsername}` : ''}`
+        ? `Win ${data.prize}! ${data.hostUsername ? `by @${data.hostUsername}` : ''}`
         : 'A new contest is now live!';
-      break;
-
-    case 'contest_completed':
-      title = 'Winner Announced!';
-      body = data.winnerUsername
-        ? `@${data.winnerUsername} won ${data.prize || 'the contest'}!`
-        : `Contest #${data.contestId} has ended!`;
+      targetUrl = `${baseUrl}?view=active`;
       break;
 
     case 'contest_ending_soon':
-      title = 'Contest Ending Soon!';
+      title = `Contest #${data.contestId || '?'} Ending!`;
       body = data.prize
         ? `1 hour left to win ${data.prize}!`
-        : `Contest #${data.contestId} ends in 1 hour!`;
+        : 'Contest ends in 1 hour!';
+      targetUrl = `${baseUrl}?view=active`;
+      break;
+
+    case 'daily_active_contests':
+      title = 'Daily Contest Update';
+      body = data.count > 0
+        ? `${data.count} contest${data.count > 1 ? 's' : ''} live now! Enter to win.`
+        : 'No active contests. Be the first to host one!';
+      targetUrl = `${baseUrl}?view=active`;
       break;
 
     case 'new_leaderboard_leader':
@@ -131,24 +134,27 @@ function buildNotificationContent(type, data) {
       body = data.username
         ? `@${data.username} is now #1!`
         : 'A new host has taken the #1 spot!';
+      targetUrl = `${baseUrl}?view=leaderboard`;
       break;
 
     case 'prize_pool_funded':
       title = 'Prize Pool Funded!';
       body = data.amount
-        ? `${data.amount} ETH added to Season ${data.season || ''} pool!`
+        ? `+${data.amount} ETH! Pool now ${data.total || '?'} ETH`
         : 'The host prize pool has been funded!';
+      targetUrl = `${baseUrl}?view=leaderboard`;
       break;
 
     default:
       title = 'NEYNARtodes Update';
       body = data.message || 'Something new is happening!';
+      targetUrl = baseUrl;
   }
 
   return {
     title: truncate(title, 32),
     body: truncate(body, 128),
-    targetUrl: baseUrl,
+    targetUrl,
   };
 }
 

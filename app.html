@@ -42,6 +42,7 @@
       const notifDetails = context?.client?.notificationDetails;
       if (notifDetails?.token && notifDetails?.url && context?.user?.fid) {
         console.log('Found notification details, storing...');
+        window.NotificationsEnabled = true;
         try {
           await fetch('/api/webhook', {
             method: 'POST',
@@ -59,9 +60,13 @@
         } catch (e) {
           console.log('Could not store notification token:', e);
         }
+      } else {
+        console.log('No notification details found - notifications may be disabled');
+        window.NotificationsEnabled = false;
       }
     } catch (e) {
       console.log('Could not get Farcaster context:', e);
+      window.NotificationsEnabled = false;
     }
 
     // Signal that SDK is ready - main script will listen for this
@@ -949,6 +954,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       userBalance: '0',
       currentView: 'create', // 'create', 'leaderboard', 'history', 'suggestions'
       pendingTx: null, // Pending transaction hash
+      notificationsEnabled: null, // null = unknown, true = enabled, false = disabled
 
       // Voting
       votesRemaining: 10,
@@ -3198,6 +3204,19 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               <button id="viewSuggestions" class="btn-ghost flex-1 text-[10px] py-2 px-1">Ideas</button>
             ` : ''}
           </nav>
+
+          ${state.notificationsEnabled === false ? `
+          <!-- Notification banner -->
+          <div class="mt-3 p-3 rounded-xl bg-[var(--warning)]/10 border border-[var(--warning)]/30 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 text-sm">
+              <span>🔔</span>
+              <span class="text-[var(--text-secondary)]">Notifications are off</span>
+            </div>
+            <button onclick="enableNotifications()" class="btn-ghost text-xs px-3 py-1 bg-[var(--warning)]/20 hover:bg-[var(--warning)]/30">
+              Enable
+            </button>
+          </div>
+          ` : ''}
         </header>
       `;
     }
@@ -5739,6 +5758,32 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
         }
 
+        // Send new_contest notification to all subscribers
+        try {
+          const prizeDisplay = state.prizeType === 'nft'
+            ? `${state.nftName || 'NFT'} #${state.nftTokenId || '?'}`
+            : `${state.prizeTokenAmount || ''} ${state.prizeTokenTicker || 'ETH'}`;
+
+          await fetch(`${apiBaseUrl}/api/send-notification`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer neynartodes-notif-secret'
+            },
+            body: JSON.stringify({
+              type: 'new_contest',
+              data: {
+                contestId: contestId,
+                prize: prizeDisplay.trim(),
+                hostUsername: state.currentUser?.username || ''
+              }
+            })
+          });
+          console.log('📢 New contest notification sent');
+        } catch (e) {
+          console.log('⚠️ Could not send notification:', e.message);
+        }
+
         // Add contest to state ONLY after successful on-chain tx
         contest.onChainId = contestId;
         contest.contestId = contestId !== 'Unknown' ? parseInt(contestId) : null;
@@ -6087,14 +6132,67 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     // Attach document-level event handlers ONCE (not on every render)
     initDropdownCloseHandler();
 
+    // Handle URL params for deep linking from notifications
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewParam = urlParams.get('view');
+    if (viewParam && ['active', 'leaderboard', 'create', 'history', 'suggestions'].includes(viewParam)) {
+      state.currentView = viewParam;
+      console.log('Deep link: navigating to', viewParam);
+      // Clean up URL without reload
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     // Initial render
     render();
 
     // Re-render when Farcaster SDK loads (it's async)
     window.addEventListener('farcaster-ready', () => {
       console.log('Farcaster SDK ready event received, re-rendering...');
+      // Update notification status from SDK check
+      state.notificationsEnabled = window.NotificationsEnabled === true;
       render();
     });
+
+    // Enable notifications using SDK
+    window.enableNotifications = async function() {
+      const sdk = window.FarcasterSDK;
+      if (!sdk) {
+        showToast('SDK not loaded', 'error');
+        return;
+      }
+
+      try {
+        showToast('Requesting notification permission...', 'info');
+        // Use SDK to prompt for notifications
+        const result = await sdk.actions.addFrame();
+        console.log('addFrame result:', result);
+
+        if (result?.notificationDetails?.token) {
+          // Store the new token
+          const context = await sdk.context;
+          await fetch('/api/webhook', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'notifications_enabled',
+              fid: context?.user?.fid,
+              notificationDetails: {
+                token: result.notificationDetails.token,
+                url: result.notificationDetails.url,
+              },
+            }),
+          });
+          state.notificationsEnabled = true;
+          showToast('Notifications enabled!', 'success');
+          render();
+        } else {
+          showToast('Could not enable notifications', 'error');
+        }
+      } catch (e) {
+        console.error('Enable notifications error:', e);
+        showToast('Failed to enable notifications: ' + e.message, 'error');
+      }
+    };
   </script>
 </body>
 </html>
