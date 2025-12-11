@@ -718,6 +718,18 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
     const receipt = await tx.wait();
     console.log(`   ✅ Confirmed in block ${receipt.blockNumber}`);
 
+    // Store the finalize TX hash in KV for announcement
+    try {
+      if (process.env.KV_REST_API_URL) {
+        const { kv } = require('@vercel/kv');
+        const kvKey = isNftContest ? `finalize_tx_nft_${contestId}` : `finalize_tx_${contestId}`;
+        await kv.set(kvKey, tx.hash);
+        console.log(`   📝 Stored finalize TX hash in KV (${kvKey})`);
+      }
+    } catch (e) {
+      console.log(`   Could not store TX hash:`, e.message);
+    }
+
     // Poll for winner (VRF callback usually takes 1-3 blocks on Base)
     console.log('\n⏳ Waiting for Chainlink VRF to select winner...');
     let winner = '0x0000000000000000000000000000000000000000';

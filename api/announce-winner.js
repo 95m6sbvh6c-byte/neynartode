@@ -333,6 +333,20 @@ async function announceWinner(contestId) {
   // Get custom message (if stored)
   const customMessage = await getCustomMessage(contestId);
 
+  // Get finalize TX hash (if stored)
+  let finalizeTxHash = null;
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      finalizeTxHash = await kv.get(`finalize_tx_${contestId}`);
+      if (finalizeTxHash) {
+        console.log(`   Found finalize TX: ${finalizeTxHash}`);
+      }
+    }
+  } catch (e) {
+    console.log(`   Could not get finalize TX:`, e.message);
+  }
+
   // Build announcement message
   let announcement = `🎉 CONTEST COMPLETE!\n\n`;
 
@@ -348,8 +362,14 @@ async function announceWinner(contestId) {
   announcement += `🏆 Winner: ${winnerTag}\n`;
   announcement += `💰 Prize: ${prizeDisplay}\n`;
   announcement += `👥 Participants: ${participantCount}\n`;
-  announcement += `🎲 Selected via Chainlink VRF\n\n`;
-  announcement += `Congrats ${winnerTag}! 🦎\n\n`;
+  announcement += `🎲 Selected via Chainlink VRF\n`;
+
+  // Add TX hash link if available
+  if (finalizeTxHash) {
+    announcement += `🔗 TX: basescan.org/tx/${finalizeTxHash.slice(0, 10)}...\n`;
+  }
+
+  announcement += `\nCongrats ${winnerTag}! 🦎\n\n`;
   announcement += `Launch your own contest: https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
 
   console.log(`   Message: ${announcement.slice(0, 100)}...`);
@@ -506,6 +526,20 @@ async function announceNftWinner(contestId) {
   // Get custom message (if stored) - use nft prefix
   const customMessage = await getCustomMessage(`nft_${contestId}`);
 
+  // Get finalize TX hash (if stored) - use nft prefix
+  let finalizeTxHash = null;
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      finalizeTxHash = await kv.get(`finalize_tx_nft_${contestId}`);
+      if (finalizeTxHash) {
+        console.log(`   Found finalize TX: ${finalizeTxHash}`);
+      }
+    }
+  } catch (e) {
+    console.log(`   Could not get finalize TX:`, e.message);
+  }
+
   // Build announcement message
   let announcement = `🎉 NFT CONTEST COMPLETE!\n\n`;
 
@@ -521,8 +555,14 @@ async function announceNftWinner(contestId) {
   announcement += `🏆 Winner: ${winnerTag}\n`;
   announcement += `🖼️ Prize: ${prizeDisplay}\n`;
   announcement += `👥 Participants: ${participantCount}\n`;
-  announcement += `🎲 Selected via Chainlink VRF\n\n`;
-  announcement += `Congrats ${winnerTag}! 🦎\n\n`;
+  announcement += `🎲 Selected via Chainlink VRF\n`;
+
+  // Add TX hash link if available
+  if (finalizeTxHash) {
+    announcement += `🔗 TX: basescan.org/tx/${finalizeTxHash.slice(0, 10)}...\n`;
+  }
+
+  announcement += `\nCongrats ${winnerTag}! 🦎\n\n`;
   announcement += `Launch your own contest: https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
 
   console.log(`   Message: ${announcement.slice(0, 100)}...`);
