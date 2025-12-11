@@ -732,6 +732,12 @@ ${reactLine}`;
       const netVotes = upvotes - downvotes;
       const voteScore = host.voteScore || (netVotes * 200);
 
+      // Social score breakdown: (Likes×1 + Recasts×2 + Replies×3) × 100
+      const likes = host.likes || 0;
+      const recasts = host.recasts || 0;
+      const replies = host.replies || 0;
+      const socialRaw = (likes * 1) + (recasts * 2) + (replies * 3);
+
       const text = `${rankEmoji} @${host.username} on the $NEYNARTODES Leaderboard!
 
 📊 Season ${state.currentSeason} Stats:
@@ -739,13 +745,13 @@ ${reactLine}`;
 🎯 Contests: ${host.completedContests || host.contests || 0} completed
 
 📈 Score Breakdown:
-• Social: ${(host.socialScore || 0).toLocaleString()} (x3 = ${((host.socialScore || 0) * 3).toLocaleString()})
-• Token: ${(host.tokenScore || 0).toLocaleString()}
-• Host Bonus: ${(host.hostBonus || host.completedContests * 100 || 0).toLocaleString()}
-• Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} (${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()} pts)
+• Social: ${socialRaw} × 100 = ${(host.socialScore || 0).toLocaleString()} (×3 = ${((host.socialScore || 0) * 3).toLocaleString()})
+  ❤️ ${likes} likes | 🔁 ${recasts} recasts | 💬 ${replies} replies
+• Token: ${(host.tokenScore || 0).toLocaleString()} (volume × 50)
+• Host Bonus: ${(host.hostBonus || host.completedContests * 100 || 0).toLocaleString()} (100/contest)
+• Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} (×200 = ${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()})
 
-👍 ${upvotes} | 👎 ${downvotes}
-⭐ Neynar Score: ${host.neynarScore || 'N/A'}
+👍 ${upvotes} | 👎 ${downvotes} | ⭐ Neynar: ${host.neynarScore || 'N/A'}
 
 ⏱️ ${timeLeft} left in season
 🦎 Check out the leaderboard!`;
@@ -2245,9 +2251,20 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         // Clanker fees now go direct to Treasury - no pending fees to track
         state.pendingClankerFees = '0';
 
-        // For now, calculate prizes given from all seasons (you can add a totalPrizesDistributed to contract later)
-        // For beta, we'll use the current season's total as placeholder (V2 has no devPool)
-        if (state.currentSeason > 0) {
+        // Fetch all-time prizes from API (includes contest prizes + distributed season pools)
+        try {
+          const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+          const prizesResponse = await fetch(`${baseUrl}/api/all-time-prizes`);
+          if (prizesResponse.ok) {
+            const prizesData = await prizesResponse.json();
+            state.totalPrizesGiven = prizesData.totalETH || 0;
+            console.log('All-time prizes loaded:', prizesData);
+          } else {
+            // Fallback to current season pools
+            state.totalPrizesGiven = state.hostPoolETH + state.voterPoolETH;
+          }
+        } catch (e) {
+          console.log('Could not fetch all-time prizes, using season pools:', e.message);
           state.totalPrizesGiven = state.hostPoolETH + state.voterPoolETH;
         }
 
