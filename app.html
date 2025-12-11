@@ -40,29 +40,39 @@
 
       // Check for notification details and store them
       const notifDetails = context?.client?.notificationDetails;
-      if (notifDetails?.token && notifDetails?.url && context?.user?.fid) {
+      const userFid = context?.user?.fid;
+      const hadNotifsBefore = localStorage.getItem('neynartodes_notifs_enabled') === 'true';
+
+      if (notifDetails?.token && notifDetails?.url && userFid) {
         console.log('Found notification details, storing...');
         window.NotificationsEnabled = true;
+        localStorage.setItem('neynartodes_notifs_enabled', 'true');
         try {
           await fetch('/api/webhook', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               event: 'notifications_enabled',
-              fid: context.user.fid,
+              fid: userFid,
               notificationDetails: {
                 token: notifDetails.token,
                 url: notifDetails.url,
               },
             }),
           });
-          console.log('Notification token stored for FID', context.user.fid);
+          console.log('Notification token stored for FID', userFid);
         } catch (e) {
           console.log('Could not store notification token:', e);
         }
       } else {
         console.log('No notification details found - notifications may be disabled');
         window.NotificationsEnabled = false;
+
+        // If user previously had notifications, they got reset - show prompt
+        if (hadNotifsBefore) {
+          console.log('User had notifications before - they were reset by deployment');
+          window.NotificationsWereReset = true;
+        }
       }
     } catch (e) {
       console.log('Could not get Farcaster context:', e);
@@ -955,6 +965,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       currentView: 'create', // 'create', 'leaderboard', 'history', 'suggestions'
       pendingTx: null, // Pending transaction hash
       notificationsEnabled: null, // null = unknown, true = enabled, false = disabled
+      notificationsWereReset: false, // true if notifications were reset by deployment
 
       // Voting
       votesRemaining: 10,
@@ -3207,12 +3218,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           ${state.notificationsEnabled === false ? `
           <!-- Notification banner -->
-          <div class="mt-3 p-3 rounded-xl bg-[var(--warning)]/10 border border-[var(--warning)]/30 flex items-center justify-between gap-2">
+          <div class="mt-3 p-3 rounded-xl ${state.notificationsWereReset ? 'bg-[var(--error)]/10 border-[var(--error)]/30' : 'bg-[var(--warning)]/10 border-[var(--warning)]/30'} border flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 text-sm">
               <span>🔔</span>
-              <span class="text-[var(--text-secondary)]">Notifications are off</span>
+              <span class="text-[var(--text-secondary)]">
+                ${state.notificationsWereReset ? 'Notifications reset! Tap to re-enable' : 'Notifications are off'}
+              </span>
             </div>
-            <button onclick="enableNotifications()" class="btn-ghost text-xs px-3 py-1 bg-[var(--warning)]/20 hover:bg-[var(--warning)]/30">
+            <button onclick="enableNotifications()" class="btn-ghost text-xs px-3 py-1 ${state.notificationsWereReset ? 'bg-[var(--error)]/20 hover:bg-[var(--error)]/30 animate-pulse' : 'bg-[var(--warning)]/20 hover:bg-[var(--warning)]/30'}">
               Enable
             </button>
           </div>
@@ -6150,6 +6163,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       console.log('Farcaster SDK ready event received, re-rendering...');
       // Update notification status from SDK check
       state.notificationsEnabled = window.NotificationsEnabled === true;
+      state.notificationsWereReset = window.NotificationsWereReset === true;
       render();
     });
 
@@ -6183,6 +6197,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             }),
           });
           state.notificationsEnabled = true;
+          state.notificationsWereReset = false;
+          localStorage.setItem('neynartodes_notifs_enabled', 'true');
           showToast('Notifications enabled!', 'success');
           render();
         } else {
