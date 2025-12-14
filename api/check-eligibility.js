@@ -21,6 +21,9 @@ const CONFIG = {
   V4_STATE_VIEW: '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71',
   NEYNARTODES_POOL_ID: '0xfad8f807f3f300d594c5725adb8f54314d465bcb1ab8cc04e37b08c1aa80d2e7',
   CHAINLINK_ETH_USD: '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70',
+  // Holder thresholds (in tokens with 18 decimals)
+  HOLDER_THRESHOLD_DEFAULT: 100000000n * 10n**18n,  // 100M for NEYNARTODES contests
+  HOLDER_THRESHOLD_CUSTOM: 200000000n * 10n**18n,   // 200M for custom token contests
 };
 
 const CONTEST_ESCROW_ABI = [
@@ -38,6 +41,70 @@ const V4_STATE_VIEW_ABI = [
 const CHAINLINK_ABI = [
   'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
 ];
+
+const ERC20_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+];
+
+/**
+ * Determine holder threshold based on contest type
+ * - 100M for NEYNARTODES contests (rewards loyal holders)
+ * - 200M for custom token contests (drives more volume to promoted projects)
+ */
+function getHolderThreshold(tokenRequirement) {
+  const isNeynartodes = tokenRequirement.toLowerCase() === CONFIG.NEYNARTODES.toLowerCase();
+  return {
+    threshold: isNeynartodes ? CONFIG.HOLDER_THRESHOLD_DEFAULT : CONFIG.HOLDER_THRESHOLD_CUSTOM,
+    thresholdFormatted: isNeynartodes ? '100M' : '200M',
+    isCustomToken: !isNeynartodes
+  };
+}
+
+/**
+ * Check if user qualifies via NEYNARTODES token holdings
+ * Sums balance across all verified addresses
+ */
+async function checkHolderQualification(addresses, provider, tokenRequirement) {
+  const { threshold, thresholdFormatted, isCustomToken } = getHolderThreshold(tokenRequirement);
+
+  const neynartodes = new ethers.Contract(
+    CONFIG.NEYNARTODES,
+    ERC20_ABI,
+    provider
+  );
+
+  let totalBalance = 0n;
+  for (const addr of addresses) {
+    try {
+      const balance = await neynartodes.balanceOf(addr);
+      totalBalance += balance;
+    } catch (e) {
+      console.error(`Error checking balance for ${addr}:`, e.message);
+    }
+  }
+
+  return {
+    met: totalBalance >= threshold,
+    balance: totalBalance.toString(),
+    balanceFormatted: formatTokenBalance(totalBalance),
+    threshold: threshold.toString(),
+    thresholdFormatted: thresholdFormatted,
+    remaining: totalBalance >= threshold ? '0' : (threshold - totalBalance).toString(),
+    remainingFormatted: totalBalance >= threshold ? '0' : formatTokenBalance(threshold - totalBalance),
+    isCustomToken: isCustomToken
+  };
+}
+
+/**
+ * Format token balance to human readable (e.g., 50M, 1.5B)
+ */
+function formatTokenBalance(balance) {
+  const num = Number(balance / (10n ** 18n));
+  if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(1) + 'B';
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M';
+  if (num >= 1_000) return (num / 1_000).toFixed(1) + 'K';
+  return num.toFixed(0);
+}
 
 /**
  * Get ETH price in USD
@@ -637,8 +704,10 @@ module.exports = async (req, res) => {
     const blocksElapsed = Math.floor(elapsedTime / 2);
     const fromBlock = Math.max(0, currentBlock - blocksElapsed);
 
-    // Check volume AND social requirements in PARALLEL (they're independent)
-    const [volumeResult, social] = await Promise.all([
+    // Check holder, volume, AND social requirements in PARALLEL (they're independent)
+    const [holder, volumeResult, social] = await Promise.all([
+      // Holder check (skip volume if user holds enough NEYNARTODES)
+      checkHolderQualification(addresses, provider, tokenRequirement),
       // Volume check
       (async () => {
         const transfers = await getContestTransfers(provider, tokenRequirement, addresses, fromBlock, currentBlock);
@@ -663,11 +732,32 @@ module.exports = async (req, res) => {
       (!requireLike || social.liked) &&
       (!requireReply || social.replied);
 
-    const qualified = volumeMet && socialMet;
+    // Qualification: (holder OR volume) AND social
+    // Holders skip volume requirement, but still need social engagement
+    const qualified = (holder.met || volumeMet) && socialMet;
+
+    // Determine qualification reason for UI display
+    let qualificationReason = 'not_qualified';
+    if (qualified) {
+      if (holder.met) qualificationReason = 'holder';
+      else if (volumeRequiredUSD === 0) qualificationReason = 'no_requirement';
+      else qualificationReason = 'volume';
+    }
 
     return res.status(200).json({
       qualified,
+      reason: qualificationReason,
       contestId: parseInt(contestId),
+      holder: {
+        met: holder.met,
+        balance: holder.balance,
+        balanceFormatted: holder.balanceFormatted,
+        threshold: holder.threshold,
+        thresholdFormatted: holder.thresholdFormatted,
+        remaining: holder.remaining,
+        remainingFormatted: holder.remainingFormatted,
+        isCustomToken: holder.isCustomToken,
+      },
       volume: {
         met: volumeMet,
         tokens: volumeTokens,

@@ -522,15 +522,28 @@
         // Build result message
         const lines = [`Contest #${contestId} Eligibility:`];
 
-        // Volume status
-        if (data.volume.required > 0) {
+        // Holder status (💎 Hold to Qualify path)
+        if (data.holder) {
+          if (data.holder.met) {
+            lines.push(`💎 Holder: ${data.holder.balanceFormatted} $NEYNARTODES - Auto-qualified!`);
+          } else if (data.volume.required > 0) {
+            // Show holder path only if there's a volume requirement to skip
+            const thresholdNote = data.holder.isCustomToken ? ' (custom token contest)' : '';
+            lines.push(`💎 Hold Path: ${data.holder.balanceFormatted} / ${data.holder.thresholdFormatted}${thresholdNote} to auto-qualify`);
+          }
+        }
+
+        // Volume status (📈 Trade to Qualify path) - skip if holder already qualified
+        if (data.holder && data.holder.met) {
+          lines.push('📈 Volume: Skipped (holder qualified)');
+        } else if (data.volume.required > 0) {
           const volStatus = data.volume.met ? '✅' : '❌';
-          lines.push(`${volStatus} Volume: $${data.volume.usd.toFixed(2)} / $${data.volume.required} required`);
+          lines.push(`📈 Volume: $${data.volume.usd.toFixed(2)} / $${data.volume.required} required`);
         } else {
           lines.push('✅ No volume requirement');
         }
 
-        // Social status
+        // Social status (still required for all)
         const socialReqs = [];
         if (data.social.requirements.recast) {
           socialReqs.push(data.social.recasted ? '✅ Recasted' : '❌ Need Recast');
@@ -548,12 +561,15 @@
           lines.push('✅ No social requirements');
         }
 
-        // Final status
+        // Final status with qualification reason
         if (data.qualified) {
-          lines.push('🎉 YOU ARE QUALIFIED!');
+          const reasonText = data.reason === 'holder' ? '(as holder)' :
+                            data.reason === 'volume' ? '(via trading)' :
+                            data.reason === 'no_requirement' ? '(no volume required)' : '';
+          lines.push(`🎉 YOU ARE QUALIFIED ${reasonText}!`);
           showToast(lines.join('\n'), 'success', 8000);
         } else {
-          lines.push('Complete requirements above to qualify');
+          lines.push('Hold 💎 or Trade 📈 + engage socially to qualify');
           showToast(lines.join('\n'), 'warning', 8000);
         }
 
@@ -602,14 +618,23 @@
             // Build status details
             const details = [];
 
+            // Holder status (show if met or if there's a volume requirement)
+            if (data.holder && data.holder.met) {
+              details.push('💎 Holder ✓');
+            } else if (data.holder && data.volume.required > 0) {
+              details.push(`💎 ${data.holder.balanceFormatted}/${data.holder.thresholdFormatted}`);
+            }
+
+            // Volume status (skip if holder qualified)
+            if (data.holder && data.holder.met) {
+              // Don't show volume - holder already qualified
+            } else if (data.volume.required > 0) {
+              details.push(data.volume.met ? '📈 Volume ✓' : `📈 $${data.volume.usd.toFixed(0)}/$${data.volume.required}`);
+            }
+
             // Social status
             if (data.social.requirements.recast || data.social.requirements.like || data.social.requirements.reply) {
               details.push(data.social.met ? 'Social ✓' : 'Social ✗');
-            }
-
-            // Volume status
-            if (data.volume.required > 0) {
-              details.push(data.volume.met ? 'Volume ✓' : `Volume ✗ ($${data.volume.usd.toFixed(0)}/$${data.volume.required})`);
             }
 
             // If no requirements
@@ -664,10 +689,15 @@
       if (requireRecast) reqs.push('🔄 Recast');
       if (requireLike) reqs.push('❤️ Like');
       if (requireReply) reqs.push('💬 Reply');
-      if (volumeReq > 0) reqs.push(`💰 $${volumeReq} ${tokenSymbol} volume`);
 
-      const reqsLine = reqs.length > 0 ? `📋 To Enter: ${reqs.join(' + ')}` : '🎁 Open to everyone!';
-      const reactLine = reqs.length > 0 ? '👇 React to the cast below to enter!' : '';
+      // Volume/holder requirement - show both paths
+      let volumeLine = '';
+      if (volumeReq > 0) {
+        volumeLine = `\n💎 Trade $${volumeReq} OR Hold 100M $NEYNARTODES to qualify`;
+      }
+
+      const reqsLine = reqs.length > 0 ? `📋 To Enter: ${reqs.join(' + ')}${volumeLine}` : (volumeLine ? `📋 To Enter:${volumeLine}` : '🎁 Open to everyone!');
+      const reactLine = reqs.length > 0 || volumeReq > 0 ? 'React to this or the quoted cast below to enter!! 👇' : '';
 
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
@@ -885,8 +915,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         nftContestEscrow: '0xFD6e84d4396Ecaa144771C65914b2a345305F922', // NFT Contest Escrow V3 deployed 2025-12-05 (supports restricted NFTs with two-step flow)
         treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928', // V2 deployed 2025-12-01
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
-      },
-      SEASON_0_MIN_TOKENS: ethers.utils.parseEther('20000') // 20K tokens
+      }
     };
 
     // ===== NFT ABIs (needed for approval and transfer flow) =====
@@ -949,6 +978,19 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     ];
     const DEV_WALLET = DEV_WALLETS[0]; // Keep for backwards compat
     const isDevWallet = (addr) => DEV_WALLETS.some(w => w.toLowerCase() === addr?.toLowerCase());
+
+    // ===== BASE APP / COINBASE SMART WALLET DETECTION =====
+    // Detect if running in Base app or Coinbase browser for better wallet UX
+    function isBaseAppContext() {
+      return window.ethereum?.isCoinbaseWallet ||
+             navigator.userAgent.includes('CoinbaseWallet') ||
+             navigator.userAgent.includes('CoinbaseBrowser');
+    }
+
+    // Check if Coinbase Smart Wallet is available
+    function hasCoinbaseSmartWallet() {
+      return window.ethereum?.isCoinbaseWallet === true;
+    }
 
     // ===== STATE =====
     const state = {
@@ -1983,15 +2025,33 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
         }
 
-        // Fallback to window.ethereum (MetaMask, etc)
+        // Fallback to window.ethereum (MetaMask, Coinbase Smart Wallet, etc)
         if (!ethProvider && window.ethereum) {
           ethProvider = window.ethereum;
-          providerSource = 'metamask';
-          console.log('Using window.ethereum (MetaMask)');
+
+          // Detect wallet type for better logging/analytics
+          if (window.ethereum.isCoinbaseWallet) {
+            providerSource = 'coinbase_smart_wallet';
+            console.log('Using Coinbase Smart Wallet');
+          } else if (window.ethereum.isMetaMask) {
+            providerSource = 'metamask';
+            console.log('Using MetaMask');
+          } else {
+            providerSource = 'injected';
+            console.log('Using injected wallet (window.ethereum)');
+          }
         }
 
         if (!ethProvider) {
-          showToast('No wallet found! Farcaster SDK: ' + (window.FarcasterSDK ? 'loaded' : 'not loaded'), 'error');
+          // Provide context-aware error message
+          const isInBaseApp = isBaseAppContext();
+          if (isInBaseApp) {
+            showToast('Wallet not detected. Please ensure your Coinbase Smart Wallet is set up.', 'error');
+          } else if (window.FarcasterSDK) {
+            showToast('Farcaster SDK loaded but wallet not available. Try refreshing.', 'error');
+          } else {
+            showToast('No wallet found! Open in Warpcast or install a wallet extension.', 'error');
+          }
           return false;
         }
 
@@ -1999,7 +2059,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // Show "waiting for wallet" state - NO timeout, wait for user to unlock
         state.isCheckingWhitelist = true;
-        state.walletStatus = 'Unlock your wallet to continue...';
+        // Context-aware status message
+        if (providerSource === 'coinbase_smart_wallet') {
+          state.walletStatus = 'Connecting Coinbase Smart Wallet...';
+        } else if (providerSource === 'farcaster') {
+          state.walletStatus = 'Connecting via Warpcast...';
+        } else {
+          state.walletStatus = 'Unlock your wallet to continue...';
+        }
         render();
 
         // Connect to wallet - NO TIMEOUT, wait indefinitely for unlock
@@ -2009,9 +2076,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           // Use a Promise wrapper to allow UI updates during the wait
           accounts = await new Promise((resolve, reject) => {
-            // Update UI to show we're waiting
+            // Update UI to show we're waiting - context-aware message
             setTimeout(() => {
-              state.walletStatus = 'Waiting for wallet... Check your extension!';
+              if (providerSource === 'coinbase_smart_wallet') {
+                state.walletStatus = 'Confirming in Coinbase Wallet...';
+              } else if (providerSource === 'farcaster') {
+                state.walletStatus = 'Confirming in Warpcast...';
+              } else {
+                state.walletStatus = 'Waiting for wallet... Check your extension!';
+              }
               render();
             }, 2000);
 
@@ -2090,22 +2163,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           rpcProvider
         );
 
-        let balance;
+        // Fetch user's token balance for display (no gate - all users welcome)
         try {
-          balance = await withTimeout(neynartodeContract.balanceOf(address), 10000);
+          const balance = await withTimeout(neynartodeContract.balanceOf(address), 10000);
           state.userBalance = ethers.utils.formatEther(balance);
         } catch (e) {
           console.error('Balance check failed:', e);
-          // Default to enough tokens if check fails
-          balance = CONFIG.SEASON_0_MIN_TOKENS;
-          state.userBalance = '20000';
-        }
-
-        if (balance.lt(CONFIG.SEASON_0_MIN_TOKENS)) {
-          state.isCheckingWhitelist = false;
-          render();
-          showToast(`Insufficient Tokens! Need 20K $NEYNARTODES to enter. Your balance: ${parseFloat(state.userBalance).toLocaleString()}. Contract: 0x8de1...d828b07`, 'error', 10000);
-          return false;
+          state.userBalance = '0'; // Default to 0 if check fails
         }
 
         state.hasTokens = true;
@@ -3919,20 +3983,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           <div class="max-w-2xl mx-auto relative z-10">
             ${renderHeader()}
-
-            <!-- Safeguards Notice - collapsible -->
-            <details class="glass-card p-4 mb-4">
-              <summary class="font-medium text-[var(--text-primary)] cursor-pointer flex items-center justify-between">
-                <span>Season 0 Safeguards</span>
-                <span class="tag tag-accent">Active</span>
-              </summary>
-              <div class="mt-3 text-sm text-[var(--text-secondary)] space-y-1">
-                <p>• Whitelist required for participation</p>
-                <p>• Minimum 20,000 $NEYNARTODES token gate</p>
-                <p>• 4+ words required per reply</p>
-                <p>• $20 min volume for NEYNARTODES</p>
-              </div>
-            </details>
 
             <div class="glass-card p-5">
               <div class="flex items-center justify-between mb-6">

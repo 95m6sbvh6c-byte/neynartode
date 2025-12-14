@@ -181,8 +181,8 @@ async function checkContestsEndingSoon(provider) {
           // Try to get NFT collection name
           let nftName = 'NFT';
           try {
-            const nftContract = new ethers.Contract(nftContractAddr, ERC721_ABI, provider);
-            nftName = await nftContract.name();
+            const nftTokenContract = new ethers.Contract(nftContractAddr, ERC721_ABI, provider);
+            nftName = await nftTokenContract.name();
           } catch (e) {
             // Fallback to generic
           }

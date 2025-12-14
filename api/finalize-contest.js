@@ -60,6 +60,57 @@ const NFT_CONTEST_ESCROW_ABI = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════
+// HOLDER QUALIFICATION - Skip volume if user holds enough NEYNARTODES
+// ═══════════════════════════════════════════════════════════════════
+
+// Holder thresholds (in tokens with 18 decimals)
+const HOLDER_THRESHOLD_DEFAULT = 100000000n * 10n**18n;  // 100M for NEYNARTODES contests
+const HOLDER_THRESHOLD_CUSTOM = 200000000n * 10n**18n;   // 200M for custom token contests
+
+/**
+ * Get holder threshold based on contest type
+ * Custom token contests require higher holdings to encourage trading
+ */
+function getHolderThreshold(tokenRequirement) {
+  const isNeynartodes = tokenRequirement.toLowerCase() === CONFIG.NEYNARTODES_TOKEN.toLowerCase();
+  return isNeynartodes ? HOLDER_THRESHOLD_DEFAULT : HOLDER_THRESHOLD_CUSTOM;
+}
+
+/**
+ * Check if user qualifies as a holder (can skip volume requirement)
+ * Sums balance across all verified addresses
+ */
+async function checkHolderQualification(addresses, provider, tokenRequirement) {
+  const threshold = getHolderThreshold(tokenRequirement);
+  const thresholdFormatted = tokenRequirement.toLowerCase() === CONFIG.NEYNARTODES_TOKEN.toLowerCase()
+    ? '100M' : '200M';
+
+  const neynartodes = new ethers.Contract(
+    CONFIG.NEYNARTODES_TOKEN,
+    ['function balanceOf(address) view returns (uint256)'],
+    provider
+  );
+
+  // Sum total balance across all user's addresses
+  let totalBalance = 0n;
+  for (const addr of addresses) {
+    try {
+      const balance = await neynartodes.balanceOf(addr);
+      totalBalance += balance;
+    } catch (e) {
+      // Skip failed balance checks
+    }
+  }
+
+  return {
+    isHolder: totalBalance >= threshold,
+    balance: totalBalance,
+    threshold: threshold,
+    thresholdFormatted: thresholdFormatted
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // NEYNAR API - Get Cast Engagement
 // ═══════════════════════════════════════════════════════════════════
 
@@ -634,43 +685,86 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
     }
   }
 
-  // Check trading volume if required
-  // Volume check uses ALL addresses from each user, but raffle entry is 1 per FID
+  // ═══════════════════════════════════════════════════════════════════
+  // HOLDER + VOLUME QUALIFICATION
+  // Holders (100M+ NEYNARTODES, or 200M+ for custom token contests) skip volume
+  // Non-holders must meet the volume requirement
+  // ═══════════════════════════════════════════════════════════════════
   let finalQualifiedUsers = [...qualifiedUsers]; // Users who pass all requirements
 
   if (volumeRequirement > 0n) {
-    console.log('\n💰 Checking trading volumes...');
-    const volumeResults = await getTraderVolumes(
-      tokenRequirement,
-      potentialParticipants, // All addresses from all users
-      Number(ethers.formatEther(volumeRequirement)),
-      Number(startTime),
-      Number(endTime),
-      contestId  // Pass contestId to use stored price from contest creation
-    );
+    const thresholdFormatted = tokenRequirement.toLowerCase() === CONFIG.NEYNARTODES_TOKEN.toLowerCase()
+      ? '100M' : '200M';
 
-    // Build set of addresses that passed volume check
-    const passedAddresses = new Set(
-      volumeResults.filter(r => r.passed).map(r => r.address)
-    );
+    console.log(`\n💎 Checking holder status (${thresholdFormatted} $NEYNARTODES threshold)...`);
 
-    // Filter users: a user passes if ANY of their addresses passed volume check
-    finalQualifiedUsers = qualifiedUsers.filter(user => {
-      const hasPassingAddress = user.addresses.some(addr => passedAddresses.has(addr));
-      if (hasPassingAddress) {
-        // Update primary address to one that passed (for potential auditing)
-        const passingAddr = user.addresses.find(addr => passedAddresses.has(addr));
-        if (passingAddr) user.primaryAddress = passingAddr;
+    // First pass: check holder status for all users
+    const holderUsers = [];
+    const nonHolderUsers = [];
+
+    for (const user of qualifiedUsers) {
+      const holderCheck = await checkHolderQualification(user.addresses, provider, tokenRequirement);
+      if (holderCheck.isHolder) {
+        holderUsers.push(user);
+        console.log(`   💎 @${user.username || user.fid} is a HOLDER (${ethers.formatEther(holderCheck.balance)} tokens)`);
+      } else {
+        nonHolderUsers.push(user);
       }
-      return hasPassingAddress;
-    });
+    }
 
-    console.log(`   Passed volume check: ${finalQualifiedUsers.length}/${qualifiedUsers.length} users`);
+    console.log(`   Holders (skip volume): ${holderUsers.length}`);
+    console.log(`   Non-holders (need volume check): ${nonHolderUsers.length}`);
+
+    // Second pass: check volume for non-holders only
+    if (nonHolderUsers.length > 0) {
+      console.log('\n💰 Checking trading volumes for non-holders...');
+
+      // Get all addresses from non-holder users
+      const nonHolderAddresses = [];
+      for (const user of nonHolderUsers) {
+        nonHolderAddresses.push(...user.addresses);
+      }
+      const uniqueNonHolderAddresses = [...new Set(nonHolderAddresses)];
+
+      const volumeResults = await getTraderVolumes(
+        tokenRequirement,
+        uniqueNonHolderAddresses,
+        Number(ethers.formatEther(volumeRequirement)),
+        Number(startTime),
+        Number(endTime),
+        contestId
+      );
+
+      // Build set of addresses that passed volume check
+      const passedAddresses = new Set(
+        volumeResults.filter(r => r.passed).map(r => r.address)
+      );
+
+      // Filter non-holders: keep only those who passed volume check
+      const volumeQualifiedUsers = nonHolderUsers.filter(user => {
+        const hasPassingAddress = user.addresses.some(addr => passedAddresses.has(addr));
+        if (hasPassingAddress) {
+          const passingAddr = user.addresses.find(addr => passedAddresses.has(addr));
+          if (passingAddr) user.primaryAddress = passingAddr;
+        }
+        return hasPassingAddress;
+      });
+
+      console.log(`   Passed volume check: ${volumeQualifiedUsers.length}/${nonHolderUsers.length} non-holders`);
+
+      // Combine holders + volume-qualified non-holders
+      finalQualifiedUsers = [...holderUsers, ...volumeQualifiedUsers];
+    } else {
+      // All qualified users are holders
+      finalQualifiedUsers = holderUsers;
+    }
+
+    console.log(`\n✅ Total qualified: ${finalQualifiedUsers.length} (${holderUsers.length} holders + ${finalQualifiedUsers.length - holderUsers.length} traders)`);
   }
 
   if (finalQualifiedUsers.length === 0) {
-    // No one met volume requirement - auto-cancel and refund host
-    console.log('\n❌ No participants met volume requirement - cancelling contest and refunding host...');
+    // No one qualified (neither holders nor traders) - auto-cancel and refund host
+    console.log('\n❌ No participants qualified (no holders or traders) - cancelling contest and refunding host...');
     try {
       const tx = await contestEscrow.cancelContest(contestId, 'No participants met volume requirement');
       console.log(`   TX submitted: ${tx.hash}`);
