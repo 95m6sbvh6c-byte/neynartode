@@ -3,32 +3,32 @@
  * Fund Prize Pool from Treasury
  *
  * This script allows you to add ETH from the treasury to the PrizeNFT pools
- * using the devAddToPool function.
+ * using the devAddToPool function (requires dev wallet).
  *
  * Usage:
  *   node fund-contest.js --season <SEASON_ID> --amount <ETH_AMOUNT>
- *   node fund-contest.js --season <SEASON_ID> --dev <ETH> --host <ETH> --voter <ETH>
+ *   node fund-contest.js --season <SEASON_ID> --host <ETH> --voter <ETH>
  *
  * Examples:
- *   # Add 0.5 ETH split across pools (20% dev, 30% host, 50% voter)
- *   node fund-contest.js --season 0 --amount 0.5
+ *   # Add 0.5 ETH to host pool
+ *   node fund-contest.js --season 2 --amount 0.5
  *
  *   # Add specific amounts to each pool
- *   node fund-contest.js --season 0 --dev 0.1 --host 0.15 --voter 0.25
+ *   node fund-contest.js --season 2 --host 0.15 --voter 0.25
  */
 
 const { ethers } = require('ethers');
-require('dotenv').config();
+require('dotenv').config({ path: '/Users/brianwharton/Web_3_Tings/Neynartodes_Contracts /.env' });
 
 // Contract addresses on Base
 const PRIZE_NFT = '0x54E3972839A79fB4D1b0F70418141723d02E56e1'; // V2 deployed 2025-12-01
 
-// ABI for devAddToPool
+// ABI for devAddToPool - matches PrizeNFT_Season0.sol (V2)
 const PRIZE_NFT_ABI = [
-  'function devAddToPool(uint256 seasonId, uint256 devAmount, uint256 hostAmount, uint256 voterAmount) external payable',
-  'function devSponsor(uint256 seasonId) external payable',
-  'function seasons(uint256) external view returns (uint256 startTime, uint256 endTime, uint256 devPool, uint256 hostPool, uint256 voterPool, uint256 totalContests, bool active)',
-  'function dev() external view returns (address)',
+  'function devAddToPool(uint256 seasonId, uint256 hostAmount, uint256 voterAmount) external payable',
+  'function devSponsorSeason(uint256 seasonId) external payable',
+  'function seasons(uint256) external view returns (uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)',
+  'function devAddress() external view returns (address)',
 ];
 
 // Parse command line arguments
@@ -36,8 +36,7 @@ function parseArgs() {
   const args = process.argv.slice(2);
   const config = {
     seasonId: null,
-    amount: null, // Total amount (will be split)
-    devAmount: null,
+    amount: null, // Total amount (goes to host pool)
     hostAmount: null,
     voterAmount: null,
   };
@@ -49,9 +48,6 @@ function parseArgs() {
         break;
       case '--amount':
         config.amount = parseFloat(args[++i]);
-        break;
-      case '--dev':
-        config.devAmount = parseFloat(args[++i]);
         break;
       case '--host':
         config.hostAmount = parseFloat(args[++i]);
@@ -85,10 +81,10 @@ Options:
 
 Examples:
   # Add 0.5 ETH to host pool
-  node fund-contest.js --season 0 --amount 0.5
+  node fund-contest.js --season 2 --amount 0.5
 
   # Add 1 ETH to host pool
-  node fund-contest.js --season 0 --amount 1
+  node fund-contest.js --season 2 --amount 1
 
 Environment Variables:
   PRIVATE_KEY         Your dev wallet private key
@@ -107,8 +103,8 @@ async function main() {
   }
 
   // Must have either total amount or individual amounts
-  if (!config.amount && !config.devAmount && !config.hostAmount && !config.voterAmount) {
-    console.error('❌ Must specify either --amount or individual pool amounts (--dev, --host, --voter)');
+  if (!config.amount && !config.hostAmount && !config.voterAmount) {
+    console.error('❌ Must specify either --amount or individual pool amounts (--host, --voter)');
     process.exit(1);
   }
 
@@ -132,39 +128,33 @@ async function main() {
   // Connect to PrizeNFT
   const prizeNFT = new ethers.Contract(PRIZE_NFT, PRIZE_NFT_ABI, wallet);
 
-  // Verify caller is dev
-  const devAddress = await prizeNFT.dev();
-  if (wallet.address.toLowerCase() !== devAddress.toLowerCase()) {
-    console.error(`\n❌ Not authorized! This wallet is not the dev.`);
+  // Verify caller is dev (devAddToPool requires onlyDev modifier)
+  const devAddr = await prizeNFT.devAddress();
+  if (wallet.address.toLowerCase() !== devAddr.toLowerCase()) {
+    console.error(`\n❌ Not authorized! This wallet is not the dev address.`);
     console.error(`   Your wallet: ${wallet.address}`);
-    console.error(`   Dev wallet:  ${devAddress}`);
+    console.error(`   Dev wallet: ${devAddr}`);
     process.exit(1);
   }
 
-  // Get current season info
-  const season = await prizeNFT.seasons(config.seasonId);
-  console.log(`\n📊 Season ${config.seasonId} Current Pools:`);
-  console.log(`   Dev Pool:   ${ethers.formatEther(season.devPool)} ETH`);
-  console.log(`   Host Pool:  ${ethers.formatEther(season.hostPool)} ETH`);
-  console.log(`   Voter Pool: ${ethers.formatEther(season.voterPool)} ETH`);
+  // Get current contract balance
+  const currentBalance = await provider.getBalance(PRIZE_NFT);
+  console.log(`\n📊 Current Contract Balance: ${ethers.formatEther(currentBalance)} ETH`);
 
-  // Calculate amounts
-  let devAmount, hostAmount, voterAmount;
+  // Calculate amounts (no devPool in V2 - only host and voter)
+  let hostAmount, voterAmount;
 
   if (config.amount) {
     // All funds go to host pool only
-    const total = ethers.parseEther(config.amount.toString());
-    devAmount = 0n;
-    hostAmount = total;
+    hostAmount = ethers.parseEther(config.amount.toString());
     voterAmount = 0n;
   } else {
-    // Use individual amount for host pool only
-    devAmount = 0n;
+    // Use individual amounts
     hostAmount = config.hostAmount ? ethers.parseEther(config.hostAmount.toString()) : 0n;
-    voterAmount = 0n;
+    voterAmount = config.voterAmount ? ethers.parseEther(config.voterAmount.toString()) : 0n;
   }
 
-  const totalValue = devAmount + hostAmount + voterAmount;
+  const totalValue = hostAmount + voterAmount;
 
   console.log(`\n💰 Adding to Host Pool: ${ethers.formatEther(hostAmount)} ETH`);
 
@@ -179,7 +169,6 @@ async function main() {
 
   const tx = await prizeNFT.devAddToPool(
     config.seasonId,
-    devAmount,
     hostAmount,
     voterAmount,
     { value: totalValue }
@@ -189,17 +178,14 @@ async function main() {
   const receipt = await tx.wait();
   console.log(`   ✅ Confirmed in block ${receipt.blockNumber}`);
 
-  // Show new pool amounts
-  const newSeason = await prizeNFT.seasons(config.seasonId);
-  console.log(`\n📊 Season ${config.seasonId} Updated Pools:`);
-  console.log(`   Dev Pool:   ${ethers.formatEther(newSeason.devPool)} ETH`);
-  console.log(`   Host Pool:  ${ethers.formatEther(newSeason.hostPool)} ETH`);
-  console.log(`   Voter Pool: ${ethers.formatEther(newSeason.voterPool)} ETH`);
+  // Show new contract balance
+  const newBalance = await provider.getBalance(PRIZE_NFT);
+  console.log(`\n📊 New Contract Balance: ${ethers.formatEther(newBalance)} ETH`);
 
   // Send notification to subscribers
   try {
     const amountETH = ethers.formatEther(hostAmount);
-    const newTotalETH = ethers.formatEther(newSeason.hostPool);
+    const newTotalETH = ethers.formatEther(newBalance);
     console.log('\n📢 Sending notification to subscribers...');
 
     const response = await fetch('https://frame-opal-eight.vercel.app/api/send-notification', {
