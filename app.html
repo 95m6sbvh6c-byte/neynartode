@@ -611,18 +611,15 @@
             // Build status details
             const details = [];
 
-            // Holder status (show if met or if there's a volume requirement)
-            if (data.holder && data.holder.met) {
-              details.push('💎 Holder ✓');
-            } else if (data.holder && data.volume.required > 0) {
-              details.push(`💎 ${data.holder.balanceFormatted}/${data.holder.thresholdFormatted}`);
-            }
+            // Show both qualification paths when there's a volume requirement
+            if (data.volume.required > 0) {
+              // Holder path with checkmark
+              const holderCheck = data.holder?.met ? '✓' : '✗';
+              details.push(`💎 Holder ${holderCheck}`);
 
-            // Volume status (skip if holder qualified)
-            if (data.holder && data.holder.met) {
-              // Don't show volume - holder already qualified
-            } else if (data.volume.required > 0) {
-              details.push(data.volume.met ? '📈 Volume ✓' : `📈 $${data.volume.usd.toFixed(0)}/$${data.volume.required}`);
+              // Volume path with checkmark
+              const volumeCheck = data.volume.met ? '✓' : '✗';
+              details.push(`📈 Volume ${volumeCheck}`);
             }
 
             // Social status
