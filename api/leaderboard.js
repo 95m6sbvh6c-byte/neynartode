@@ -11,7 +11,7 @@
  *   Social Multiplier = Social Score x completed contests (rewards active hosts)
  *   Vote Score = (Upvotes - Downvotes) x 200
  *   Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100
- *   Token = Volume Points x 50
+ *   Token = Token Holdings / 10,000
  *
  * Usage:
  *   GET /api/leaderboard?limit=10&season=2
@@ -23,6 +23,7 @@ const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
   VOTING_MANAGER: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
+  NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
   CURRENT_SEASON: 2, // Default active season
@@ -53,6 +54,10 @@ const VOTING_MANAGER_ABI = [
   'function getHostVotes(address host) external view returns (uint256 upvotes, uint256 downvotes)',
 ];
 
+const ERC20_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+];
+
 /**
  * Get Farcaster user info by wallet address
  */
@@ -69,18 +74,43 @@ async function getUserByWallet(walletAddress) {
     const users = data[walletAddress.toLowerCase()];
 
     if (users && users.length > 0) {
+      // Get all verified addresses for this user
+      const verifiedAddresses = users[0].verified_addresses?.eth_addresses || [];
+      const custodyAddress = users[0].custody_address;
+      const allAddresses = [...new Set([...verifiedAddresses, custodyAddress].filter(Boolean))];
+
       return {
         fid: users[0].fid,
         username: users[0].username,
         displayName: users[0].display_name,
         pfpUrl: users[0].pfp_url,
         neynarScore: users[0].experimental?.neynar_user_score || 0,
+        verifiedAddresses: allAddresses,
       };
     }
     return null;
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Get total NEYNARTODES token holdings across all addresses
+ */
+async function getTokenHoldings(addresses, tokenContract) {
+  let totalBalance = 0n;
+
+  for (const addr of addresses) {
+    try {
+      const balance = await tokenContract.balanceOf(addr);
+      totalBalance += balance;
+    } catch (e) {
+      // Address might not exist or have issues, continue
+    }
+  }
+
+  // Convert from wei (18 decimals) to whole tokens
+  return Number(totalBalance / 10n**18n);
 }
 
 /**
@@ -157,6 +187,7 @@ module.exports = async (req, res) => {
     const contestContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
     const prizeNFTContract = new ethers.Contract(CONFIG.PRIZE_NFT, PRIZE_NFT_ABI, provider);
     const votingContract = new ethers.Contract(CONFIG.VOTING_MANAGER, VOTING_MANAGER_ABI, provider);
+    const tokenContract = new ethers.Contract(CONFIG.NEYNARTODES_TOKEN, ERC20_ABI, provider);
 
     const limit = Math.min(parseInt(req.query.limit) || 10, 20);
     const seasonId = parseInt(req.query.season) || CONFIG.CURRENT_SEASON;
@@ -297,6 +328,10 @@ module.exports = async (req, res) => {
         stats.downvotes = 0;
       }
 
+      // Fetch token holdings for this host
+      const holdingsAddresses = userInfo?.verifiedAddresses || [stats.address];
+      const tokenHoldings = await getTokenHoldings(holdingsAddresses, tokenContract);
+
       // Scoring calculations:
       // Host Bonus = 100 points per completed contest (regardless of cast ownership)
       const hostBonus = stats.completedContests * 100;
@@ -304,8 +339,8 @@ module.exports = async (req, res) => {
       // Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100 (only from owned casts)
       const socialScore = (stats.totalLikes * 1 + stats.totalRecasts * 2 + stats.totalReplies * 3) * 100;
 
-      // Token = Volume Points x 50
-      const tokenScore = stats.totalVolume * 50;
+      // Token = Token Holdings / 10,000
+      const tokenScore = Math.floor(tokenHoldings / 10000);
 
       // Social Multiplier = number of completed contests (rewards active hosts)
       const socialMultiplier = stats.completedContests;
@@ -333,7 +368,7 @@ module.exports = async (req, res) => {
         likes: stats.totalLikes,
         recasts: stats.totalRecasts,
         replies: stats.totalReplies,
-        volume: stats.totalVolume,
+        tokenHoldings,
         upvotes: stats.upvotes,
         downvotes: stats.downvotes,
         // Score breakdown
@@ -396,7 +431,7 @@ module.exports = async (req, res) => {
         socialMultiplier: 'Social Score x completed contests',
         vote: '(Upvotes - Downvotes) x 200',
         social: '(Likes x 1 + Recasts x 2 + Replies x 3) x 100',
-        token: 'Volume Points x 50',
+        token: 'Token Holdings / 10,000',
       },
     });
 
