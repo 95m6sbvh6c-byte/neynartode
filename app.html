@@ -735,13 +735,24 @@ ${reactLine}`;
       }
 
       // Add NFT image as second embed if available (max 2 embeds)
-      if (isNft && nftImage && embeds.length < 2) {
+      // Try to get image from parameter, fallback to extracting from castId
+      let nftImageUrl = nftImage;
+      if (isNft && !nftImageUrl && castId) {
+        // castId format for NFT: "hash|requirements|imageUrl"
+        const parts = castId.split('|');
+        if (parts.length >= 3 && parts[2]) {
+          nftImageUrl = parts[2];
+          console.log('Extracted NFT image from castId:', nftImageUrl);
+        }
+      }
+
+      if (isNft && nftImageUrl && embeds.length < 2) {
         // Proxy through our server to avoid IPFS gateway 403 errors
-        const proxyUrl = `https://frame-opal-eight.vercel.app/api/image?url=${encodeURIComponent(nftImage)}`;
+        const proxyUrl = `https://frame-opal-eight.vercel.app/api/image?url=${encodeURIComponent(nftImageUrl)}`;
         embeds.push(proxyUrl);
       }
 
-      console.log('Sharing contest:', { contestId, isNft, embeds, castHash });
+      console.log('Sharing contest:', { contestId, isNft, nftImageUrl, embeds, castHash });
 
       // Use SDK composeCast - embeds create quote-cast, NOT parent parameter (which creates reply)
       const sdk = window.FarcasterSDK;
