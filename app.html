@@ -522,23 +522,16 @@
         // Build result message
         const lines = [`Contest #${contestId} Eligibility:`];
 
-        // Holder status (💎 Hold to Qualify path)
-        if (data.holder) {
-          if (data.holder.met) {
-            lines.push(`💎 Holder: ${data.holder.balanceFormatted} $NEYNARTODES - Auto-qualified!`);
-          } else if (data.volume.required > 0) {
-            // Show holder path only if there's a volume requirement to skip
-            const thresholdNote = data.holder.isCustomToken ? ' (custom token contest)' : '';
-            lines.push(`💎 Hold Path: ${data.holder.balanceFormatted} / ${data.holder.thresholdFormatted}${thresholdNote} to auto-qualify`);
-          }
-        }
+        // Show both qualification paths with checkmarks
+        if (data.volume.required > 0) {
+          // Holder path
+          const holderCheck = data.holder?.met ? '✅' : '❌';
+          const thresholdNote = data.holder?.isCustomToken ? ' (200M)' : ' (100M)';
+          lines.push(`${holderCheck} 💎 Holder: ${data.holder?.balanceFormatted || '0'} / ${data.holder?.thresholdFormatted || '100M'}${thresholdNote}`);
 
-        // Volume status (📈 Trade to Qualify path) - skip if holder already qualified
-        if (data.holder && data.holder.met) {
-          lines.push('📈 Volume: Skipped (holder qualified)');
-        } else if (data.volume.required > 0) {
-          const volStatus = data.volume.met ? '✅' : '❌';
-          lines.push(`📈 Volume: $${data.volume.usd.toFixed(2)} / $${data.volume.required} required`);
+          // Volume path
+          const volumeCheck = data.volume.met ? '✅' : '❌';
+          lines.push(`${volumeCheck} 📈 Volume: $${data.volume.usd.toFixed(2)} / $${data.volume.required}`);
         } else {
           lines.push('✅ No volume requirement');
         }
