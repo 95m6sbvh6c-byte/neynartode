@@ -807,7 +807,7 @@ ${reactLine}`;
 📈 Score Breakdown:
 • Social: [❤️${likes}×1] + [🔁${recasts}×2] + [💬${replies}×3] = ${socialRaw} × 100 = ${(host.socialScore || 0).toLocaleString()}
   → ×${socialMultiplier} (contests) = ${((host.socialScore || 0) * socialMultiplier).toLocaleString()} pts
-• 💰 Token: ${(host.tokenHoldings || 0).toLocaleString()} holdings ÷ 10,000 = ${(host.tokenScore || 0).toLocaleString()}
+• 💰 Token: ${(host.tokenHoldings || 0).toLocaleString()} holdings ÷ 100,000 = ${(host.tokenScore || 0).toLocaleString()}
 • 🎯 Host Bonus: ${(host.hostBonus || completedContests * 100 || 0).toLocaleString()} (100/contest)
 • 🗳️ Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} × 200 = ${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()} pts
 
