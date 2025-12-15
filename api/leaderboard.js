@@ -11,7 +11,7 @@
  *   Social Multiplier = Social Score x completed contests (rewards active hosts)
  *   Vote Score = (Upvotes - Downvotes) x 200
  *   Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100
- *   Token = Token Holdings / 100,000
+ *   Token = Token Holdings / 50,000
  *
  * Usage:
  *   GET /api/leaderboard?limit=10&season=2
@@ -339,8 +339,8 @@ module.exports = async (req, res) => {
       // Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100 (only from owned casts)
       const socialScore = (stats.totalLikes * 1 + stats.totalRecasts * 2 + stats.totalReplies * 3) * 100;
 
-      // Token = Token Holdings / 100,000
-      const tokenScore = Math.floor(tokenHoldings / 100000);
+      // Token = Token Holdings / 50,000
+      const tokenScore = Math.floor(tokenHoldings / 50000);
 
       // Social Multiplier = number of completed contests (rewards active hosts)
       const socialMultiplier = stats.completedContests;
@@ -431,7 +431,7 @@ module.exports = async (req, res) => {
         socialMultiplier: 'Social Score x completed contests',
         vote: '(Upvotes - Downvotes) x 200',
         social: '(Likes x 1 + Recasts x 2 + Replies x 3) x 100',
-        token: 'Token Holdings / 100,000',
+        token: 'Token Holdings / 50,000',
       },
     });
 

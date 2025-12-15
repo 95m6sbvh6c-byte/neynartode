@@ -125,13 +125,42 @@ When Clanker fees are available, you'll see the "Feed the Neynartodes" button:
 
 ## Scoring System
 
-### How Hosts Earn Points
+### Formula Overview
 
-| Action | Points |
-|--------|--------|
-| Complete a contest | +100 |
-| Receive upvote | +200 |
-| Receive downvote | -200 |
+```
+Total Score = Contest Score + Vote Score
+
+Contest Score = Host Bonus + (Social × Contests) + Token
+```
+
+### Score Components
+
+| Component | Formula | Description |
+|-----------|---------|-------------|
+| **Host Bonus** | 100 × completed contests | Reward for hosting |
+| **Social Score** | (❤️×1 + 🔁×2 + 💬×3) × 100 | Engagement on your casts |
+| **Social Multiplier** | Social × completed contests | Rewards active hosts |
+| **Token Score** | Token Holdings ÷ 50,000 | Reward for holding $NEYNARTODES |
+| **Vote Score** | (Upvotes - Downvotes) × 200 | Community reputation |
+
+### Example Calculation
+
+```
+Host with:
+- 3 completed contests
+- 17 likes, 12 recasts, 8 replies
+- 50,000,000 token holdings
+- 25 upvotes, 0 downvotes
+
+Social = (17×1 + 12×2 + 8×3) × 100 = 65 × 100 = 6,500
+Social × Contests = 6,500 × 3 = 19,500
+Host Bonus = 100 × 3 = 300
+Token = 50,000,000 ÷ 50,000 = 1,000
+Vote Score = (25 - 0) × 200 = 5,000
+
+Contest Score = 300 + 19,500 + 1,000 = 20,800
+Total Score = 20,800 + 5,000 = 25,800
+```
 
 ### Ranking
 

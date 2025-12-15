@@ -31,7 +31,6 @@ NEYNARtodes is a gamified social engagement platform built on Farcaster and Base
 1. Open NEYNARtodes in Farcaster (via mini app or direct link)
 2. Connect with your Farcaster wallet
 3. You need:
-   - 20,000+ NEYNARTODES tokens
    - Whitelisted address (Season 0 Beta)
 
 ### For Developers
@@ -117,8 +116,8 @@ Vote on hosts and track season standings.
 
 | Action | Cost | Effect |
 |--------|------|--------|
-| Upvote | 1000 NEYNARTODES | +5000 points to host |
-| Downvote | 1000 NEYNARTODES | -5000 points from host |
+| Upvote | 1000 NEYNARTODES | +200 points to host |
+| Downvote | 1000 NEYNARTODES | -200 points from host |
 
 **Token Distribution:**
 - 50% burned (deflationary)
@@ -129,6 +128,21 @@ Vote on hosts and track season standings.
 - 1 vote per host per day
 - Resets at midnight UTC
 
+## Leaderboard Scoring
+
+```
+Total Score = Contest Score + Vote Score
+Contest Score = Host Bonus + (Social × Contests) + Token
+```
+
+| Component | Formula |
+|-----------|---------|
+| Host Bonus | 100 × completed contests |
+| Social Score | (Likes×1 + Recasts×2 + Replies×3) × 100 |
+| Social Multiplier | Social × completed contests |
+| Token Score | Token Holdings ÷ 50,000 |
+| Vote Score | (Upvotes - Downvotes) × 200 |
+
 ---
 
 ## Season 0 Beta
@@ -138,7 +152,6 @@ Vote on hosts and track season standings.
 | Requirement | Value |
 |-------------|-------|
 | Whitelist | Yes (74 beta testers) |
-| Token Gate | 20,000 NEYNARTODES |
 | Network | Base Mainnet |
 
 ### Safeguards
@@ -146,7 +159,7 @@ Vote on hosts and track season standings.
 | Safeguard | Purpose |
 |-----------|---------|
 | Whitelist | Trusted beta testers only |
-| Token Gate | Skin in the game |
+| Holder Qualification | 100M tokens = skip volume requirement |
 | Reply Quality | 4+ words prevents spam |
 | Volume Cap | Prevents gaming |
 
