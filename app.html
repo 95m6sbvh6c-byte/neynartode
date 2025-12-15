@@ -5817,7 +5817,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         // Send new_contest notification to all subscribers
         try {
           const prizeDisplay = state.prizeType === 'nft'
-            ? `${state.nftName || 'NFT'} #${state.nftTokenId || '?'}`
+            ? `${state.prizeNftName || 'NFT'} #${state.prizeNftTokenId || '?'}`
             : `${state.prizeTokenAmount || ''} ${state.prizeTokenTicker || 'ETH'}`;
 
           await fetch(`${apiBaseUrl}/api/send-notification`, {
