@@ -1,7 +1,7 @@
 /**
  * Consolidated Store API
  *
- * Handles storage for contest messages and prices.
+ * Handles storage for contest messages, prices, and NFT values.
  * Uses Vercel KV or falls back to in-memory storage for testing.
  *
  * Routes (via query param 'type'):
@@ -13,12 +13,19 @@
  *     GET /api/store?type=message&contestId=7
  *     Returns: { contestId: 7, message: "..." }
  *
- *   Price Storage:
+ *   Price Storage (Token Contests):
  *     POST /api/store?type=price
- *     Body: { contestId: 22, tokenAddress: "0x..." }
+ *     Body: { contestId: 22, tokenAddress: "0x...", prizeAmount: 1000000 }
  *
  *     GET /api/store?type=price&contestId=22
- *     Returns: { contestId: 22, tokenPrice: 0.00000005, ethPrice: 3050.00, timestamp: ... }
+ *     Returns: { contestId: 22, tokenPrice: 0.00000005, ethPrice: 3050.00, prizeValueUSD: 50.00, timestamp: ... }
+ *
+ *   NFT Price Storage (NFT Contests):
+ *     POST /api/store?type=nftprice
+ *     Body: { contestId: "NFT-5", floorPriceETH: 0.05 }
+ *
+ *     GET /api/store?type=nftprice&contestId=NFT-5
+ *     Returns: { contestId: "NFT-5", floorPriceETH: 0.05, ethPrice: 3050.00, floorPriceUSD: 152.50, timestamp: ... }
  */
 
 const { ethers } = require('ethers');
@@ -143,7 +150,7 @@ async function getPrice(contestId, res) {
   });
 }
 
-async function storePrice(contestId, tokenAddress, res) {
+async function storePrice(contestId, tokenAddress, prizeAmount, res) {
   if (!contestId) {
     return res.status(400).json({ error: 'Missing contestId' });
   }
@@ -157,11 +164,16 @@ async function storePrice(contestId, tokenAddress, res) {
   const priceInfo = await getTokenPriceWithMetadata(provider, token);
   const timestamp = Math.floor(Date.now() / 1000);
 
+  // Calculate prize value in USD if prizeAmount provided
+  const prizeValueUSD = prizeAmount ? prizeAmount * priceInfo.tokenPrice : null;
+
   const priceData = {
     tokenAddress: token,
     tokenPrice: priceInfo.tokenPrice,
     ethPrice: priceInfo.ethPrice,
     priceInETH: priceInfo.priceInETH,
+    prizeAmount: prizeAmount || null,
+    prizeValueUSD: prizeValueUSD ? Math.round(prizeValueUSD * 100) / 100 : null,
     source: priceInfo.source,
     timestamp,
     capturedAt: new Date().toISOString()
@@ -173,6 +185,74 @@ async function storePrice(contestId, tokenAddress, res) {
     await kv.set(`contest_price_${contestId}`, priceData);
 
     console.log(`Stored price for contest ${contestId}:`, priceData);
+
+    return res.status(200).json({
+      success: true,
+      contestId,
+      ...priceData
+    });
+  }
+
+  return res.status(500).json({
+    error: 'KV storage not configured'
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NFT PRICE HANDLERS
+// ═══════════════════════════════════════════════════════════════════
+
+async function getNftPrice(contestId, res) {
+  if (!contestId) {
+    return res.status(400).json({ error: 'Missing contestId' });
+  }
+
+  if (process.env.KV_REST_API_URL) {
+    const { kv } = require('@vercel/kv');
+    const priceData = await kv.get(`nft_price_${contestId}`);
+
+    if (priceData) {
+      return res.status(200).json({
+        contestId,
+        ...priceData
+      });
+    }
+  }
+
+  return res.status(404).json({
+    error: 'No NFT price stored for this contest',
+    contestId
+  });
+}
+
+async function storeNftPrice(contestId, floorPriceETH, res) {
+  if (!contestId) {
+    return res.status(400).json({ error: 'Missing contestId' });
+  }
+
+  const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
+
+  // Get current ETH price
+  const ethPrice = await getETHPrice(provider);
+  const timestamp = Math.floor(Date.now() / 1000);
+
+  // Calculate floor price in USD
+  const floorPriceUSD = floorPriceETH ? floorPriceETH * ethPrice : null;
+
+  const priceData = {
+    floorPriceETH: floorPriceETH || null,
+    ethPrice: ethPrice,
+    floorPriceUSD: floorPriceUSD ? Math.round(floorPriceUSD * 100) / 100 : null,
+    timestamp,
+    capturedAt: new Date().toISOString()
+  };
+
+  // Store in KV
+  if (process.env.KV_REST_API_URL) {
+    const { kv } = require('@vercel/kv');
+    await kv.set(`nft_price_${contestId}`, priceData);
+
+    console.log(`Stored NFT price for contest ${contestId}:`, priceData);
 
     return res.status(200).json({
       success: true,
@@ -202,10 +282,10 @@ module.exports = async (req, res) => {
 
   const { type } = req.query;
 
-  if (!type || !['message', 'price'].includes(type)) {
+  if (!type || !['message', 'price', 'nftprice'].includes(type)) {
     return res.status(400).json({
       error: 'Missing or invalid type parameter',
-      usage: 'Use ?type=message or ?type=price'
+      usage: 'Use ?type=message, ?type=price, or ?type=nftprice'
     });
   }
 
@@ -223,8 +303,17 @@ module.exports = async (req, res) => {
       if (req.method === 'GET') {
         return getPrice(req.query.contestId, res);
       } else if (req.method === 'POST') {
-        const { contestId, tokenAddress } = req.body;
-        return storePrice(contestId, tokenAddress, res);
+        const { contestId, tokenAddress, prizeAmount } = req.body;
+        return storePrice(contestId, tokenAddress, prizeAmount, res);
+      }
+    }
+
+    if (type === 'nftprice') {
+      if (req.method === 'GET') {
+        return getNftPrice(req.query.contestId, res);
+      } else if (req.method === 'POST') {
+        const { contestId, floorPriceETH } = req.body;
+        return storeNftPrice(contestId, floorPriceETH, res);
       }
     }
 

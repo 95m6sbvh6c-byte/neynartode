@@ -18,22 +18,37 @@ const ALCHEMY_BASE_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_AP
 
 /**
  * Fetch single NFT metadata using Alchemy NFT API
+ * Includes floor price from OpenSea metadata
  */
 async function getNftMetadata(contractAddress, tokenId) {
   try {
-    const url = `${ALCHEMY_BASE_URL}/getNFTMetadata?contractAddress=${contractAddress}&tokenId=${tokenId}&refreshCache=false`;
+    // Fetch NFT metadata and contract metadata in parallel
+    const [nftUrl, contractUrl] = [
+      `${ALCHEMY_BASE_URL}/getNFTMetadata?contractAddress=${contractAddress}&tokenId=${tokenId}&refreshCache=false`,
+      `${ALCHEMY_BASE_URL}/getContractMetadata?contractAddress=${contractAddress}`
+    ];
 
     console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId}...`);
 
-    const response = await fetch(url);
+    const [nftResponse, contractResponse] = await Promise.all([
+      fetch(nftUrl),
+      fetch(contractUrl).catch(() => null) // Don't fail if contract metadata unavailable
+    ]);
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    if (!nftResponse.ok) {
+      const errorText = await nftResponse.text();
       console.error('Alchemy API error:', errorText);
-      throw new Error(`Alchemy API error: ${response.status}`);
+      throw new Error(`Alchemy API error: ${nftResponse.status}`);
     }
 
-    const nft = await response.json();
+    const nft = await nftResponse.json();
+
+    // Get floor price from contract metadata (more reliable than NFT metadata)
+    let floorPrice = nft.contract?.openSeaMetadata?.floorPrice || null;
+    if (contractResponse && contractResponse.ok) {
+      const contractData = await contractResponse.json();
+      floorPrice = contractData.openSeaMetadata?.floorPrice || floorPrice;
+    }
 
     // Get the best image URL
     let imageUrl = nft.image?.cachedUrl ||
@@ -58,6 +73,7 @@ async function getNftMetadata(contractAddress, tokenId) {
       tokenType: nft.contract?.tokenType || 'ERC721',
       description: nft.description || nft.raw?.metadata?.description || '',
       attributes: nft.raw?.metadata?.attributes || [],
+      floorPrice: floorPrice, // Floor price in ETH (from OpenSea)
     };
 
   } catch (error) {

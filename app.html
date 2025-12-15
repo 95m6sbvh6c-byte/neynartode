@@ -1344,6 +1344,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           type: result.tokenType,
           description: result.description || '',
           attributes: result.attributes || [],
+          floorPrice: result.floorPrice || null, // Floor price in ETH from OpenSea
         };
       } catch (error) {
         console.error('NFT metadata fetch error:', error);
@@ -1381,7 +1382,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.prizeNftName = result.name;
         state.prizeNftCollection = result.collection;
         state.prizeNftType = result.type;
-        showToast(`Loaded: ${result.name}`, 'success');
+        state.prizeNftFloorPrice = result.floorPrice; // Floor price in ETH for value tracking
+        const floorMsg = result.floorPrice ? ` (Floor: ${result.floorPrice} ETH)` : '';
+        showToast(`Loaded: ${result.name}${floorMsg}`, 'success');
         // Check if NFT is already approved
         await checkNftApprovalStatus();
       } else {
@@ -1389,6 +1392,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.prizeNftName = '';
         state.prizeNftCollection = '';
         state.prizeNftType = '';
+        state.prizeNftFloorPrice = null;
         state.nftApprovalStatus = 'none';
         showToast(`Failed to load NFT: ${result.error}`, 'error');
       }
@@ -1451,10 +1455,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       state.prizeNftCollection = nft.collection;
       state.prizeNftType = nft.tokenType;
       state.prizeNftAmount = nft.tokenType === 'ERC1155' ? String(nft.balance) : '1';
+      state.prizeNftFloorPrice = nft.floorPrice || null; // Floor price in ETH for value tracking
       state.showNftPicker = false;
       state.nftApprovalStatus = 'none';
 
-      showToast(`Selected: ${nft.name}`, 'success');
+      const floorMsg = nft.floorPrice ? ` (Floor: ${nft.floorPrice} ETH)` : '';
+      showToast(`Selected: ${nft.name}${floorMsg}`, 'success');
 
       // Check approval status for the selected NFT
       checkNftApprovalStatus();
@@ -5819,6 +5825,48 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             console.log('✅ Token price captured at contest creation');
           } catch (e) {
             console.log('⚠️ Could not store token price:', e.message);
+          }
+        }
+
+        // Store prize value in USD at contest creation (for all-time prizes tracking)
+        if (contestId !== 'Unknown') {
+          try {
+            if (state.prizeType === 'token') {
+              // For token contests: store prize token price and amount
+              const prizeTokenAddr = state.prizeTokenAddress || ethers.constants.AddressZero;
+              const prizeAmt = parseFloat(state.prizeTokenAmount) || 0;
+
+              await fetch(`${apiBaseUrl}/api/store?type=price`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contestId: `prize_${contestId}`,
+                  tokenAddress: prizeTokenAddr,
+                  prizeAmount: prizeAmt
+                })
+              });
+              console.log('✅ Prize token value captured:', prizeAmt, state.prizeTokenTicker || 'tokens');
+            } else if (state.prizeType === 'nft') {
+              // For NFT contests: store floor price
+              const nftContestId = `NFT-${contestId}`;
+              const floorPrice = state.prizeNftFloorPrice || null;
+
+              if (floorPrice !== null) {
+                await fetch(`${apiBaseUrl}/api/store?type=nftprice`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contestId: nftContestId,
+                    floorPriceETH: floorPrice
+                  })
+                });
+                console.log('✅ NFT floor price captured:', floorPrice, 'ETH');
+              } else {
+                console.log('⚠️ NFT floor price not available for storage');
+              }
+            }
+          } catch (e) {
+            console.log('⚠️ Could not store prize value:', e.message);
           }
         }
 
