@@ -4784,14 +4784,44 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
               showToast('Transaction submitted! Waiting for confirmation...', 'info', 10000);
 
-              // Wait for confirmation
-              const provider = new ethers.providers.Web3Provider(ethProvider);
-              await provider.waitForTransaction(txHash);
+              // Wait for confirmation with better error handling
+              try {
+                const provider = new ethers.providers.Web3Provider(ethProvider);
+                const receipt = await provider.waitForTransaction(txHash, 1, 60000); // 1 confirmation, 60s timeout
 
-              state.tokenomicsEnabled = false;
-              state.minTradeVolume = '0';
-              showToast('Tokenomics disabled! You can now create contests without volume requirements.', 'success');
-              render();
+                if (receipt && receipt.status === 1) {
+                  state.tokenomicsEnabled = false;
+                  state.minTradeVolume = '0';
+                  showToast('Tokenomics disabled! You can now create contests without volume requirements.', 'success');
+                  render();
+                } else {
+                  throw new Error('Transaction failed on-chain');
+                }
+              } catch (waitError) {
+                // Transaction was sent - check if it actually succeeded
+                console.log('waitForTransaction error, checking tx status directly...', waitError);
+                try {
+                  const checkProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+                  const receipt = await checkProvider.getTransactionReceipt(txHash);
+
+                  if (receipt && receipt.status === 1) {
+                    // Transaction succeeded despite the wait error
+                    state.tokenomicsEnabled = false;
+                    state.minTradeVolume = '0';
+                    showToast('Tokenomics disabled! You can now create contests without volume requirements.', 'success');
+                    render();
+                    return;
+                  }
+                } catch (checkError) {
+                  console.log('Could not verify tx status:', checkError);
+                }
+
+                // If we can't confirm success, show tx hash so user can verify
+                showToast(`Transaction sent (${txHash.slice(0, 10)}...). Check BaseScan if not confirmed.`, 'warning', 0);
+                state.tokenomicsEnabled = false;
+                state.minTradeVolume = '0';
+                render();
+              }
             } catch (error) {
               console.error('Fee payment error:', error);
               showToast('Fee payment failed: ' + error.message, 'error');
