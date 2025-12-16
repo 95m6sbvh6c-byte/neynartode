@@ -611,11 +611,11 @@
             // Build status details
             const details = [];
 
-            // Show combined Holder/Volume path (either one qualifies)
+            // Show tokenomics status (holder OR volume qualifies)
             if (data.volume.required > 0) {
-              const holderOrVolumeMet = data.holder?.met || data.volume.met;
-              const combinedCheck = holderOrVolumeMet ? '✓' : '✗';
-              details.push(`💎 Holder / 📈 Volume ${combinedCheck}`);
+              const tokenomicsMet = data.holder?.met || data.volume.met;
+              const tokenomicsCheck = tokenomicsMet ? '✓' : '✗';
+              details.push(`📊 Tokenomics ${tokenomicsCheck}`);
             }
 
             // Social status
