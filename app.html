@@ -402,7 +402,7 @@
       white-space: pre-line;
       animation: toastIn 0.3s ease-out;
       pointer-events: auto;
-      max-width: 380px;
+      max-width: 500px;
       border: 1px solid var(--border-subtle);
     }
 
@@ -545,7 +545,7 @@
           socialReqs.push(data.social.liked ? '✅ Liked' : '❌ Need Like');
         }
         if (data.social.requirements.reply) {
-          socialReqs.push(data.social.replied ? '✅ Replied' : '❌ Need Reply (2+ words)');
+          socialReqs.push(data.social.replied ? '✅ Replied' : '❌ Need Reply');
         }
 
         if (socialReqs.length > 0) {
@@ -611,15 +611,11 @@
             // Build status details
             const details = [];
 
-            // Show both qualification paths when there's a volume requirement
+            // Show combined Holder/Volume path (either one qualifies)
             if (data.volume.required > 0) {
-              // Holder path with checkmark
-              const holderCheck = data.holder?.met ? '✓' : '✗';
-              details.push(`💎 Holder ${holderCheck}`);
-
-              // Volume path with checkmark
-              const volumeCheck = data.volume.met ? '✓' : '✗';
-              details.push(`📈 Volume ${volumeCheck}`);
+              const holderOrVolumeMet = data.holder?.met || data.volume.met;
+              const combinedCheck = holderOrVolumeMet ? '✓' : '✗';
+              details.push(`💎 Holder / 📈 Volume ${combinedCheck}`);
             }
 
             // Social status
