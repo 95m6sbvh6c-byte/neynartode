@@ -79,6 +79,7 @@ function getHolderThreshold(tokenRequirement) {
 /**
  * Check if user qualifies as a holder (can skip volume requirement)
  * Sums balance across all verified addresses
+ * OPTIMIZED: Fetches all balances in parallel
  */
 async function checkHolderQualification(addresses, provider, tokenRequirement) {
   const threshold = getHolderThreshold(tokenRequirement);
@@ -91,16 +92,13 @@ async function checkHolderQualification(addresses, provider, tokenRequirement) {
     provider
   );
 
-  // Sum total balance across all user's addresses
-  let totalBalance = 0n;
-  for (const addr of addresses) {
-    try {
-      const balance = await neynartodes.balanceOf(addr);
-      totalBalance += balance;
-    } catch (e) {
-      // Skip failed balance checks
-    }
-  }
+  // Fetch all balances in PARALLEL instead of sequentially
+  const balancePromises = addresses.map(addr =>
+    neynartodes.balanceOf(addr).catch(() => 0n)
+  );
+
+  const balances = await Promise.all(balancePromises);
+  const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
 
   return {
     isHolder: totalBalance >= threshold,
@@ -718,18 +716,27 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
 
     console.log(`\n💎 Checking holder status (${thresholdFormatted} $NEYNARTODES threshold)...`);
 
-    // First pass: check holder status for all users
+    // First pass: check holder status for all users IN PARALLEL
+    // Batch into chunks of 10 to avoid rate limiting
+    const BATCH_SIZE = 10;
     const holderUsers = [];
     const nonHolderUsers = [];
 
-    for (const user of qualifiedUsers) {
-      const holderCheck = await checkHolderQualification(user.addresses, provider, tokenRequirement);
-      if (holderCheck.isHolder) {
-        holderUsers.push(user);
-        console.log(`   💎 @${user.username || user.fid} is a HOLDER (${ethers.formatEther(holderCheck.balance)} tokens)`);
-      } else {
-        nonHolderUsers.push(user);
-      }
+    for (let i = 0; i < qualifiedUsers.length; i += BATCH_SIZE) {
+      const batch = qualifiedUsers.slice(i, i + BATCH_SIZE);
+      const holderChecks = await Promise.all(
+        batch.map(user => checkHolderQualification(user.addresses, provider, tokenRequirement))
+      );
+
+      batch.forEach((user, idx) => {
+        const holderCheck = holderChecks[idx];
+        if (holderCheck.isHolder) {
+          holderUsers.push(user);
+          console.log(`   💎 @${user.username || user.fid} is a HOLDER (${ethers.formatEther(holderCheck.balance)} tokens)`);
+        } else {
+          nonHolderUsers.push(user);
+        }
+      });
     }
 
     console.log(`   Holders (skip volume): ${holderUsers.length}`);

@@ -573,6 +573,7 @@
     }
 
     // Check eligibility for all active contests
+    // OPTIMIZED: Run all checks in parallel for faster results
     async function checkAllEligibility() {
       if (!state.userFid && !state.userAddress) {
         showToast('Please connect your wallet first', 'warning');
@@ -587,10 +588,8 @@
 
       showToast(`Checking ${activeContests.length} contest(s)...`, 'info');
 
-      const results = [];
-      let qualifiedCount = 0;
-
-      for (const contest of activeContests) {
+      // OPTIMIZED: Run all eligibility checks in PARALLEL
+      const checkPromises = activeContests.map(async (contest) => {
         try {
           let params = state.userFid
             ? `contestId=${contest.contestId}&fid=${state.userFid}`
@@ -629,15 +628,23 @@
             }
 
             line += details.join(' | ');
-            results.push(line);
-            if (data.qualified) qualifiedCount++;
+            return { line, qualified: data.qualified, contestId: contest.contestId };
           } else {
-            results.push(`⚠️ Contest #${contest.contestId}: Error`);
+            return { line: `⚠️ Contest #${contest.contestId}: Error`, qualified: false, contestId: contest.contestId };
           }
         } catch (error) {
-          results.push(`⚠️ Contest #${contest.contestId}: Failed`);
+          return { line: `⚠️ Contest #${contest.contestId}: Failed`, qualified: false, contestId: contest.contestId };
         }
-      }
+      });
+
+      // Wait for all checks to complete
+      const checkResults = await Promise.all(checkPromises);
+
+      // Sort by contest ID for consistent display
+      checkResults.sort((a, b) => a.contestId - b.contestId);
+
+      const results = checkResults.map(r => r.line);
+      const qualifiedCount = checkResults.filter(r => r.qualified).length;
 
       // Show summary
       const summary = qualifiedCount > 0

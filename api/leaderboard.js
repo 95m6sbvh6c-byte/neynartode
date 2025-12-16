@@ -96,18 +96,16 @@ async function getUserByWallet(walletAddress) {
 
 /**
  * Get total NEYNARTODES token holdings across all addresses
+ * OPTIMIZED: Fetches all balances in parallel
  */
 async function getTokenHoldings(addresses, tokenContract) {
-  let totalBalance = 0n;
+  // Fetch all balances in PARALLEL
+  const balancePromises = addresses.map(addr =>
+    tokenContract.balanceOf(addr).catch(() => 0n)
+  );
 
-  for (const addr of addresses) {
-    try {
-      const balance = await tokenContract.balanceOf(addr);
-      totalBalance += balance;
-    } catch (e) {
-      // Address might not exist or have issues, continue
-    }
-  }
+  const balances = await Promise.all(balancePromises);
+  const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
 
   // Convert from wei (18 decimals) to whole tokens
   return Number(totalBalance / 10n**18n);
@@ -230,12 +228,23 @@ module.exports = async (req, res) => {
     const hostStats = {};
     let seasonContestCount = 0;
 
-    // Fetch all contests
-    for (let i = 1; i <= totalContests; i++) {
-      try {
-        const contestData = await contestContract.getContest(i);
-        const [host, , , , endTime, castId, , volumeRequirement, status] = contestData;
+    // OPTIMIZED: Fetch all contests in parallel batches
+    const BATCH_SIZE = 20;
+    const contestIds = Array.from({ length: totalContests }, (_, i) => i + 1);
 
+    for (let i = 0; i < contestIds.length; i += BATCH_SIZE) {
+      const batch = contestIds.slice(i, i + BATCH_SIZE);
+      const contestPromises = batch.map(id =>
+        contestContract.getContest(id).catch(() => null)
+      );
+
+      const contestResults = await Promise.all(contestPromises);
+
+      for (let j = 0; j < batch.length; j++) {
+        const contestData = contestResults[j];
+        if (!contestData) continue;
+
+        const [host, , , , endTime, castId, , volumeRequirement, status] = contestData;
         const contestEndTime = Number(endTime);
 
         // Filter by season time range - contest must END within season window
@@ -280,23 +289,34 @@ module.exports = async (req, res) => {
           const volume = Number(volumeRequirement) / 1e18;
           hostStats[hostLower].totalVolume += volume;
         }
-      } catch (e) {
-        console.error(`Error fetching contest ${i}:`, e.message);
       }
     }
 
     // Fetch user info, engagement, and votes for all hosts
+    // OPTIMIZED: Batch operations where possible
     const hostAddresses = Object.keys(hostStats);
     const hostsWithScores = [];
 
-    for (const hostLower of hostAddresses) {
+    // Filter hosts with completed contests
+    const activeHosts = hostAddresses.filter(h => hostStats[h].completedContests > 0);
+
+    // STEP 1: Batch fetch all user info in parallel (chunks of 5 to avoid rate limiting)
+    const USER_BATCH_SIZE = 5;
+    const userInfoMap = new Map();
+
+    for (let i = 0; i < activeHosts.length; i += USER_BATCH_SIZE) {
+      const batch = activeHosts.slice(i, i + USER_BATCH_SIZE);
+      const userInfoPromises = batch.map(hostLower =>
+        getUserByWallet(hostStats[hostLower].address).then(info => ({ hostLower, info }))
+      );
+      const results = await Promise.all(userInfoPromises);
+      results.forEach(({ hostLower, info }) => userInfoMap.set(hostLower, info));
+    }
+
+    // STEP 2: Process each host (some operations still sequential due to dependencies)
+    for (const hostLower of activeHosts) {
       const stats = hostStats[hostLower];
-
-      // Skip hosts with no completed contests
-      if (stats.completedContests === 0) continue;
-
-      // First, get the host's Farcaster info (we need their FID to verify cast authorship)
-      const userInfo = await getUserByWallet(stats.address);
+      const userInfo = userInfoMap.get(hostLower);
       const hostFid = userInfo?.fid || 0;
 
       // Skip excluded FIDs (double-check for devs/admins)
@@ -304,33 +324,34 @@ module.exports = async (req, res) => {
         continue;
       }
 
-      // Fetch engagement for each cast - only counts if host authored the cast
+      // Batch fetch cast engagements for this host
+      const engagementPromises = stats.castHashes.map(castHash =>
+        getCastEngagement(castHash, hostFid)
+      );
+      const engagements = await Promise.all(engagementPromises);
+
       let ownedCastsCount = 0;
-      for (const castHash of stats.castHashes) {
-        const engagement = await getCastEngagement(castHash, hostFid);
+      engagements.forEach(engagement => {
         if (engagement.isAuthor) {
           stats.totalLikes += engagement.likes;
           stats.totalRecasts += engagement.recasts;
           stats.totalReplies += engagement.replies;
           ownedCastsCount++;
         }
-      }
+      });
 
       console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount}/${stats.castHashes.length} casts authored by host`);
 
-      // Fetch votes from VotingManager
-      try {
-        const [upvotes, downvotes] = await votingContract.getHostVotes(stats.address);
-        stats.upvotes = Number(upvotes);
-        stats.downvotes = Number(downvotes);
-      } catch (e) {
-        stats.upvotes = 0;
-        stats.downvotes = 0;
-      }
-
-      // Fetch token holdings for this host
+      // Fetch votes and token holdings in PARALLEL
       const holdingsAddresses = userInfo?.verifiedAddresses || [stats.address];
-      const tokenHoldings = await getTokenHoldings(holdingsAddresses, tokenContract);
+      const [votesResult, tokenHoldings] = await Promise.all([
+        votingContract.getHostVotes(stats.address).catch(() => [0n, 0n]),
+        getTokenHoldings(holdingsAddresses, tokenContract)
+      ]);
+
+      const [upvotes, downvotes] = votesResult;
+      stats.upvotes = Number(upvotes);
+      stats.downvotes = Number(downvotes);
 
       // Scoring calculations:
       // Host Bonus = 100 points per completed contest (regardless of cast ownership)

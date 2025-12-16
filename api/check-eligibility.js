@@ -63,6 +63,7 @@ function getHolderThreshold(tokenRequirement) {
 /**
  * Check if user qualifies via NEYNARTODES token holdings
  * Sums balance across all verified addresses
+ * OPTIMIZED: Fetches all balances in parallel
  */
 async function checkHolderQualification(addresses, provider, tokenRequirement) {
   const { threshold, thresholdFormatted, isCustomToken } = getHolderThreshold(tokenRequirement);
@@ -73,15 +74,16 @@ async function checkHolderQualification(addresses, provider, tokenRequirement) {
     provider
   );
 
-  let totalBalance = 0n;
-  for (const addr of addresses) {
-    try {
-      const balance = await neynartodes.balanceOf(addr);
-      totalBalance += balance;
-    } catch (e) {
+  // Fetch all balances in PARALLEL instead of sequentially
+  const balancePromises = addresses.map(addr =>
+    neynartodes.balanceOf(addr).catch(e => {
       console.error(`Error checking balance for ${addr}:`, e.message);
-    }
-  }
+      return 0n;
+    })
+  );
+
+  const balances = await Promise.all(balancePromises);
+  const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
 
   return {
     met: totalBalance >= threshold,
