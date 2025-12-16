@@ -160,7 +160,7 @@ Contest Score = Host Bonus + (Social × Contests) + Token
 |-----------|---------|
 | Whitelist | Trusted beta testers only |
 | Holder Qualification | 100M tokens = skip volume requirement |
-| Reply Quality | 4+ words prevents spam |
+| Reply Quality | 1+ words minimum |
 | Volume Cap | Prevents gaming |
 
 ---

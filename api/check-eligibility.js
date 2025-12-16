@@ -179,52 +179,101 @@ async function checkSocialRequirements(castHash, fid, requirements) {
     replied: false,
   };
 
-  try {
-    // ═══════════════════════════════════════════════════════════════════
-    // STEP 1: Fetch original reactions, replies, AND quote casts in PARALLEL
-    // ═══════════════════════════════════════════════════════════════════
-    console.log(`   Checking cast ${castHash.slice(0, 10)}... (parallel fetch)`);
+  const maxPages = 10; // Safety limit
 
-    const [origReactionsResponse, origRepliesResponse, quotesResponse] = await Promise.all([
-      fetch(
-        `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castHash}&types=likes,recasts&limit=100`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      ),
-      fetch(
-        `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=50`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      ),
-      fetch(
-        `https://api.neynar.com/v2/farcaster/cast/quotes?identifier=${castHash}&type=hash&limit=100`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      ),
-    ]);
+  // Helper to check reactions with pagination for a specific cast
+  async function checkReactionsForUser(hash, targetFid) {
+    const found = { liked: false, recasted: false };
+    let cursor = null;
+    let pageCount = 0;
 
-    // Process original reactions
-    if (origReactionsResponse.ok) {
-      const origReactionsData = await origReactionsResponse.json();
-      for (const reaction of origReactionsData.reactions || []) {
-        if (reaction.user?.fid === fid) {
-          if (reaction.reaction_type === 'like') result.liked = true;
-          if (reaction.reaction_type === 'recast') result.recasted = true;
+    do {
+      const url = cursor
+        ? `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${hash}&types=likes,recasts&limit=100&cursor=${cursor}`
+        : `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${hash}&types=likes,recasts&limit=100`;
+
+      const response = await fetch(url, {
+        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+      }).catch(() => null);
+
+      if (!response?.ok) break;
+
+      const data = await response.json();
+      for (const reaction of data.reactions || []) {
+        if (reaction.user?.fid === targetFid) {
+          if (reaction.reaction_type === 'like') found.liked = true;
+          if (reaction.reaction_type === 'recast') found.recasted = true;
         }
       }
-    }
 
-    // Process original replies
-    if (origRepliesResponse.ok) {
-      const origRepliesData = await origRepliesResponse.json();
-      const replies = origRepliesData.conversation?.cast?.direct_replies || [];
+      // If found both, stop early
+      if (found.liked && found.recasted) break;
+
+      cursor = data.next?.cursor;
+      pageCount++;
+      if (cursor) await new Promise(r => setTimeout(r, 50));
+
+    } while (cursor && pageCount < maxPages);
+
+    return found;
+  }
+
+  // Helper to check replies with pagination for a specific cast
+  async function checkRepliesForUser(hash, targetFid) {
+    let cursor = null;
+    let pageCount = 0;
+
+    do {
+      const url = cursor
+        ? `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${hash}&type=hash&reply_depth=1&limit=50&cursor=${cursor}`
+        : `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${hash}&type=hash&reply_depth=1&limit=50`;
+
+      const response = await fetch(url, {
+        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+      }).catch(() => null);
+
+      if (!response?.ok) break;
+
+      const data = await response.json();
+      const replies = data.conversation?.cast?.direct_replies || [];
+
       for (const reply of replies) {
-        if (reply.author?.fid === fid) {
+        if (reply.author?.fid === targetFid) {
           const wordCount = (reply.text || '').trim().split(/\s+/).length;
-          if (wordCount >= 2) {
-            result.replied = true;
-            break;
+          if (wordCount >= 1) {
+            return true;
           }
         }
       }
-    }
+
+      cursor = data.next?.cursor;
+      pageCount++;
+      if (cursor) await new Promise(r => setTimeout(r, 50));
+
+    } while (cursor && pageCount < maxPages);
+
+    return false;
+  }
+
+  try {
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 1: Check original cast with PAGINATION
+    // ═══════════════════════════════════════════════════════════════════
+    console.log(`   Checking cast ${castHash.slice(0, 10)}... for FID ${fid}`);
+
+    // Check reactions and replies in parallel (with pagination)
+    const [origReactions, origReplied, quotesResponse] = await Promise.all([
+      checkReactionsForUser(castHash, fid),
+      checkRepliesForUser(castHash, fid),
+      fetch(
+        `https://api.neynar.com/v2/farcaster/cast/quotes?identifier=${castHash}&type=hash&limit=100`,
+        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+      ).catch(() => null),
+    ]);
+
+    result.liked = origReactions.liked;
+    result.recasted = origReactions.recasted;
+    result.replied = origReplied;
 
     console.log(`   After original: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
 
@@ -234,10 +283,10 @@ async function checkSocialRequirements(castHash, fid, requirements) {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 2: Get quote casts from already-fetched response
+    // STEP 2: Get quote casts
     // ═══════════════════════════════════════════════════════════════════
     const quoteCasts = [];
-    if (quotesResponse.ok) {
+    if (quotesResponse?.ok) {
       const quotesData = await quotesResponse.json();
       for (const quoteCast of quotesData.casts || []) {
         if (!quoteCasts.includes(quoteCast.hash)) {
@@ -250,60 +299,34 @@ async function checkSocialRequirements(castHash, fid, requirements) {
       return result;
     }
 
-    console.log(`   Checking ${quoteCasts.length} quote casts in parallel...`);
+    console.log(`   Checking ${quoteCasts.length} quote casts...`);
 
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 3: Check ALL quote casts in PARALLEL
+    // STEP 3: Check quote casts (with pagination)
     // ═══════════════════════════════════════════════════════════════════
-    const quoteCheckPromises = quoteCasts.map(async (quoteHash) => {
-      const checkResult = { recasted: false, liked: false, replied: false };
+    for (const quoteHash of quoteCasts) {
+      // Check what we still need
+      const needLike = !result.liked;
+      const needRecast = !result.recasted;
+      const needReply = !result.replied;
 
-      // Fetch reactions and replies for this quote in parallel
-      const [reactionsRes, repliesRes] = await Promise.all([
-        fetch(
-          `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100`,
-          { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-        ).catch(() => null),
-        fetch(
-          `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${quoteHash}&type=hash&reply_depth=1&limit=50`,
-          { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-        ).catch(() => null),
-      ]);
+      // If we have everything, stop
+      if (!needLike && !needRecast && !needReply) break;
 
-      if (reactionsRes?.ok) {
-        const reactionsData = await reactionsRes.json();
-        for (const reaction of reactionsData.reactions || []) {
-          if (reaction.user?.fid === fid) {
-            if (reaction.reaction_type === 'like') checkResult.liked = true;
-            if (reaction.reaction_type === 'recast') checkResult.recasted = true;
-          }
-        }
+      // Check reactions if needed
+      if (needLike || needRecast) {
+        const quoteReactions = await checkReactionsForUser(quoteHash, fid);
+        if (quoteReactions.liked) result.liked = true;
+        if (quoteReactions.recasted) result.recasted = true;
       }
 
-      if (repliesRes?.ok) {
-        const repliesData = await repliesRes.json();
-        const replies = repliesData.conversation?.cast?.direct_replies || [];
-        for (const reply of replies) {
-          if (reply.author?.fid === fid) {
-            const wordCount = (reply.text || '').trim().split(/\s+/).length;
-            if (wordCount >= 2) {
-              checkResult.replied = true;
-              break;
-            }
-          }
-        }
+      // Check replies if needed
+      if (needReply) {
+        const quoteReplied = await checkRepliesForUser(quoteHash, fid);
+        if (quoteReplied) result.replied = true;
       }
 
-      return checkResult;
-    });
-
-    const quoteResults = await Promise.all(quoteCheckPromises);
-
-    // Merge results from all quote casts
-    for (const qr of quoteResults) {
-      if (qr.recasted) result.recasted = true;
-      if (qr.liked) result.liked = true;
-      if (qr.replied) result.replied = true;
+      await new Promise(r => setTimeout(r, 50)); // Rate limit between quote casts
     }
 
     console.log(`   Final: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);

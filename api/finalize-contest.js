@@ -146,9 +146,6 @@ async function getCastEngagement(castId) {
       const fid = user?.fid;
       if (!fid) return;
 
-      const neynarScore = user?.experimental?.neynar_user_score || 0;
-      if (neynarScore < 0.30) return; // Filter bots
-
       // Collect ALL addresses for volume checks
       const addresses = [];
       if (user?.custody_address) {
@@ -257,7 +254,7 @@ async function getCastEngagement(castId) {
 
       for (const reply of replies) {
         const wordCount = (reply.text || '').trim().split(/\s+/).length;
-        if (wordCount >= 2) {
+        if (wordCount >= 1) {
           addUserEngagement(reply.author, 'reply', wordCount);
         }
       }
@@ -309,47 +306,70 @@ async function getCastEngagement(castId) {
 
     console.log(`   Found ${quoteCasts.length} quote casts to check`);
 
-    // Get reactions AND replies on all quote casts
+    // Get reactions AND replies on all quote casts (with pagination)
     for (const quoteHash of quoteCasts) {
-      // Get reactions (likes/recasts)
-      const quoteReactionsResponse = await fetch(
-        `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      );
+      // Get reactions (likes/recasts) with pagination
+      let quoteCursor = null;
+      let quoteReactionCount = 0;
+      do {
+        const quoteReactionsUrl = quoteCursor
+          ? `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100&cursor=${quoteCursor}`
+          : `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${quoteHash}&types=likes,recasts&limit=100`;
 
-      if (quoteReactionsResponse.ok) {
+        const quoteReactionsResponse = await fetch(quoteReactionsUrl, {
+          headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+        });
+
+        if (!quoteReactionsResponse.ok) break;
+
         const quoteReactionsData = await quoteReactionsResponse.json();
         for (const reaction of quoteReactionsData.reactions || []) {
           addUserEngagement(reaction.user, reaction.reaction_type);
+          quoteReactionCount++;
         }
-        console.log(`   - ${quoteHash.slice(0, 10)}...: ${quoteReactionsData.reactions?.length || 0} reactions`);
-      }
 
-      await new Promise(r => setTimeout(r, 100)); // Rate limit
+        quoteCursor = quoteReactionsData.cursor;
+        if (quoteCursor) await new Promise(r => setTimeout(r, 100));
 
-      // Get replies on quote cast
-      const quoteRepliesResponse = await fetch(
-        `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${quoteHash}&type=hash&reply_depth=1&limit=50`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      );
+      } while (quoteCursor);
 
-      if (quoteRepliesResponse.ok) {
+      console.log(`   - ${quoteHash.slice(0, 10)}...: ${quoteReactionCount} reactions`);
+
+      // Get replies on quote cast with pagination
+      let quoteReplyCursor = null;
+      let quoteReplyCount = 0;
+      do {
+        const quoteRepliesUrl = quoteReplyCursor
+          ? `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${quoteHash}&type=hash&reply_depth=1&limit=50&cursor=${quoteReplyCursor}`
+          : `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${quoteHash}&type=hash&reply_depth=1&limit=50`;
+
+        const quoteRepliesResponse = await fetch(quoteRepliesUrl, {
+          headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+        });
+
+        if (!quoteRepliesResponse.ok) break;
+
         const quoteRepliesData = await quoteRepliesResponse.json();
         const quoteReplies = quoteRepliesData.conversation?.cast?.direct_replies || [];
-        let quoteReplyCount = 0;
+
         for (const reply of quoteReplies) {
           const wordCount = (reply.text || '').trim().split(/\s+/).length;
-          if (wordCount >= 2) {
+          if (wordCount >= 1) {
             addUserEngagement(reply.author, 'reply', wordCount);
             quoteReplyCount++;
           }
         }
-        if (quoteReplyCount > 0) {
-          console.log(`   - ${quoteHash.slice(0, 10)}...: ${quoteReplyCount} qualifying replies`);
-        }
+
+        quoteReplyCursor = quoteRepliesData.next?.cursor;
+        if (quoteReplyCursor) await new Promise(r => setTimeout(r, 100));
+
+      } while (quoteReplyCursor);
+
+      if (quoteReplyCount > 0) {
+        console.log(`   - ${quoteHash.slice(0, 10)}...: ${quoteReplyCount} qualifying replies`);
       }
 
-      await new Promise(r => setTimeout(r, 100)); // Rate limit
+      await new Promise(r => setTimeout(r, 100)); // Rate limit between quote casts
     }
 
     // Build legacy arrays for backward compatibility (addresses only)
