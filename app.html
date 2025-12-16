@@ -4764,19 +4764,24 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 return;
               }
 
-              const provider = new ethers.providers.Web3Provider(ethProvider);
-              const signer = provider.getSigner();
               const fee = ethers.utils.parseEther('0.001');
-
               showToast('Sending 0.001 ETH fee... Confirm in wallet!', 'info');
 
-              const tx = await signer.sendTransaction({
-                to: CONFIG.CONTRACTS.treasury,
-                value: fee
+              // Use eth_sendTransaction for smart wallet compatibility
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: state.userAddress,
+                  to: CONFIG.CONTRACTS.treasury,
+                  value: '0x' + fee.toBigInt().toString(16)
+                }]
               });
 
               showToast('Transaction submitted! Waiting for confirmation...', 'info', 10000);
-              await tx.wait();
+
+              // Wait for confirmation
+              const provider = new ethers.providers.Web3Provider(ethProvider);
+              await provider.waitForTransaction(txHash);
 
               state.tokenomicsEnabled = false;
               state.minTradeVolume = '0';
