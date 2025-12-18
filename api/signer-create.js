@@ -66,55 +66,72 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Create a new signer via Neynar API
-    const response = await fetch('https://api.neynar.com/v2/farcaster/signer', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api_key': NEYNAR_API_KEY
-      }
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Neynar signer creation failed:', errorData);
-      return res.status(500).json({
-        error: 'Failed to create signer',
-        details: errorData.message || response.statusText
-      });
-    }
-
-    const signerData = await response.json();
-
-    // The signer needs to be registered with Neynar to get approval URL
-    // Use the signed key request endpoint
-    const registerResponse = await fetch('https://api.neynar.com/v2/farcaster/signer/signed_key', {
+    // Create a Neynar managed signer (sponsored by Neynar)
+    // This uses the simpler /signer/developer_managed endpoint
+    const response = await fetch('https://api.neynar.com/v2/farcaster/signer/developer_managed', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'api_key': NEYNAR_API_KEY
       },
       body: JSON.stringify({
-        signer_uuid: signerData.signer_uuid,
-        app_fid: parseInt(process.env.APP_FID || '0'),
-        deadline: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hour deadline
+        fid: parseInt(fid)
       })
     });
 
-    if (!registerResponse.ok) {
-      const errorData = await registerResponse.json().catch(() => ({}));
-      console.error('Neynar signed key registration failed:', errorData);
-      return res.status(500).json({
-        error: 'Failed to register signer',
-        details: errorData.message || registerResponse.statusText
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Neynar managed signer creation failed:', errorData);
+
+      // If developer_managed fails, try the standard signer flow
+      console.log('Falling back to standard signer flow...');
+
+      const standardResponse = await fetch('https://api.neynar.com/v2/farcaster/signer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api_key': NEYNAR_API_KEY
+        }
+      });
+
+      if (!standardResponse.ok) {
+        const stdError = await standardResponse.json().catch(() => ({}));
+        return res.status(500).json({
+          error: 'Failed to create signer',
+          details: stdError.message || standardResponse.statusText
+        });
+      }
+
+      const signerData = await standardResponse.json();
+
+      // For standard signers, user needs to approve via deep link
+      const approval_url = `https://client.warpcast.com/deeplinks/signed-key-request?token=${signerData.signer_uuid}`;
+
+      // Store pending signer
+      if (process.env.KV_REST_API_URL) {
+        const { kv } = require('@vercel/kv');
+        await kv.set(`signer:${fid}`, {
+          signer_uuid: signerData.signer_uuid,
+          public_key: signerData.public_key,
+          approval_url,
+          approved: false,
+          created_at: Date.now()
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        signer_uuid: signerData.signer_uuid,
+        approval_url,
+        fid
       });
     }
 
-    const registeredData = await registerResponse.json();
+    const signerData = await response.json();
 
-    // The approval URL is in the signer_approval_url field
-    const approval_url = registeredData.signer_approval_url ||
-                         `https://client.warpcast.com/deeplinks/signed-key-request?token=${signerData.signer_uuid}`;
+    // Developer managed signers are pre-approved by Neynar
+    const isApproved = signerData.status === 'approved' || !signerData.signer_approval_url;
+    const approval_url = signerData.signer_approval_url || null;
 
     // Store in KV
     if (process.env.KV_REST_API_URL) {
@@ -123,17 +140,18 @@ module.exports = async (req, res) => {
         signer_uuid: signerData.signer_uuid,
         public_key: signerData.public_key,
         approval_url,
-        approved: false,
+        approved: isApproved,
         created_at: Date.now()
       });
     }
 
-    console.log(`Created signer for FID ${fid}:`, signerData.signer_uuid);
+    console.log(`Created managed signer for FID ${fid}:`, signerData.signer_uuid, 'approved:', isApproved);
 
     return res.status(200).json({
       success: true,
       signer_uuid: signerData.signer_uuid,
       approval_url,
+      already_approved: isApproved,
       fid
     });
 
