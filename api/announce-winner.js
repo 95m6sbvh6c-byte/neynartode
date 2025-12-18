@@ -711,9 +711,13 @@ async function announceV2Winners(contestId) {
   const hostTag = hostUser ? `@${hostUser.username}` : null;
   console.log(`   Host tag: ${hostTag || 'not found'}`);
 
+  // Deduplicate winners (same address may win multiple times due to bonus entries)
+  const uniqueWinners = [...new Set(winners.map(w => w.toLowerCase()))];
+  console.log(`   Unique winners: ${uniqueWinners.length} (from ${winners.length} total picks)`);
+
   // Get all winners' Farcaster profiles
   const winnerProfiles = [];
-  for (const winnerAddr of winners) {
+  for (const winnerAddr of uniqueWinners) {
     const winnerUser = await getUserByWallet(winnerAddr);
     winnerProfiles.push({
       address: winnerAddr,
@@ -723,17 +727,17 @@ async function announceV2Winners(contestId) {
     console.log(`   Winner: ${winnerUser ? `@${winnerUser.username}` : winnerAddr}`);
   }
 
-  // Get prize info
+  // Get prize info (use unique winner count for per-winner calculation)
   let prizeDisplay = '';
   let perWinnerPrize = '';
-  const winnerCountNum = Number(winnerCount);
+  const uniqueWinnerCount = uniqueWinners.length;
 
   if (contestType === 0n) {
     // ETH prize
     const totalEth = Number(ethers.formatEther(prizeAmount));
-    const perWinner = totalEth / winnerCountNum;
+    const perWinner = totalEth / uniqueWinnerCount;
     prizeDisplay = `${totalEth.toFixed(4)} ETH`;
-    perWinnerPrize = winnerCountNum > 1 ? ` (${perWinner.toFixed(4)} ETH each)` : '';
+    perWinnerPrize = uniqueWinnerCount > 1 ? ` (${perWinner.toFixed(4)} ETH each)` : '';
   } else if (contestType === 1n) {
     // ERC20 prize
     try {
@@ -741,9 +745,9 @@ async function announceV2Winners(contestId) {
       const symbol = await tokenContract.symbol();
       const decimals = await tokenContract.decimals();
       const totalAmount = Number(prizeAmount) / Math.pow(10, Number(decimals));
-      const perWinner = totalAmount / winnerCountNum;
+      const perWinner = totalAmount / uniqueWinnerCount;
       prizeDisplay = `${totalAmount.toLocaleString()} $${symbol}`;
-      perWinnerPrize = winnerCountNum > 1 ? ` (${perWinner.toLocaleString()} each)` : '';
+      perWinnerPrize = uniqueWinnerCount > 1 ? ` (${perWinner.toLocaleString()} each)` : '';
     } catch (e) {
       prizeDisplay = `${ethers.formatEther(prizeAmount)} tokens`;
     }
