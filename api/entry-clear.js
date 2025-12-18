@@ -54,17 +54,24 @@ module.exports = async (req, res) => {
     }
 
     // Otherwise, scan for all entries for this FID
-    // Check contests 1-100 and V2 contests
+    // Check contests with various key formats
     const contestIdsToCheck = [];
 
-    // V1 contests (1-50)
+    // V1 token contests (1-50)
     for (let i = 1; i <= 50; i++) {
       contestIdsToCheck.push(i.toString());
     }
 
-    // V2 contests (V2-1 through V2-50)
+    // V2 contests - check both uppercase and lowercase prefixes
     for (let i = 1; i <= 50; i++) {
-      contestIdsToCheck.push(`V2-${i}`);
+      contestIdsToCheck.push(`V2-${i}`);  // Uppercase
+      contestIdsToCheck.push(`v2-${i}`);  // Lowercase
+    }
+
+    // NFT contests
+    for (let i = 1; i <= 50; i++) {
+      contestIdsToCheck.push(`NFT-${i}`);
+      contestIdsToCheck.push(`nft-${i}`);
     }
 
     for (const cid of contestIdsToCheck) {
