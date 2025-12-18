@@ -5833,18 +5833,31 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         // Parse contest ID from event
         let contestId = 'Unknown';
         const isNftContest = state.prizeType === 'nft';
+        const isV2Contest = CONFIG.USE_V2_CONTESTS && !isNftContest;
 
         if (receipt?.logs) {
           // Parse from raw logs using appropriate contract interface
-          const parseIface = new ethers.utils.Interface(isNftContest ? NFT_CONTEST_ESCROW_ABI : CONTEST_ESCROW_ABI);
-          const eventName = isNftContest ? 'NFTContestCreated' : 'ContestCreated';
+          // V2 uses ContestManager, V1 uses escrow contracts
+          let parseIface;
+          let eventName;
+
+          if (isV2Contest) {
+            parseIface = new ethers.utils.Interface(CONTEST_MANAGER_ABI);
+            eventName = 'ContestCreated';
+          } else if (isNftContest) {
+            parseIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
+            eventName = 'NFTContestCreated';
+          } else {
+            parseIface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
+            eventName = 'ContestCreated';
+          }
 
           for (const log of receipt.logs) {
             try {
               const parsed = parseIface.parseLog(log);
               if (parsed.name === eventName) {
                 contestId = parsed.args.contestId.toString();
-                console.log(`✅ Found contestId via interface.parseLog (${eventName}):`, contestId);
+                console.log(`✅ Found contestId via interface.parseLog (${eventName}, V2=${isV2Contest}):`, contestId);
                 break;
               }
             } catch (e) {
@@ -5854,12 +5867,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           // Method 2: Direct topic parsing as last resort
           if (contestId === 'Unknown' && receipt.logs.length > 0) {
-            // Try both event signatures
-            const contestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,address,uint256,uint256,string)');
+            // Try all event signatures (V1 Escrow, V2 ContestManager, NFT Escrow)
+            const v1ContestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,address,uint256,uint256,string)');
+            const v2ContestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,uint8,uint256,string)');
             const nftContestCreatedTopic = ethers.utils.id('NFTContestCreated(uint256,address,uint8,address,uint256,uint256,uint256,string)');
 
             const eventLog = receipt.logs.find(log =>
-              log.topics[0] === contestCreatedTopic || log.topics[0] === nftContestCreatedTopic
+              log.topics[0] === v1ContestCreatedTopic ||
+              log.topics[0] === v2ContestCreatedTopic ||
+              log.topics[0] === nftContestCreatedTopic
             );
             if (eventLog && eventLog.topics[1]) {
               contestId = ethers.BigNumber.from(eventLog.topics[1]).toString();
