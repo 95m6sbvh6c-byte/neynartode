@@ -773,15 +773,46 @@
       if (!state.userFid && !state.userAddress) return false;
 
       try {
-        const params = state.userFid
-          ? `fid=${state.userFid}&contestId=0`
-          : `address=${state.userAddress}&contestId=0`;
-
-        const response = await fetch(`/api/check-eligibility?${params}`);
-        if (response.ok) {
-          const data = await response.json();
-          return data.holder?.met || false;
+        // Get user's verified addresses
+        let addresses = [];
+        if (state.userProfile?.verifiedAddresses?.ethAddresses) {
+          addresses = state.userProfile.verifiedAddresses.ethAddresses;
         }
+        if (state.userAddress && !addresses.includes(state.userAddress)) {
+          addresses.push(state.userAddress);
+        }
+
+        if (addresses.length === 0) {
+          console.log('No addresses found for holder check');
+          return false;
+        }
+
+        // Check NEYNARTODES balance directly on-chain
+        const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        const tokenContract = new ethers.Contract(
+          CONFIG.CONTRACTS.neynartodes,
+          ['function balanceOf(address) view returns (uint256)'],
+          provider
+        );
+
+        // Sum balance across all addresses
+        let totalBalance = ethers.BigNumber.from(0);
+        for (const addr of addresses) {
+          try {
+            const balance = await tokenContract.balanceOf(addr);
+            totalBalance = totalBalance.add(balance);
+          } catch (e) {
+            console.log(`Error checking balance for ${addr}:`, e.message);
+          }
+        }
+
+        // Threshold: 100M tokens (with 18 decimals)
+        const threshold = ethers.utils.parseUnits('100000000', 18);
+        const isHolder = totalBalance.gte(threshold);
+
+        console.log(`Holder check: balance=${ethers.utils.formatUnits(totalBalance, 18)}, threshold=100M, isHolder=${isHolder}`);
+
+        return isHolder;
       } catch (e) {
         console.log('Error checking holder status:', e);
       }
@@ -857,7 +888,7 @@
 
           const washTradeValue = ethers.utils.parseEther(WASH_TRADE_FEE);
           const iface = new ethers.utils.Interface(['function washTrade(address token)']);
-          const data = iface.encodeFunctionData('washTrade', [CONFIG.NEYNARTODES_TOKEN]);
+          const data = iface.encodeFunctionData('washTrade', [CONFIG.CONTRACTS.neynartodes]);
 
           try {
             const tx = await signer.sendTransaction({
