@@ -57,19 +57,19 @@ module.exports = async (req, res) => {
     // Check contests with various key formats
     const contestIdsToCheck = [];
 
-    // V1 token contests (1-50)
-    for (let i = 1; i <= 50; i++) {
+    // V1 token contests (1-200)
+    for (let i = 1; i <= 200; i++) {
       contestIdsToCheck.push(i.toString());
     }
 
-    // V2 contests - check both uppercase and lowercase prefixes
-    for (let i = 1; i <= 50; i++) {
+    // V2 contests - check both uppercase and lowercase prefixes (1-200)
+    for (let i = 1; i <= 200; i++) {
       contestIdsToCheck.push(`V2-${i}`);  // Uppercase
       contestIdsToCheck.push(`v2-${i}`);  // Lowercase
     }
 
-    // NFT contests
-    for (let i = 1; i <= 50; i++) {
+    // NFT contests (1-100)
+    for (let i = 1; i <= 100; i++) {
       contestIdsToCheck.push(`NFT-${i}`);
       contestIdsToCheck.push(`nft-${i}`);
     }
