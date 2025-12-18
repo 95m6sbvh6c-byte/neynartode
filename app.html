@@ -875,6 +875,7 @@
           // Non-holder: needs wash trade transaction
           showToast('Processing trade qualification...', 'info');
 
+          const sdk = window.FarcasterSDK;
           const ethProvider = window.ethereum || sdk?.wallet?.ethProvider;
           if (!ethProvider) {
             showToast('No wallet connected', 'error');
