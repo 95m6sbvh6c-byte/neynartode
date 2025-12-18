@@ -657,6 +657,277 @@
       showToast(message, toastType, 0);
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // ENTER RAFFLE V2 - Auto like, recast, and optional wash trade
+    // ═══════════════════════════════════════════════════════════════════
+
+    const WASH_TRADER_ADDRESS = '0x440B3C79e7BA52028a85B785EA0Ad5D0B24AE18f';
+    const WASH_TRADE_FEE = '0.0025'; // ETH
+
+    // Load which contests user has entered
+    async function loadContestEntries() {
+      if (!state.userFid) return;
+
+      const contestIds = (state.upcomingContests || []).map(c => c.contestId).join(',');
+      if (!contestIds) return;
+
+      try {
+        const response = await fetch(`/api/check-entries?fid=${state.userFid}&contestIds=${contestIds}`);
+        if (response.ok) {
+          const data = await response.json();
+          state.contestEntries = data.entries || {};
+          render();
+        }
+      } catch (e) {
+        console.log('Error loading contest entries:', e);
+      }
+    }
+
+    // Check if user has approved signer
+    async function checkSignerStatus() {
+      if (!state.userFid) return null;
+
+      try {
+        const response = await fetch(`/api/signer-status?fid=${state.userFid}`);
+        if (response.ok) {
+          const data = await response.json();
+          state.signerStatus = data;
+          return data;
+        }
+      } catch (e) {
+        console.log('Error checking signer status:', e);
+      }
+      return null;
+    }
+
+    // Create a new signer and get approval URL
+    async function createSigner() {
+      if (!state.userFid) {
+        showToast('Please connect your Farcaster account first', 'warning');
+        return null;
+      }
+
+      try {
+        showToast('Creating authorization...', 'info');
+        const response = await fetch('/api/signer-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fid: state.userFid })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+
+          if (data.already_approved) {
+            state.signerStatus = { has_signer: true, approved: true, signer_uuid: data.signer_uuid };
+            return { approved: true };
+          }
+
+          // Open approval URL in new tab
+          if (data.approval_url) {
+            showToast('Opening Warpcast for authorization...', 'info');
+            window.open(data.approval_url, '_blank');
+            return { pending: true, approval_url: data.approval_url };
+          }
+        } else {
+          const error = await response.json();
+          showToast(error.error || 'Failed to create signer', 'error');
+        }
+      } catch (e) {
+        console.log('Error creating signer:', e);
+        showToast('Failed to create authorization', 'error');
+      }
+      return null;
+    }
+
+    // Poll for signer approval
+    async function pollSignerApproval(maxAttempts = 30) {
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(r => setTimeout(r, 2000)); // Wait 2 seconds
+        const status = await checkSignerStatus();
+        if (status?.approved) {
+          showToast('Authorization approved!', 'success');
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Check if user is a holder (100M+ NEYNARTODES)
+    async function checkHolderStatus() {
+      if (!state.userFid && !state.userAddress) return false;
+
+      try {
+        const params = state.userFid
+          ? `fid=${state.userFid}&contestId=0`
+          : `address=${state.userAddress}&contestId=0`;
+
+        const response = await fetch(`/api/check-eligibility?${params}`);
+        if (response.ok) {
+          const data = await response.json();
+          return data.holder?.met || false;
+        }
+      } catch (e) {
+        console.log('Error checking holder status:', e);
+      }
+      return false;
+    }
+
+    // Main Enter Raffle function
+    async function enterRaffle(button) {
+      const contestId = button.dataset.contestId;
+      const castId = button.dataset.castId;
+
+      if (!state.userFid) {
+        showToast('Please connect your Farcaster account first', 'warning');
+        return;
+      }
+
+      // Check if already entered
+      if (state.contestEntries[contestId]?.entered) {
+        showToast('You have already entered this contest!', 'info');
+        return;
+      }
+
+      // Update button state
+      state.enteringContest = contestId;
+      button.innerHTML = '<span class="animate-spin">↻</span> Entering...';
+      button.disabled = true;
+
+      try {
+        // Step 1: Check signer status
+        let signerStatus = state.signerStatus;
+        if (!signerStatus || !signerStatus.has_signer) {
+          signerStatus = await checkSignerStatus();
+        }
+
+        if (!signerStatus?.approved) {
+          // Need to create/approve signer
+          showToast('You need to authorize the app to enter contests', 'info');
+          const result = await createSigner();
+
+          if (result?.pending) {
+            showToast('Waiting for authorization approval...', 'info');
+            const approved = await pollSignerApproval();
+            if (!approved) {
+              showToast('Authorization timed out. Please try again.', 'error');
+              resetEnterButton(button, contestId);
+              return;
+            }
+          } else if (!result?.approved) {
+            resetEnterButton(button, contestId);
+            return;
+          }
+        }
+
+        // Step 2: Check if holder or needs wash trade
+        const isHolder = await checkHolderStatus();
+
+        if (!isHolder) {
+          // Non-holder: needs wash trade transaction
+          showToast('Processing trade qualification...', 'info');
+
+          const ethProvider = window.ethereum || sdk?.wallet?.ethProvider;
+          if (!ethProvider) {
+            showToast('No wallet connected', 'error');
+            resetEnterButton(button, contestId);
+            return;
+          }
+
+          // Request wash trade transaction
+          const provider = new ethers.providers.Web3Provider(ethProvider);
+          const signer = provider.getSigner();
+
+          const washTradeValue = ethers.utils.parseEther(WASH_TRADE_FEE);
+          const iface = new ethers.utils.Interface(['function washTrade(address token)']);
+          const data = iface.encodeFunctionData('washTrade', [CONFIG.NEYNARTODES_TOKEN]);
+
+          try {
+            const tx = await signer.sendTransaction({
+              to: WASH_TRADER_ADDRESS,
+              value: washTradeValue,
+              data: data
+            });
+
+            showToast('Waiting for transaction confirmation...', 'info');
+            await tx.wait();
+            showToast('Trade qualification confirmed!', 'success');
+          } catch (txError) {
+            if (txError.code === 4001 || txError.code === 'ACTION_REJECTED') {
+              showToast('Transaction cancelled - entry not recorded', 'warning');
+            } else {
+              showToast('Transaction failed: ' + txError.message, 'error');
+            }
+            resetEnterButton(button, contestId);
+            return;
+          }
+        }
+
+        // Step 3: Call enter-contest API (auto like + recast)
+        const castHash = castId?.split('|')[0] || '';
+        const userAddresses = state.userProfile?.verifiedAddresses?.ethAddresses || [];
+
+        const response = await fetch('/api/enter-contest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fid: state.userFid,
+            contestId: contestId,
+            castHash: castHash,
+            addresses: userAddresses.length > 0 ? userAddresses : [state.userAddress]
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+
+          // Update state
+          state.contestEntries[contestId] = {
+            entered: true,
+            hasReplied: false,
+            timestamp: Date.now()
+          };
+
+          // Update button
+          button.innerHTML = 'Entered ✓';
+          button.disabled = true;
+          button.style.opacity = '0.6';
+          button.style.cursor = 'default';
+
+          showToast('Entry recorded! Reply with 2+ words for bonus entry 🎁', 'success');
+          render();
+
+        } else {
+          const error = await response.json();
+          if (error.already_entered) {
+            state.contestEntries[contestId] = { entered: true };
+            button.innerHTML = 'Entered ✓';
+            button.disabled = true;
+            showToast('You have already entered this contest!', 'info');
+          } else if (error.needs_signer) {
+            showToast('Authorization required. Please try again.', 'warning');
+            resetEnterButton(button, contestId);
+          } else {
+            showToast(error.error || 'Failed to enter contest', 'error');
+            resetEnterButton(button, contestId);
+          }
+        }
+
+      } catch (error) {
+        console.error('Enter raffle error:', error);
+        showToast('Failed to enter contest: ' + error.message, 'error');
+        resetEnterButton(button, contestId);
+      }
+
+      state.enteringContest = null;
+    }
+
+    function resetEnterButton(button, contestId) {
+      button.innerHTML = 'Enter Raffle';
+      button.disabled = false;
+      state.enteringContest = null;
+    }
+
     // Cast sharing modal functions - wrapper to read from data attributes (avoids URL escaping issues in onclick)
     function openCastModalFromData(button) {
       const contestId = parseInt(button.dataset.contestId);
@@ -1092,7 +1363,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       tokenSearch: '',
       showTokenSuggestions: false,
       minTradeVolume: '20', // Default to $20 for NEYNARTODES
-      winnerCount: 1, // Number of winners (1-10 for ETH/ERC20, always 1 for NFT)
+      winnerCount: 1, // Number of winners (1-5 for ETH/ERC20, always 1 for NFT)
 
       // Custom Token Modal
       showCustomTokenModal: false,
@@ -1101,6 +1372,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
       // Winner announcement
       customMessage: '',
+
+      // Enter Raffle V2
+      contestEntries: {},
+      signerStatus: null,
+      enteringContest: null,
 
       // Cast sharing modal
       showCastModal: false,
@@ -2520,6 +2796,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           state.upcomingContests.filter(c => c.isNft).forEach(c => {
             console.log('NFT Contest:', c.contestId, 'nftImage:', c.nftImage, 'nftName:', c.nftName);
           });
+          // Load user's contest entries
+          loadContestEntries();
         }
       } catch (e) {
         console.error('Error fetching active contests:', e);
@@ -3657,6 +3935,16 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   <div class="flex gap-2 flex-wrap">
                     <button
                       data-contest-id="${contest.contestId}"
+                      data-cast-id="${contest.castId || ''}"
+                      onclick="enterRaffle(this)"
+                      class="btn-primary text-sm py-2 px-4 enter-raffle-btn"
+                      id="enter-btn-${contest.contestId}"
+                      ${state.contestEntries?.[contest.contestId]?.entered ? 'disabled style="opacity: 0.6; cursor: default;"' : ''}
+                    >
+                      ${state.contestEntries?.[contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
+                    </button>
+                    <button
+                      data-contest-id="${contest.contestId}"
                       data-prize="${encodeURIComponent(contest.prize)}"
                       data-hours="${hoursLeft}"
                       data-minutes="${minutesLeft}"
@@ -3670,7 +3958,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       data-is-nft="${contest.isNft || false}"
                       data-nft-image="${encodeURIComponent(contest.nftImage || '')}"
                       onclick="openCastModalFromData(this)"
-                      class="btn-primary text-sm py-2 px-4"
+                      class="btn-secondary text-sm py-2 px-4"
                     >
                       Share
                     </button>
@@ -4337,12 +4625,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     <div class="flex items-center justify-between">
                       <div>
                         <label class="block text-sm font-medium text-[var(--text-primary)]">Number of Winners</label>
-                        <p class="text-xs text-[var(--text-muted)]">Prize split equally among winners (1-10)</p>
+                        <p class="text-xs text-[var(--text-muted)]">Prize split equally among winners (1-5)</p>
                       </div>
                       <div class="flex items-center gap-2">
                         <button onclick="state.winnerCount = Math.max(1, state.winnerCount - 1); render();" class="w-8 h-8 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-light)] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white transition-colors font-bold">-</button>
-                        <input type="number" id="winnerCount" value="${state.winnerCount}" min="1" max="10" class="w-16 text-center input-modern font-bold text-lg" />
-                        <button onclick="state.winnerCount = Math.min(10, state.winnerCount + 1); render();" class="w-8 h-8 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-light)] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white transition-colors font-bold">+</button>
+                        <input type="number" id="winnerCount" value="${state.winnerCount}" min="1" max="5" class="w-16 text-center input-modern font-bold text-lg" />
+                        <button onclick="state.winnerCount = Math.min(5, state.winnerCount + 1); render();" class="w-8 h-8 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-light)] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white transition-colors font-bold">+</button>
                       </div>
                     </div>
                   </div>
@@ -4960,7 +5248,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (minRecasts) minRecasts.oninput = (e) => { state.minRecasts = e.target.value; };
       if (minReplies) minReplies.oninput = (e) => { state.minReplies = e.target.value; };
       const winnerCountInput = document.getElementById('winnerCount');
-      if (winnerCountInput) winnerCountInput.oninput = (e) => { state.winnerCount = Math.min(10, Math.max(1, parseInt(e.target.value) || 1)); };
+      if (winnerCountInput) winnerCountInput.oninput = (e) => { state.winnerCount = Math.min(5, Math.max(1, parseInt(e.target.value) || 1)); };
       if (customMessage) customMessage.oninput = (e) => { state.customMessage = e.target.value; };
       if (prizeTokenAmount) prizeTokenAmount.oninput = (e) => { state.prizeTokenAmount = e.target.value; };
       if (minTradeVolume) minTradeVolume.oninput = (e) => { state.minTradeVolume = e.target.value; };
@@ -5357,7 +5645,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             const useV2 = CONFIG.USE_V2_CONTESTS;
             const contractAddress = useV2 ? CONFIG.CONTRACTS.contestManager : CONFIG.CONTRACTS.contestEscrow;
             const contractABI = useV2 ? CONTEST_MANAGER_ABI : CONTEST_ESCROW_ABI;
-            const winnerCount = useV2 ? Math.min(10, Math.max(1, parseInt(state.winnerCount) || 1)) : null;
+            const winnerCount = useV2 ? Math.min(5, Math.max(1, parseInt(state.winnerCount) || 1)) : null;
 
             console.log('📝 Calling createContestETH with:');
             console.log('   Using V2 ContestManager:', useV2);
@@ -5503,7 +5791,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             const useV2 = CONFIG.USE_V2_CONTESTS;
             const contractAddress = useV2 ? CONFIG.CONTRACTS.contestManager : CONFIG.CONTRACTS.contestEscrow;
             const contractABI = useV2 ? CONTEST_MANAGER_ABI : CONTEST_ESCROW_ABI;
-            const winnerCount = useV2 ? Math.min(10, Math.max(1, parseInt(state.winnerCount) || 1)) : null;
+            const winnerCount = useV2 ? Math.min(5, Math.max(1, parseInt(state.winnerCount) || 1)) : null;
 
             console.log('📝 Calling createContestERC20 with:');
             console.log('   Using V2 ContestManager:', useV2);
