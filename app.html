@@ -2517,6 +2517,31 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.isCheckingWhitelist = false;
         state.walletStatus = null;
 
+        // Check/create signer for Enter Raffle functionality
+        // This triggers authorization on first app entry rather than when entering a raffle
+        if (state.userFid) {
+          console.log('Checking signer status for FID:', state.userFid);
+          try {
+            const signerResult = await checkSignerStatus();
+            if (!signerResult || !signerResult.approved) {
+              console.log('No approved signer, initiating authorization...');
+              // Create signer - this will redirect to Warpcast for approval
+              const createResult = await createSigner();
+              if (createResult && createResult.pending) {
+                console.log('Signer pending approval, user redirected to Warpcast');
+                // User will be redirected to Warpcast, app flow continues when they return
+                return true;
+              }
+            } else {
+              console.log('Signer already approved:', signerResult.signer_uuid);
+              state.signerStatus = signerResult;
+            }
+          } catch (signerError) {
+            console.error('Signer check/creation error:', signerError);
+            // Don't block app access if signer setup fails, they can try again when entering raffle
+          }
+        }
+
         // Fetch remaining votes from VotingManager contract
         try {
           const votingManagerRead = new ethers.Contract(
@@ -6674,6 +6699,45 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // Initial render
     render();
+
+    // Check for pending signer approval (user returning from Warpcast)
+    (async function checkPendingSigner() {
+      const pendingFid = sessionStorage.getItem('pendingSignerFid');
+      if (pendingFid) {
+        console.log('Found pending signer for FID:', pendingFid);
+        // Poll for signer approval
+        let approved = false;
+        for (let i = 0; i < 10; i++) {
+          try {
+            const response = await fetch(`/api/signer-status?fid=${pendingFid}`);
+            const data = await response.json();
+            if (data.approved) {
+              console.log('Signer now approved!');
+              approved = true;
+              state.signerStatus = data;
+              sessionStorage.removeItem('pendingSignerFid');
+              showToast('Signer authorized! You can now enter raffles.', 'success');
+
+              // Check if there was a pending contest entry
+              const pendingContest = sessionStorage.getItem('pendingContestEntry');
+              if (pendingContest) {
+                sessionStorage.removeItem('pendingContestEntry');
+                console.log('Resuming entry for contest:', pendingContest);
+                // User will need to click Enter Raffle again, but signer is ready
+              }
+              break;
+            }
+          } catch (e) {
+            console.error('Signer status check error:', e);
+          }
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        if (!approved) {
+          console.log('Signer not yet approved, user may need to complete authorization');
+          sessionStorage.removeItem('pendingSignerFid');
+        }
+      }
+    })();
 
     // Re-render when Farcaster SDK loads (it's async)
     window.addEventListener('farcaster-ready', () => {
