@@ -1305,7 +1305,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       userFid: null,
       userProfile: null, // Full Farcaster profile {fid, username, displayName, pfpUrl}
       userBalance: '0',
-      currentView: 'create', // 'create', 'leaderboard', 'history', 'suggestions'
+      currentView: 'active', // 'active', 'create', 'leaderboard', 'suggestions'
       pendingTx: null, // Pending transaction hash
       notificationsEnabled: null, // null = unknown, true = enabled, false = disabled
       notificationsWereReset: false, // true if notifications were reset by deployment
@@ -3624,15 +3624,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           </div>
 
           <!-- Other navigation tabs (excluding current page) -->
+          <!-- Order: Active, Create, Stats, Ideas -->
           <nav class="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-xl">
-            ${state.currentView !== 'create' ? `
-              <button id="viewCreate" class="btn-ghost flex-1 text-[10px] py-2 px-1">Create</button>
-            ` : ''}
             ${state.currentView !== 'active' ? `
               <button id="viewActive" class="btn-ghost flex-1 text-[10px] py-2 px-1">Active</button>
             ` : ''}
-            ${state.currentView !== 'history' ? `
-              <button id="viewHistory" class="btn-ghost flex-1 text-[10px] py-2 px-1">History</button>
+            ${state.currentView !== 'create' ? `
+              <button id="viewCreate" class="btn-ghost flex-1 text-[10px] py-2 px-1">Create</button>
             ` : ''}
             ${state.currentView !== 'leaderboard' ? `
               <button id="viewLeaderboard" class="btn-ghost flex-1 text-[10px] py-2 px-1">Stats</button>
@@ -6770,7 +6768,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     // Handle URL params for deep linking from notifications
     const urlParams = new URLSearchParams(window.location.search);
     const viewParam = urlParams.get('view');
-    if (viewParam && ['active', 'leaderboard', 'create', 'history', 'suggestions'].includes(viewParam)) {
+    if (viewParam && ['active', 'create', 'leaderboard', 'suggestions'].includes(viewParam)) {
       state.currentView = viewParam;
       console.log('Deep link: navigating to', viewParam);
       // Clean up URL without reload
