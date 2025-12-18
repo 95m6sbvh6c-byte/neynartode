@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
       {
         method: 'GET',
         headers: {
-          'api_key': NEYNAR_API_KEY
+          'x-api-key': NEYNAR_API_KEY
         }
       }
     );

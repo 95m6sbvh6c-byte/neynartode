@@ -87,7 +87,7 @@ module.exports = async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api_key': NEYNAR_API_KEY
+        'x-api-key': NEYNAR_API_KEY
       },
       body: JSON.stringify({
         signer_uuid,
@@ -113,7 +113,7 @@ module.exports = async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api_key': NEYNAR_API_KEY
+        'x-api-key': NEYNAR_API_KEY
       },
       body: JSON.stringify({
         signer_uuid,

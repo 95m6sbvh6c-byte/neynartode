@@ -66,72 +66,31 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Create a Neynar managed signer (sponsored by Neynar)
-    // This uses the simpler /signer/developer_managed endpoint
-    const response = await fetch('https://api.neynar.com/v2/farcaster/signer/developer_managed', {
+    // Create a Neynar signer - the API returns signer_uuid and approval URL
+    const createResponse = await fetch('https://api.neynar.com/v2/farcaster/signer', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api_key': NEYNAR_API_KEY
-      },
-      body: JSON.stringify({
-        fid: parseInt(fid)
-      })
+        'x-api-key': NEYNAR_API_KEY
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Neynar managed signer creation failed:', errorData);
-
-      // If developer_managed fails, try the standard signer flow
-      console.log('Falling back to standard signer flow...');
-
-      const standardResponse = await fetch('https://api.neynar.com/v2/farcaster/signer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api_key': NEYNAR_API_KEY
-        }
-      });
-
-      if (!standardResponse.ok) {
-        const stdError = await standardResponse.json().catch(() => ({}));
-        return res.status(500).json({
-          error: 'Failed to create signer',
-          details: stdError.message || standardResponse.statusText
-        });
-      }
-
-      const signerData = await standardResponse.json();
-
-      // For standard signers, user needs to approve via deep link
-      const approval_url = `https://client.warpcast.com/deeplinks/signed-key-request?token=${signerData.signer_uuid}`;
-
-      // Store pending signer
-      if (process.env.KV_REST_API_URL) {
-        const { kv } = require('@vercel/kv');
-        await kv.set(`signer:${fid}`, {
-          signer_uuid: signerData.signer_uuid,
-          public_key: signerData.public_key,
-          approval_url,
-          approved: false,
-          created_at: Date.now()
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        signer_uuid: signerData.signer_uuid,
-        approval_url,
-        fid
+    if (!createResponse.ok) {
+      const errorData = await createResponse.json().catch(() => ({}));
+      console.error('Signer creation failed:', errorData);
+      return res.status(500).json({
+        error: 'Failed to create signer',
+        details: errorData.message || errorData.error || createResponse.statusText
       });
     }
 
-    const signerData = await response.json();
+    const signerData = await createResponse.json();
+    console.log('Created signer:', signerData);
 
-    // Developer managed signers are pre-approved by Neynar
-    const isApproved = signerData.status === 'approved' || !signerData.signer_approval_url;
-    const approval_url = signerData.signer_approval_url || null;
+    // Neynar returns signer_approval_url for user to approve in Warpcast
+    const approval_url = signerData.signer_approval_url ||
+      `https://client.warpcast.com/deeplinks/signed-key-request?token=${signerData.signer_uuid}`;
+    const isApproved = signerData.status === 'approved';
 
     // Store in KV
     if (process.env.KV_REST_API_URL) {
