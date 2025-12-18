@@ -723,10 +723,16 @@
             return { approved: true };
           }
 
-          // Open approval URL in new tab
+          // Open approval URL - navigate directly (COOP blocks window.open for Warpcast)
           if (data.approval_url) {
-            showToast('Opening Warpcast for authorization...', 'info');
-            window.open(data.approval_url, '_blank');
+            showToast('Redirecting to Warpcast for authorization...', 'info');
+            // Store current state so we can resume after authorization
+            sessionStorage.setItem('pendingSignerFid', fid.toString());
+            sessionStorage.setItem('pendingContestEntry', state.enteringContest || '');
+            // Navigate to Warpcast
+            setTimeout(() => {
+              window.location.href = data.approval_url;
+            }, 500);
             return { pending: true, approval_url: data.approval_url };
           }
         } else {
