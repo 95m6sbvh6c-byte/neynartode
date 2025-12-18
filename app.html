@@ -443,6 +443,39 @@
   </style>
 </head>
 <body>
+  <!-- ===== UNDER CONSTRUCTION OVERLAY - REMOVE THIS ENTIRE BLOCK TO RESTORE APP ===== -->
+  <div id="maintenance-overlay" style="
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%);
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  ">
+    <img src="https://frame-opal-eight.vercel.app/neynartode-sticker.png" alt="NEYNARtodes" style="width: 150px; height: 150px; margin-bottom: 32px; animation: pulse 2s ease-in-out infinite;">
+    <h1 style="font-family: 'Inter', system-ui, sans-serif; font-size: 28px; font-weight: 700; color: #f4f4f5; margin-bottom: 16px;">App Under Construction</h1>
+    <p style="font-family: 'Inter', system-ui, sans-serif; font-size: 18px; color: #a1a1aa; margin-bottom: 24px; max-width: 300px;">We're making some improvements. Coming back soon!</p>
+    <div style="width: 60px; height: 4px; background: linear-gradient(90deg, #8b5cf6, #a78bfa); border-radius: 2px; animation: loading 1.5s ease-in-out infinite;"></div>
+  </div>
+  <style>
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+    }
+    @keyframes loading {
+      0%, 100% { opacity: 0.4; transform: scaleX(0.5); }
+      50% { opacity: 1; transform: scaleX(1); }
+    }
+  </style>
+  <!-- ===== END UNDER CONSTRUCTION OVERLAY ===== -->
+
   <div id="toast-container"></div>
 
 
@@ -896,36 +929,79 @@
           showToast('Processing trade qualification...', 'info');
 
           const sdk = window.FarcasterSDK;
-          const ethProvider = window.ethereum || sdk?.wallet?.ethProvider;
-          if (!ethProvider) {
-            showToast('No wallet connected', 'error');
-            resetEnterButton(button, contestId);
-            return;
-          }
 
-          // Request wash trade transaction
-          const provider = new ethers.providers.Web3Provider(ethProvider);
-          const signer = provider.getSigner();
-
-          const washTradeValue = ethers.utils.parseEther(WASH_TRADE_FEE);
+          // Prepare transaction parameters
           const iface = new ethers.utils.Interface(['function washTrade(address token)']);
           const data = iface.encodeFunctionData('washTrade', [CONFIG.CONTRACTS.neynartodes]);
+          const valueHex = '0x' + BigInt(ethers.utils.parseEther(WASH_TRADE_FEE).toString()).toString(16);
 
           try {
-            const tx = await signer.sendTransaction({
-              to: WASH_TRADER_ADDRESS,
-              value: washTradeValue,
-              data: data
-            });
+            let txHash;
+
+            // Try Farcaster SDK sendTransaction first (native mini app wallet)
+            if (sdk?.wallet?.ethProvider) {
+              console.log('Using Farcaster SDK ethProvider for transaction');
+              const result = await sdk.wallet.ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  to: WASH_TRADER_ADDRESS,
+                  value: valueHex,
+                  data: data
+                }]
+              });
+              txHash = result;
+            }
+            // Fallback to window.ethereum (external wallet)
+            else if (window.ethereum) {
+              console.log('Using window.ethereum for transaction');
+              const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+              if (!accounts || accounts.length === 0) {
+                showToast('No wallet connected', 'error');
+                resetEnterButton(button, contestId);
+                return;
+              }
+              txHash = await window.ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: accounts[0],
+                  to: WASH_TRADER_ADDRESS,
+                  value: valueHex,
+                  data: data
+                }]
+              });
+            } else {
+              showToast('No wallet available', 'error');
+              resetEnterButton(button, contestId);
+              return;
+            }
 
             showToast('Waiting for transaction confirmation...', 'info');
-            await tx.wait();
-            showToast('Trade qualification confirmed!', 'success');
+
+            // Wait for transaction to be mined
+            const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+            let receipt = null;
+            let attempts = 0;
+            while (!receipt && attempts < 60) {
+              await new Promise(r => setTimeout(r, 2000));
+              receipt = await provider.getTransactionReceipt(txHash).catch(() => null);
+              attempts++;
+            }
+
+            if (!receipt) {
+              showToast('Transaction submitted but confirmation timed out. Entry may still process.', 'warning');
+            } else if (receipt.status === 1) {
+              showToast('Trade qualification confirmed!', 'success');
+            } else {
+              showToast('Transaction failed on-chain', 'error');
+              resetEnterButton(button, contestId);
+              return;
+            }
           } catch (txError) {
-            if (txError.code === 4001 || txError.code === 'ACTION_REJECTED') {
+            console.error('Wash trade error:', txError);
+            if (txError.code === 4001 || txError.code === 'ACTION_REJECTED' || txError.message?.includes('rejected')) {
               showToast('Transaction cancelled - entry not recorded', 'warning');
             } else {
-              showToast('Transaction failed: ' + txError.message, 'error');
+              showToast('Transaction failed: ' + (txError.message || txError), 'error');
             }
             resetEnterButton(button, contestId);
             return;
