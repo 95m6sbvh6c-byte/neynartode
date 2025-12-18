@@ -727,7 +727,7 @@
           if (data.approval_url) {
             showToast('Redirecting to Warpcast for authorization...', 'info');
             // Store current state so we can resume after authorization
-            sessionStorage.setItem('pendingSignerFid', fid.toString());
+            sessionStorage.setItem('pendingSignerFid', state.userFid.toString());
             sessionStorage.setItem('pendingContestEntry', state.enteringContest || '');
             // Navigate to Warpcast
             setTimeout(() => {
