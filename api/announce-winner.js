@@ -865,13 +865,15 @@ async function announceV2Winners(contestId) {
       await sendNotification('contest_completed', {
         contestId,
         isV2: true,
-        winnerCount: winners.length,
+        winnerCount: uniqueWinners.length,
         winnerUsernames: winnerProfiles.map(wp => wp.user?.username).filter(Boolean),
         prize: prizeDisplay,
       });
     } catch (e) {
       console.log('   Could not send push notification:', e.message);
     }
+  } else {
+    console.log('   ❌ Post failed:', postResult.error);
   }
 
   return {
@@ -880,6 +882,7 @@ async function announceV2Winners(contestId) {
     isV2: true,
     winners: winners,
     winnerUsernames: winnerProfiles.map(wp => wp.user?.username).filter(Boolean),
+    postError: postResult.error || null,
     prize: prizeDisplay,
     participants: participantCount,
     message: announcement,
