@@ -9,6 +9,10 @@
  * - APP_FID: Your app's Farcaster ID
  * - APP_MNEMONIC: Your app's custody address mnemonic (12/24 word phrase)
  *
+ * Optional environment variables:
+ * - NEYNAR_SPONSOR_SIGNERS: Set to "true" to have Neynar pay the signer registration fee
+ *   (developer is charged in Neynar credits instead of user paying $1 onchain)
+ *
  * POST /api/signer-create
  * Body: { fid: 12345 }
  *
@@ -75,9 +79,14 @@ module.exports = async (req, res) => {
       if (existingSigner && !existingSigner.approved) {
         // Check if it's still valid (less than 24 hours old) and has a valid URL format
         const age = Date.now() - existingSigner.created_at;
+        // Valid URLs are:
+        // - farcaster://signed-key-request?token=... (deep link for mobile)
+        // - https://client.farcaster.xyz/deeplinks/signed-key-request?token=... (web-accessible)
+        // Invalid are the old warpcast.com/~/sign-in-with-farcaster URLs we incorrectly created
         const hasValidUrl = existingSigner.approval_url &&
-          !existingSigner.approval_url.includes('farcaster://') &&
-          !existingSigner.approval_url.includes('client.warpcast.com/deeplinks');
+          (existingSigner.approval_url.includes('farcaster://signed-key-request') ||
+           existingSigner.approval_url.includes('client.farcaster.xyz/deeplinks/signed-key-request')) &&
+          !existingSigner.approval_url.includes('warpcast.com/~/sign-in-with-farcaster');
 
         if (age < 24 * 60 * 60 * 1000 && hasValidUrl) {
           return res.status(200).json({
@@ -90,7 +99,7 @@ module.exports = async (req, res) => {
         }
 
         // Old signer has invalid URL format or is expired - delete it and create new one
-        console.log(`Removing stale/invalid signer for FID ${fid}`);
+        console.log(`Removing stale/invalid signer for FID ${fid}: age=${age}ms, url=${existingSigner.approval_url?.slice(0, 50)}`);
         await kv.del(`signer:${fid}`);
       }
     }
@@ -105,6 +114,38 @@ module.exports = async (req, res) => {
         error: 'App not configured for signer creation',
         details: 'Missing APP_FID or APP_MNEMONIC'
       });
+    }
+
+    // Step 0: Verify custody address matches APP_FID
+    const verifyWallet = ethers.Wallet.fromPhrase(APP_MNEMONIC);
+    console.log(`Verifying custody address for APP_FID ${APP_FID}`);
+    console.log(`Derived address from mnemonic: ${verifyWallet.address}`);
+
+    // Fetch the actual custody address for APP_FID from Neynar
+    const userResponse = await fetch(
+      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${APP_FID}`,
+      {
+        method: 'GET',
+        headers: { 'x-api-key': NEYNAR_API_KEY }
+      }
+    );
+
+    if (userResponse.ok) {
+      const userData = await userResponse.json();
+      const appUser = userData.users?.[0];
+      if (appUser) {
+        console.log(`Registered custody address for FID ${APP_FID}: ${appUser.custody_address}`);
+        if (appUser.custody_address?.toLowerCase() !== verifyWallet.address.toLowerCase()) {
+          console.error('CUSTODY ADDRESS MISMATCH!');
+          console.error(`Expected: ${appUser.custody_address}`);
+          console.error(`Got from mnemonic: ${verifyWallet.address}`);
+          return res.status(500).json({
+            error: 'Custody address mismatch',
+            details: `The mnemonic does not generate the custody address registered for FID ${APP_FID}. Expected: ${appUser.custody_address}, Got: ${verifyWallet.address}`
+          });
+        }
+        console.log('Custody address verified successfully!');
+      }
     }
 
     // Step 1: Create a new signer
@@ -132,10 +173,9 @@ module.exports = async (req, res) => {
     console.log('Public key:', signerData.public_key);
 
     // Step 2: Sign the key request with app's custody address
-    const wallet = ethers.Wallet.fromPhrase(APP_MNEMONIC);
     const deadline = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
 
-    const signature = await wallet.signTypedData(
+    const signature = await verifyWallet.signTypedData(
       SIGNED_KEY_REQUEST_VALIDATOR_EIP_712_DOMAIN,
       { SignedKeyRequest: SIGNED_KEY_REQUEST_TYPE },
       {
@@ -148,18 +188,32 @@ module.exports = async (req, res) => {
     console.log('Generated signature for signed key request');
 
     // Step 3: Register the signed key with Neynar
+    // Check if we should have Neynar sponsor the signer (pay the fee on behalf of user)
+    const sponsorSigners = process.env.NEYNAR_SPONSOR_SIGNERS === 'true';
+
+    const signedKeyBody = {
+      signer_uuid: signerData.signer_uuid,
+      app_fid: parseInt(APP_FID),
+      deadline: deadline,
+      signature: signature
+    };
+
+    // If sponsoring enabled, add the sponsor object so Neynar pays the registration fee
+    // Developer is charged in Neynar credits instead of user paying $1 onchain
+    if (sponsorSigners) {
+      signedKeyBody.sponsor = {
+        sponsored_by_neynar: true
+      };
+      console.log('Signer sponsorship enabled - Neynar will pay registration fee');
+    }
+
     const signedKeyResponse = await fetch('https://api.neynar.com/v2/farcaster/signer/signed_key', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': NEYNAR_API_KEY
       },
-      body: JSON.stringify({
-        signer_uuid: signerData.signer_uuid,
-        app_fid: parseInt(APP_FID),
-        deadline: deadline,
-        signature: signature
-      })
+      body: JSON.stringify(signedKeyBody)
     });
 
     if (!signedKeyResponse.ok) {
@@ -196,17 +250,19 @@ module.exports = async (req, res) => {
         public_key: signerData.public_key,
         approval_url,
         approved: isApproved,
+        sponsored: sponsorSigners,
         created_at: Date.now()
       });
     }
 
-    console.log(`Created managed signer for FID ${fid}:`, signerData.signer_uuid, 'approved:', isApproved);
+    console.log(`Created managed signer for FID ${fid}:`, signerData.signer_uuid, 'approved:', isApproved, 'sponsored:', sponsorSigners);
 
     return res.status(200).json({
       success: true,
       signer_uuid: signerData.signer_uuid,
       approval_url,
       already_approved: isApproved,
+      sponsored: sponsorSigners,
       fid
     });
 
