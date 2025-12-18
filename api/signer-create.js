@@ -50,11 +50,15 @@ module.exports = async (req, res) => {
         });
       }
 
-      // If there's a pending signer, return it
+      // If there's a pending signer, check if it's valid
       if (existingSigner && !existingSigner.approved) {
-        // Check if it's still valid (less than 24 hours old)
+        // Check if it's still valid (less than 24 hours old) and has a valid URL format
         const age = Date.now() - existingSigner.created_at;
-        if (age < 24 * 60 * 60 * 1000) {
+        const hasValidUrl = existingSigner.approval_url &&
+          !existingSigner.approval_url.includes('farcaster://') &&
+          !existingSigner.approval_url.includes('client.warpcast.com/deeplinks');
+
+        if (age < 24 * 60 * 60 * 1000 && hasValidUrl) {
           return res.status(200).json({
             success: true,
             pending: true,
@@ -63,6 +67,10 @@ module.exports = async (req, res) => {
             fid
           });
         }
+
+        // Old signer has invalid URL format or is expired - delete it and create new one
+        console.log(`Removing stale/invalid signer for FID ${fid}`);
+        await kv.del(`signer:${fid}`);
       }
     }
 
