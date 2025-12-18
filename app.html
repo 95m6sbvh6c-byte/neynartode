@@ -670,7 +670,10 @@
     async function loadContestEntries() {
       if (!state.userFid) return;
 
-      const contestIds = (state.upcomingContests || []).map(c => c.contestId).join(',');
+      // Use proper entry keys - v2-{id} for V2 contests, {id} for V1
+      const contestIds = (state.upcomingContests || []).map(c =>
+        c.isV2 ? `v2-${c.contestId}` : c.contestId
+      ).join(',');
       if (!contestIds) return;
 
       try {
