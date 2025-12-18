@@ -810,9 +810,8 @@ async function announceV2Winners(contestId) {
     announcement += `🔗 TX: basescan.org/tx/${finalizeTxHash.slice(0, 10)}...\n`;
   }
 
-  // Congratulate all winners by tagging them
-  const allWinnerTags = winnerProfiles.map(wp => wp.tag).join(' ');
-  announcement += `\nCongrats ${allWinnerTags}! 🦎\n\n`;
+  // Add congrats without re-tagging (already tagged in winner list above)
+  announcement += `\nCongrats to all winners! 🦎\n\n`;
   announcement += `Launch your own contest: https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
 
   console.log(`   Message length: ${announcement.length} chars`);
