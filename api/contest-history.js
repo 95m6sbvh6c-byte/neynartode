@@ -13,8 +13,11 @@
 const { ethers } = require('ethers');
 
 const CONFIG = {
+  // V1 Contracts (legacy)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922', // V3 deployed 2025-12-05 (supports restricted NFTs)
+  // V2 Contract (new unified system)
+  CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Deployed 2025-12-17
   BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
@@ -31,6 +34,20 @@ const NFT_CONTEST_ESCROW_ABI = [
   'function getQualifiedEntries(uint256 _contestId) external view returns (address[] memory)',
   'function nextContestId() external view returns (uint256)',
 ];
+
+// ContestManager V2 ABI - unified contest manager for ETH/ERC20/NFT contests
+const CONTEST_MANAGER_V2_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
+  'function getWinners(uint256 _contestId) external view returns (address[] memory)',
+  'function nextContestId() external view returns (uint256)',
+];
+
+// V2 contest types
+const V2_CONTEST_TYPES = {
+  0: 'ETH',
+  1: 'ERC20',
+  2: 'NFT'
+};
 
 const ERC20_ABI = [
   'function symbol() view returns (string)',
@@ -349,6 +366,86 @@ async function getNftContestDetails(provider, contract, contestId) {
 }
 
 /**
+ * Fetch V2 ContestManager contest details
+ * V2 contests support multiple winners and unified ETH/ERC20/NFT prizes
+ */
+async function getV2ContestDetails(provider, contract, contestId) {
+  try {
+    const contestData = await contract.getContest(contestId);
+
+    const [host, contestType, status, castId, endTime, prizeToken, prizeAmount, winnerCount, winners] = contestData;
+
+    // Get token info for prize
+    const prizeTokenInfo = await getTokenInfo(provider, prizeToken);
+
+    // Format prize amount
+    const formattedPrize = Number(prizeAmount) / Math.pow(10, prizeTokenInfo.decimals);
+
+    // V2 doesn't store startTime, estimate from endTime (assume 24h contests by default)
+    // This is just for display purposes
+    const estimatedDurationHours = 24;
+    const estimatedStartTime = Number(endTime) - (estimatedDurationHours * 3600);
+
+    // Extract actual cast hash and parse requirements suffix if present
+    const castParts = castId.split('|');
+    const actualCastHash = castParts[0];
+
+    // Parse social requirements from castId (format: "hash|R1L0P1")
+    let requireRecast = false, requireLike = false, requireReply = false;
+    if (castParts[1]) {
+      const reqCode = castParts[1];
+      const recastMatch = reqCode.match(/R(\d)/);
+      const likeMatch = reqCode.match(/L(\d)/);
+      const replyMatch = reqCode.match(/P(\d)/);
+      if (recastMatch) requireRecast = recastMatch[1] !== '0';
+      if (likeMatch) requireLike = likeMatch[1] !== '0';
+      if (replyMatch) requireReply = replyMatch[1] !== '0';
+    }
+
+    // Determine if this is an NFT contest (contestType 2)
+    const isNft = Number(contestType) === 2;
+
+    return {
+      contestId: Number(contestId),
+      host: host,
+      prizeToken: prizeToken,
+      prizeTokenSymbol: prizeTokenInfo.symbol,
+      prizeTokenName: prizeTokenInfo.name,
+      prizeAmount: formattedPrize,
+      prizeAmountRaw: prizeAmount.toString(),
+      startTime: estimatedStartTime,
+      endTime: Number(endTime),
+      durationHours: estimatedDurationHours,
+      durationMinutes: 0,
+      castId: actualCastHash,
+      // V2 doesn't have tokenRequirement/volumeRequirement
+      tokenRequirement: '0x0000000000000000000000000000000000000000',
+      tokenRequirementSymbol: null,
+      volumeRequirement: 0,
+      status: Number(status),
+      statusText: STATUS_MAP[Number(status)] || 'Unknown',
+      // V2 supports multiple winners
+      winner: winners.length > 0 ? winners[0] : '0x0000000000000000000000000000000000000000',
+      winners: winners,
+      winnerCount: Number(winnerCount),
+      participantCount: 0, // V2 doesn't track qualified entries the same way
+      qualifiedEntries: [],
+      // Social requirements
+      requireRecast,
+      requireLike,
+      requireReply,
+      // Contest type info
+      isNft: isNft,
+      contestType: V2_CONTEST_TYPES[Number(contestType)] || 'Unknown',
+      isV2: true, // Flag to identify V2 contests
+    };
+  } catch (e) {
+    console.error(`Error fetching V2 contest ${contestId}:`, e.message);
+    return null;
+  }
+}
+
+/**
  * Main handler
  */
 module.exports = async (req, res) => {
@@ -366,8 +463,11 @@ module.exports = async (req, res) => {
 
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
+    // V1 contracts (legacy)
     const tokenContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
     const nftContract = new ethers.Contract(CONFIG.NFT_CONTEST_ESCROW, NFT_CONTEST_ESCROW_ABI, provider);
+    // V2 contract (new unified system)
+    const v2Contract = new ethers.Contract(CONFIG.CONTEST_MANAGER_V2, CONTEST_MANAGER_V2_ABI, provider);
 
     // Parse query params
     const limit = Math.min(parseInt(req.query.limit) || 20, 50); // Max 50
@@ -376,14 +476,16 @@ module.exports = async (req, res) => {
     // Status filter: 'active' = only active/pending, 'history' = only completed/cancelled (default), 'all' = everything
     const statusFilter = req.query.status || 'history';
 
-    // Get total contest counts from both contracts
-    const [tokenNextId, nftNextId] = await Promise.all([
+    // Get total contest counts from all contracts
+    const [tokenNextId, nftNextId, v2NextId] = await Promise.all([
       tokenContract.nextContestId(),
       nftContract.nextContestId().catch(() => 1), // Default to 1 if no NFT contests yet
+      v2Contract.nextContestId().catch(() => 1), // Default to 1 if no V2 contests yet
     ]);
     const totalTokenContests = Number(tokenNextId) - 1;
     const totalNftContests = Number(nftNextId) - 1;
-    const totalContests = totalTokenContests + totalNftContests;
+    const totalV2Contests = Number(v2NextId) - 1;
+    const totalContests = totalTokenContests + totalNftContests + totalV2Contests;
 
     if (totalContests <= 0) {
       return res.status(200).json({
@@ -393,12 +495,12 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Fetch all contests from both contracts
-    // Fetch all contests in PARALLEL for speed
+    // Fetch all contests from all contracts in PARALLEL for speed
     const tokenContestPromises = [];
     const nftContestPromises = [];
+    const v2ContestPromises = [];
 
-    // Create promises for token contests (most recent first, limited)
+    // Create promises for V1 token contests (most recent first, limited)
     const tokenStartId = Math.max(1, totalTokenContests - limit + 1);
     for (let i = totalTokenContests; i >= tokenStartId; i--) {
       tokenContestPromises.push(
@@ -414,7 +516,7 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Create promises for NFT contests (most recent first, limited)
+    // Create promises for V1 NFT contests (most recent first, limited)
     const nftStartId = Math.max(1, totalNftContests - limit + 1);
     for (let i = totalNftContests; i >= nftStartId; i--) {
       nftContestPromises.push(
@@ -431,16 +533,35 @@ module.exports = async (req, res) => {
       );
     }
 
+    // Create promises for V2 contests (most recent first, limited)
+    const v2StartId = Math.max(1, totalV2Contests - limit + 1);
+    for (let i = totalV2Contests; i >= v2StartId; i--) {
+      v2ContestPromises.push(
+        getV2ContestDetails(provider, v2Contract, i)
+          .then(contest => {
+            if (contest) {
+              contest.contractType = 'v2';
+              contest.contestIdDisplay = `V2-${contest.contestId}`;
+              return contest;
+            }
+            return null;
+          })
+          .catch(() => null)
+      );
+    }
+
     // Execute all contest fetches in parallel
-    const [tokenResults, nftResults] = await Promise.all([
+    const [tokenResults, nftResults, v2Results] = await Promise.all([
       Promise.all(tokenContestPromises),
       Promise.all(nftContestPromises),
+      Promise.all(v2ContestPromises),
     ]);
 
-    // Filter out nulls and combine
+    // Filter out nulls and combine all contests
     const allContests = [
       ...tokenResults.filter(c => c !== null),
       ...nftResults.filter(c => c !== null),
+      ...v2Results.filter(c => c !== null),
     ];
 
     // Sort by endTime descending (newest first)
@@ -468,8 +589,17 @@ module.exports = async (req, res) => {
       const addressesToLookup = new Set();
       limitedContests.forEach(contest => {
         addressesToLookup.add(contest.host.toLowerCase());
+        // Handle single winner (V1)
         if (contest.winner !== '0x0000000000000000000000000000000000000000') {
           addressesToLookup.add(contest.winner.toLowerCase());
+        }
+        // Handle multiple winners (V2)
+        if (contest.winners && contest.winners.length > 0) {
+          contest.winners.forEach(w => {
+            if (w !== '0x0000000000000000000000000000000000000000') {
+              addressesToLookup.add(w.toLowerCase());
+            }
+          });
         }
       });
 
@@ -488,8 +618,15 @@ module.exports = async (req, res) => {
       // Assign users to contests
       limitedContests.forEach(contest => {
         contest.hostUser = userMap[contest.host.toLowerCase()] || null;
+        // Handle single winner (V1)
         if (contest.winner !== '0x0000000000000000000000000000000000000000') {
           contest.winnerUser = userMap[contest.winner.toLowerCase()] || null;
+        }
+        // Handle multiple winners (V2)
+        if (contest.winners && contest.winners.length > 0) {
+          contest.winnerUsers = contest.winners
+            .filter(w => w !== '0x0000000000000000000000000000000000000000')
+            .map(w => userMap[w.toLowerCase()] || null);
         }
       });
     }
@@ -499,6 +636,7 @@ module.exports = async (req, res) => {
       total: totalContests,
       totalToken: totalTokenContests,
       totalNft: totalNftContests,
+      totalV2: totalV2Contests,
       fetched: limitedContests.length,
       limit,
     });
