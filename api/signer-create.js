@@ -100,9 +100,14 @@ module.exports = async (req, res) => {
     console.log('Created signer:', JSON.stringify(signerData, null, 2));
 
     // Neynar returns signer_approval_url for user to approve in Warpcast
+    // Use web URL format (not deep link) for browser compatibility
     const approval_url = signerData.signer_approval_url ||
-      `https://client.warpcast.com/deeplinks/signed-key-request?token=${signerData.signer_uuid}`;
+      `https://warpcast.com/~/sign-in-with-farcaster?channelToken=${signerData.signer_uuid}`;
     const isApproved = signerData.status === 'approved';
+
+    // Log what Neynar returned for debugging
+    console.log('Neynar returned approval_url:', signerData.signer_approval_url);
+    console.log('Using approval_url:', approval_url);
 
     console.log('Approval URL:', approval_url);
     console.log('Is approved:', isApproved);
