@@ -4,11 +4,32 @@
  * Creates a Neynar managed signer for a user.
  * The user must then approve the signer via the returned URL.
  *
+ * Requires environment variables:
+ * - NEYNAR_API_KEY: Your Neynar API key
+ * - APP_FID: Your app's Farcaster ID
+ * - APP_MNEMONIC: Your app's custody address mnemonic (12/24 word phrase)
+ *
  * POST /api/signer-create
  * Body: { fid: 12345 }
  *
  * Returns: { success: true, signer_uuid: "...", approval_url: "...", fid: 12345 }
  */
+
+const { ethers } = require('ethers');
+
+// Farcaster Signed Key Request typehash for EIP-712 signing
+const SIGNED_KEY_REQUEST_VALIDATOR_EIP_712_DOMAIN = {
+  name: 'Farcaster SignedKeyRequestValidator',
+  version: '1',
+  chainId: 10, // Optimism
+  verifyingContract: '0x00000000fc700472606ed4fa22623acf62c60553'
+};
+
+const SIGNED_KEY_REQUEST_TYPE = [
+  { name: 'requestFid', type: 'uint256' },
+  { name: 'key', type: 'bytes' },
+  { name: 'deadline', type: 'uint256' }
+];
 
 module.exports = async (req, res) => {
   // CORS headers
@@ -74,7 +95,19 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Create a Neynar signer - the API returns signer_uuid and approval URL
+    // Check for required env vars
+    const APP_FID = process.env.APP_FID;
+    const APP_MNEMONIC = process.env.APP_MNEMONIC;
+
+    if (!APP_FID || !APP_MNEMONIC) {
+      console.error('Missing APP_FID or APP_MNEMONIC environment variables');
+      return res.status(500).json({
+        error: 'App not configured for signer creation',
+        details: 'Missing APP_FID or APP_MNEMONIC'
+      });
+    }
+
+    // Step 1: Create a new signer
     console.log(`Creating signer for FID ${fid}, API key prefix: ${NEYNAR_API_KEY.slice(0, 8)}...`);
 
     const createResponse = await fetch('https://api.neynar.com/v2/farcaster/signer', {
@@ -85,40 +118,75 @@ module.exports = async (req, res) => {
       }
     });
 
-    const responseText = await createResponse.text();
-    console.log('Neynar signer response status:', createResponse.status);
-    console.log('Neynar signer response:', responseText);
-
     if (!createResponse.ok) {
-      let errorData = {};
-      try {
-        errorData = JSON.parse(responseText);
-      } catch (e) {
-        errorData = { raw: responseText };
-      }
+      const errorData = await createResponse.json().catch(() => ({}));
       console.error('Signer creation failed:', errorData);
       return res.status(500).json({
         error: 'Failed to create signer',
-        details: errorData.message || errorData.error || responseText || createResponse.statusText,
-        status: createResponse.status
+        details: errorData.message || createResponse.statusText
       });
     }
 
-    const signerData = JSON.parse(responseText);
-    console.log('Created signer:', JSON.stringify(signerData, null, 2));
+    const signerData = await createResponse.json();
+    console.log('Created signer:', signerData.signer_uuid);
+    console.log('Public key:', signerData.public_key);
 
-    // Neynar returns signer_approval_url for user to approve in Warpcast
-    // Use web URL format (not deep link) for browser compatibility
-    const approval_url = signerData.signer_approval_url ||
-      `https://warpcast.com/~/sign-in-with-farcaster?channelToken=${signerData.signer_uuid}`;
-    const isApproved = signerData.status === 'approved';
+    // Step 2: Sign the key request with app's custody address
+    const wallet = ethers.Wallet.fromPhrase(APP_MNEMONIC);
+    const deadline = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
 
-    // Log what Neynar returned for debugging
-    console.log('Neynar returned approval_url:', signerData.signer_approval_url);
-    console.log('Using approval_url:', approval_url);
+    const signature = await wallet.signTypedData(
+      SIGNED_KEY_REQUEST_VALIDATOR_EIP_712_DOMAIN,
+      { SignedKeyRequest: SIGNED_KEY_REQUEST_TYPE },
+      {
+        requestFid: BigInt(APP_FID),
+        key: signerData.public_key,
+        deadline: BigInt(deadline)
+      }
+    );
+
+    console.log('Generated signature for signed key request');
+
+    // Step 3: Register the signed key with Neynar
+    const signedKeyResponse = await fetch('https://api.neynar.com/v2/farcaster/signer/signed_key', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': NEYNAR_API_KEY
+      },
+      body: JSON.stringify({
+        signer_uuid: signerData.signer_uuid,
+        app_fid: parseInt(APP_FID),
+        deadline: deadline,
+        signature: signature
+      })
+    });
+
+    if (!signedKeyResponse.ok) {
+      const errorData = await signedKeyResponse.json().catch(() => ({}));
+      console.error('Signed key registration failed:', errorData);
+      return res.status(500).json({
+        error: 'Failed to register signed key',
+        details: errorData.message || signedKeyResponse.statusText
+      });
+    }
+
+    const signedKeyData = await signedKeyResponse.json();
+    console.log('Signed key registered:', JSON.stringify(signedKeyData, null, 2));
+
+    // Get the approval URL from the response
+    const approval_url = signedKeyData.signer_approval_url;
+    const isApproved = signedKeyData.status === 'approved';
 
     console.log('Approval URL:', approval_url);
     console.log('Is approved:', isApproved);
+
+    if (!approval_url && !isApproved) {
+      return res.status(500).json({
+        error: 'No approval URL returned',
+        details: 'Neynar did not return a signer_approval_url'
+      });
+    }
 
     // Store in KV
     if (process.env.KV_REST_API_URL) {
