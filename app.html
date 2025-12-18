@@ -792,14 +792,16 @@
     async function enterRaffle(button) {
       const contestId = button.dataset.contestId;
       const castId = button.dataset.castId;
+      const isV2 = button.dataset.isV2 === 'true';
 
       if (!state.userFid) {
         showToast('Please connect your Farcaster account first', 'warning');
         return;
       }
 
-      // Check if already entered
-      if (state.contestEntries[contestId]?.entered) {
+      // Check if already entered (use v2- prefix for V2 contests)
+      const entryKey = isV2 ? `v2-${contestId}` : contestId;
+      if (state.contestEntries[entryKey]?.entered) {
         showToast('You have already entered this contest!', 'info');
         return;
       }
@@ -887,7 +889,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fid: state.userFid,
-            contestId: contestId,
+            contestId: entryKey,  // Use entryKey (v2-{id} for V2, {id} for V1)
             castHash: castHash,
             addresses: userAddresses.length > 0 ? userAddresses : [state.userAddress]
           })
@@ -896,8 +898,8 @@
         if (response.ok) {
           const data = await response.json();
 
-          // Update state
-          state.contestEntries[contestId] = {
+          // Update state (use entryKey for proper V2 tracking)
+          state.contestEntries[entryKey] = {
             entered: true,
             hasReplied: false,
             timestamp: Date.now()
@@ -915,23 +917,23 @@
         } else {
           const error = await response.json();
           if (error.already_entered) {
-            state.contestEntries[contestId] = { entered: true };
+            state.contestEntries[entryKey] = { entered: true };
             button.innerHTML = 'Entered ✓';
             button.disabled = true;
             showToast('You have already entered this contest!', 'info');
           } else if (error.needs_signer) {
             showToast('Authorization required. Please try again.', 'warning');
-            resetEnterButton(button, contestId);
+            resetEnterButton(button, entryKey);
           } else {
             showToast(error.error || 'Failed to enter contest', 'error');
-            resetEnterButton(button, contestId);
+            resetEnterButton(button, entryKey);
           }
         }
 
       } catch (error) {
         console.error('Enter raffle error:', error);
         showToast('Failed to enter contest: ' + error.message, 'error');
-        resetEnterButton(button, contestId);
+        resetEnterButton(button, entryKey);
       }
 
       state.enteringContest = null;
@@ -3947,15 +3949,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             prizeHtml = `<div class="text-sm font-semibold text-[var(--success)]">${contest.prize}</div>`;
           }
 
-          let reqTags = '';
-          if (contest.requireRecast) reqTags += '<span class="tag tag-accent">Recast</span>';
-          if (contest.requireLike) reqTags += '<span class="tag tag-accent">Like</span>';
-          if (contest.requireReply) reqTags += '<span class="tag tag-accent">Reply</span>';
-          if (contest.volumeRequirement > 0) reqTags += `<span class="tag tag-warning">$${contest.volumeRequirement} vol</span>`;
-          if (!contest.requireRecast && !contest.requireLike && !contest.requireReply && !contest.volumeRequirement) {
-            reqTags = '<span class="tag" style="background: var(--bg-tertiary); color: var(--text-secondary);">Open to all</span>';
-          }
-
           // Extract just the cast hash (before any | character) from castId
           const castHashForView = contest.castId ? contest.castId.split('|')[0] : '';
           const viewBtn = castHashForView ? `
@@ -3989,19 +3982,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       <div class="text-sm font-semibold text-[var(--text-primary)]">${hoursLeft}h ${minutesLeft}m</div>
                     </div>
                   </div>
-                  <div class="flex flex-wrap gap-1.5 mb-3">
-                    ${reqTags}
+                  <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xs text-[var(--text-muted)]">Participants:</span>
+                    <span class="text-sm font-semibold text-[var(--accent)]">${contest.participantCount || 0}</span>
                   </div>
                   <div class="flex gap-2 flex-wrap">
                     <button
                       data-contest-id="${contest.contestId}"
                       data-cast-id="${contest.castId || ''}"
+                      data-is-v2="${contest.isV2 || false}"
                       onclick="enterRaffle(this)"
                       class="btn-primary text-sm py-2 px-4 enter-raffle-btn"
-                      id="enter-btn-${contest.contestId}"
-                      ${state.contestEntries?.[contest.contestId]?.entered ? 'disabled style="opacity: 0.6; cursor: default;"' : ''}
+                      id="enter-btn-${contest.contestId}${contest.isV2 ? '-v2' : ''}"
+                      ${state.contestEntries?.[contest.isV2 ? `v2-${contest.contestId}` : contest.contestId]?.entered ? 'disabled style="opacity: 0.6; cursor: default;"' : ''}
                     >
-                      ${state.contestEntries?.[contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
+                      ${state.contestEntries?.[contest.isV2 ? `v2-${contest.contestId}` : contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
                     </button>
                     <button
                       data-contest-id="${contest.contestId}"
@@ -4049,7 +4044,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   </div>
                   <div class="flex items-center gap-2">
                     <div class="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse"></div>
-                    <button onclick="checkAllEligibility()" class="btn-accent text-sm py-2 px-4">Check Eligibility</button>
+                    <span class="text-sm text-[var(--text-muted)]">Live</span>
                   </div>
                 </div>
                 <div class="space-y-3">${contestsHtml}</div>

@@ -631,6 +631,31 @@ module.exports = async (req, res) => {
       });
     }
 
+    // Fetch participant counts from KV storage for all contests
+    if (process.env.KV_REST_API_URL && limitedContests.length > 0) {
+      try {
+        const { kv } = require('@vercel/kv');
+        const participantPromises = limitedContests.map(async (contest) => {
+          // Use contestId for lookup - handles both V1 and V2 since we store by contestId
+          const contestKey = contest.isV2 ? `v2-${contest.contestId}` : contest.contestId.toString();
+          const count = await kv.scard(`contest_entries:${contestKey}`).catch(() => 0);
+          return { contestId: contest.contestId, isV2: contest.isV2, count };
+        });
+        const participantCounts = await Promise.all(participantPromises);
+
+        // Update participant counts in contests
+        participantCounts.forEach(({ contestId, isV2, count }) => {
+          const contest = limitedContests.find(c => c.contestId === contestId && c.isV2 === isV2);
+          if (contest) {
+            contest.participantCount = count;
+          }
+        });
+      } catch (kvError) {
+        console.error('KV participant count error:', kvError.message);
+        // Continue without participant counts if KV fails
+      }
+    }
+
     return res.status(200).json({
       contests: limitedContests,
       total: totalContests,
