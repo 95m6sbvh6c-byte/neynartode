@@ -787,7 +787,24 @@
           return false;
         }
 
-        // Check NEYNARTODES balance directly on-chain
+        // Check NEYNARTODES balance via API call to avoid provider issues
+        try {
+          const params = state.userFid
+            ? `fid=${state.userFid}&contestId=1`
+            : `address=${addresses[0]}&contestId=1`;
+
+          const response = await fetch(`/api/check-eligibility?${params}`);
+          if (response.ok) {
+            const data = await response.json();
+            const isHolder = data.holder?.met || false;
+            console.log(`Holder check via API: balance=${data.holder?.balanceFormatted}, threshold=${data.holder?.thresholdFormatted}, isHolder=${isHolder}`);
+            return isHolder;
+          }
+        } catch (apiError) {
+          console.log('API holder check failed, trying direct RPC:', apiError.message);
+        }
+
+        // Fallback: Check NEYNARTODES balance directly on-chain
         const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
         const tokenContract = new ethers.Contract(
           CONFIG.CONTRACTS.neynartodes,
@@ -810,7 +827,7 @@
         const threshold = ethers.utils.parseUnits('100000000', 18);
         const isHolder = totalBalance.gte(threshold);
 
-        console.log(`Holder check: balance=${ethers.utils.formatUnits(totalBalance, 18)}, threshold=100M, isHolder=${isHolder}`);
+        console.log(`Holder check via RPC: balance=${ethers.utils.formatUnits(totalBalance, 18)}, threshold=100M, isHolder=${isHolder}`);
 
         return isHolder;
       } catch (e) {
