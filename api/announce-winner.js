@@ -25,8 +25,14 @@ const { ethers } = require('ethers');
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
+  // V1 contracts (legacy)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
+
+  // V2 contract (multi-winner support)
+  CONTEST_MANAGER: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
+  V2_START_CONTEST_ID: 105,
+
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
@@ -41,6 +47,14 @@ const CONTEST_ESCROW_ABI = [
 const NFT_CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
   'function getQualifiedEntries(uint256 _contestId) external view returns (address[] memory)',
+  'function nextContestId() external view returns (uint256)',
+];
+
+// V2 ContestManager ABI (multi-winner support)
+const CONTEST_MANAGER_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
+  'function getQualifiedEntries(uint256 _contestId) external view returns (address[] memory)',
+  'function getWinners(uint256 _contestId) external view returns (address[] memory)',
   'function nextContestId() external view returns (uint256)',
 ];
 
@@ -629,7 +643,249 @@ async function announceNftWinner(contestId) {
 }
 
 /**
- * Check all contests (ETH + NFT) and announce any completed ones
+ * Announce winners for a V2 ContestManager contest (multi-winner support)
+ * Tags all winners in the announcement cast
+ */
+async function announceV2Winners(contestId) {
+  const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
+  const contestManager = new ethers.Contract(
+    CONFIG.CONTEST_MANAGER,
+    CONTEST_MANAGER_ABI,
+    provider
+  );
+
+  // Get contest details
+  // V2: host, contestType, status, castId, endTime, prizeToken, prizeAmount, winnerCount, winners
+  const contest = await contestManager.getContest(contestId);
+  const [host, contestType, status, castId, , prizeToken, prizeAmount, winnerCount, winners] = contest;
+
+  // ContestType: 0=ETH, 1=ERC20, 2=BaseNFT, 3=MainnetNFT
+  const contestTypeNames = ['ETH', 'ERC20', 'BaseNFT', 'MainnetNFT'];
+  const typeName = contestTypeNames[Number(contestType)] || 'Unknown';
+  const isNftContest = contestType === 2n || contestType === 3n;
+
+  // Status: 0=Active, 1=PendingVRF, 2=Completed, 3=Cancelled
+  if (status !== 2n) {
+    return {
+      success: false,
+      error: `V2 Contest not completed (status: ${status})`,
+      contestId,
+      isV2: true
+    };
+  }
+
+  if (!winners || winners.length === 0) {
+    return {
+      success: false,
+      error: 'No winners set',
+      contestId,
+      isV2: true
+    };
+  }
+
+  // Check if already announced (using KV for persistence)
+  if (await isAlreadyAnnounced(contestId, false)) {
+    // Check v2 prefix too
+    try {
+      if (process.env.KV_REST_API_URL) {
+        const { kv } = require('@vercel/kv');
+        const announced = await kv.get(`announced_v2_${contestId}`);
+        if (announced) {
+          return {
+            success: false,
+            error: 'Already announced',
+            contestId,
+            isV2: true
+          };
+        }
+      }
+    } catch (e) { /* continue */ }
+  }
+
+  console.log(`\n🎉 Announcing ${winners.length} winner(s) for V2 ${typeName} Contest #${contestId}`);
+  console.log(`   Host: ${host}`);
+  console.log(`   Winners: ${winners.join(', ')}`);
+
+  // Get host's Farcaster profile
+  const hostUser = await getUserByWallet(host);
+  const hostTag = hostUser ? `@${hostUser.username}` : null;
+  console.log(`   Host tag: ${hostTag || 'not found'}`);
+
+  // Get all winners' Farcaster profiles
+  const winnerProfiles = [];
+  for (const winnerAddr of winners) {
+    const winnerUser = await getUserByWallet(winnerAddr);
+    winnerProfiles.push({
+      address: winnerAddr,
+      user: winnerUser,
+      tag: winnerUser ? `@${winnerUser.username}` : winnerAddr.slice(0, 10) + '...'
+    });
+    console.log(`   Winner: ${winnerUser ? `@${winnerUser.username}` : winnerAddr}`);
+  }
+
+  // Get prize info
+  let prizeDisplay = '';
+  let perWinnerPrize = '';
+  const winnerCountNum = Number(winnerCount);
+
+  if (contestType === 0n) {
+    // ETH prize
+    const totalEth = Number(ethers.formatEther(prizeAmount));
+    const perWinner = totalEth / winnerCountNum;
+    prizeDisplay = `${totalEth.toFixed(4)} ETH`;
+    perWinnerPrize = winnerCountNum > 1 ? ` (${perWinner.toFixed(4)} ETH each)` : '';
+  } else if (contestType === 1n) {
+    // ERC20 prize
+    try {
+      const tokenContract = new ethers.Contract(prizeToken, ERC20_ABI, provider);
+      const symbol = await tokenContract.symbol();
+      const decimals = await tokenContract.decimals();
+      const totalAmount = Number(prizeAmount) / Math.pow(10, Number(decimals));
+      const perWinner = totalAmount / winnerCountNum;
+      prizeDisplay = `${totalAmount.toLocaleString()} $${symbol}`;
+      perWinnerPrize = winnerCountNum > 1 ? ` (${perWinner.toLocaleString()} each)` : '';
+    } catch (e) {
+      prizeDisplay = `${ethers.formatEther(prizeAmount)} tokens`;
+    }
+  } else {
+    // NFT prize (single winner only for NFTs)
+    prizeDisplay = `NFT #${prizeAmount}`;
+  }
+
+  // Get qualified entries count
+  const qualifiedEntries = await contestManager.getQualifiedEntries(contestId);
+  const participantCount = qualifiedEntries.length;
+
+  // Get custom message (if stored)
+  const customMessage = await getCustomMessage(`v2_${contestId}`);
+
+  // Get finalize TX hash (if stored)
+  let finalizeTxHash = null;
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      finalizeTxHash = await kv.get(`finalize_tx_v2_${contestId}`);
+      if (finalizeTxHash) {
+        console.log(`   Found finalize TX: ${finalizeTxHash}`);
+      }
+    }
+  } catch (e) {
+    console.log(`   Could not get finalize TX:`, e.message);
+  }
+
+  // Build announcement message
+  let announcement = isNftContest
+    ? `🎉 NFT CONTEST COMPLETE!\n\n`
+    : `🎉 CONTEST COMPLETE!\n\n`;
+
+  if (customMessage) {
+    announcement += `${customMessage}\n\n`;
+  }
+
+  // Add host tag if found
+  if (hostTag) {
+    announcement += `🎤 Host: ${hostTag}\n`;
+  }
+
+  // List all winners with tags
+  if (winners.length === 1) {
+    announcement += `🏆 Winner: ${winnerProfiles[0].tag}\n`;
+  } else {
+    announcement += `🏆 Winners:\n`;
+    winnerProfiles.forEach((wp, i) => {
+      announcement += `   ${i + 1}. ${wp.tag}\n`;
+    });
+  }
+
+  announcement += `💰 Prize: ${prizeDisplay}${perWinnerPrize}\n`;
+  announcement += `👥 Participants: ${participantCount}\n`;
+  announcement += `🎲 Selected via Chainlink VRF\n`;
+
+  // Add TX hash link if available
+  if (finalizeTxHash) {
+    announcement += `🔗 TX: basescan.org/tx/${finalizeTxHash.slice(0, 10)}...\n`;
+  }
+
+  // Congratulate all winners by tagging them
+  const allWinnerTags = winnerProfiles.map(wp => wp.tag).join(' ');
+  announcement += `\nCongrats ${allWinnerTags}! 🦎\n\n`;
+  announcement += `Launch your own contest: https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
+
+  console.log(`   Message length: ${announcement.length} chars`);
+
+  // Extract actual cast hash (remove requirements suffix if present)
+  const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+
+  // Post the announcement
+  const signerUuid = process.env.NEYNAR_SIGNER_UUID;
+
+  if (!signerUuid) {
+    console.log('   ⚠️ NEYNAR_SIGNER_UUID not set - skipping cast post');
+    console.log('   Would have posted:', announcement);
+
+    // Mark as announced anyway (for dry run)
+    try {
+      if (process.env.KV_REST_API_URL) {
+        const { kv } = require('@vercel/kv');
+        await kv.set(`announced_v2_${contestId}`, true);
+      }
+    } catch (e) { /* ignore */ }
+
+    return {
+      success: true,
+      contestId,
+      isV2: true,
+      winners: winners,
+      winnerUsernames: winnerProfiles.map(wp => wp.user?.username).filter(Boolean),
+      prize: prizeDisplay,
+      participants: participantCount,
+      message: announcement,
+      posted: false,
+      note: 'Set NEYNAR_SIGNER_UUID to enable automatic cast posting'
+    };
+  }
+
+  const postResult = await postWinnerAnnouncement(actualCastHash, announcement, signerUuid);
+
+  if (postResult.success) {
+    try {
+      if (process.env.KV_REST_API_URL) {
+        const { kv } = require('@vercel/kv');
+        await kv.set(`announced_v2_${contestId}`, true);
+      }
+    } catch (e) { /* ignore */ }
+
+    // Send push notification
+    try {
+      const { sendNotification } = require('./send-notification');
+      await sendNotification('contest_completed', {
+        contestId,
+        isV2: true,
+        winnerCount: winners.length,
+        winnerUsernames: winnerProfiles.map(wp => wp.user?.username).filter(Boolean),
+        prize: prizeDisplay,
+      });
+    } catch (e) {
+      console.log('   Could not send push notification:', e.message);
+    }
+  }
+
+  return {
+    success: postResult.success,
+    contestId,
+    isV2: true,
+    winners: winners,
+    winnerUsernames: winnerProfiles.map(wp => wp.user?.username).filter(Boolean),
+    prize: prizeDisplay,
+    participants: participantCount,
+    message: announcement,
+    posted: postResult.success,
+    castHash: postResult.castHash
+  };
+}
+
+/**
+ * Check all contests (ETH + NFT + V2) and announce any completed ones
  */
 async function checkAndAnnounceAll() {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
@@ -691,6 +947,53 @@ async function checkAndAnnounceAll() {
     }
   }
 
+  // Check V2 ContestManager contests
+  const contestManager = new ethers.Contract(
+    CONFIG.CONTEST_MANAGER,
+    CONTEST_MANAGER_ABI,
+    provider
+  );
+
+  try {
+    const v2NextId = await contestManager.nextContestId();
+    const v2StartId = BigInt(CONFIG.V2_START_CONTEST_ID);
+
+    if (v2NextId > v2StartId) {
+      console.log(`\n🔍 Checking V2 contests ${v2StartId} to ${v2NextId - 1n} for announcements...`);
+
+      for (let i = v2StartId; i < v2NextId; i++) {
+        try {
+          const contest = await contestManager.getContest(i);
+          const status = contest[2]; // status is at index 2 for V2
+          const winners = contest[8]; // winners array is at index 8
+
+          // Only announce completed contests with winners
+          if (status === 2n && winners && winners.length > 0) {
+            // Check if already announced
+            let alreadyAnnounced = false;
+            try {
+              if (process.env.KV_REST_API_URL) {
+                const { kv } = require('@vercel/kv');
+                alreadyAnnounced = await kv.get(`announced_v2_${i}`);
+              }
+            } catch (e) { /* continue */ }
+
+            if (!alreadyAnnounced) {
+              const result = await announceV2Winners(Number(i));
+              results.push(result);
+            }
+          }
+        } catch (e) {
+          console.log(`   V2 Contest #${i} error:`, e.message?.slice(0, 50));
+        }
+      }
+    } else {
+      console.log(`\n🔍 No V2 contests yet (next ID: ${v2NextId})`);
+    }
+  } catch (e) {
+    console.log(`\n⚠️ Could not check V2 contests:`, e.message?.slice(0, 50));
+  }
+
   return results;
 }
 
@@ -710,10 +1013,15 @@ module.exports = async (req, res) => {
 
   try {
     // GET: Announce specific contest
-    // Usage: /api/announce-winner?contestId=7&nft=true (for NFT contests)
+    // Usage:
+    //   /api/announce-winner?contestId=7              (V1 ETH contest)
+    //   /api/announce-winner?contestId=2&nft=true    (V1 NFT contest)
+    //   /api/announce-winner?contestId=105&v2=true   (V2 contest - explicit)
+    //   /api/announce-winner?contestId=105           (V2 contest - auto-detected)
     if (req.method === 'GET') {
       const contestId = parseInt(req.query.contestId);
       const isNftContest = req.query.nft === 'true' || req.query.nft === '1';
+      const isV2Contest = req.query.v2 === 'true' || req.query.v2 === '1';
 
       if (!contestId || isNaN(contestId)) {
         return res.status(400).json({
@@ -721,9 +1029,17 @@ module.exports = async (req, res) => {
         });
       }
 
-      const result = isNftContest
-        ? await announceNftWinner(contestId)
-        : await announceWinner(contestId);
+      // Auto-detect V2 if contestId >= V2_START_CONTEST_ID and not explicitly V1
+      const useV2 = isV2Contest || (!isNftContest && contestId >= CONFIG.V2_START_CONTEST_ID);
+
+      let result;
+      if (useV2) {
+        result = await announceV2Winners(contestId);
+      } else if (isNftContest) {
+        result = await announceNftWinner(contestId);
+      } else {
+        result = await announceWinner(contestId);
+      }
       return res.status(result.success ? 200 : 400).json(result);
     }
 
@@ -747,15 +1063,28 @@ module.exports = async (req, res) => {
 };
 
 // For local testing
-// Usage: node announce-winner.js [contestId] [--nft]
+// Usage: node announce-winner.js [contestId] [--nft] [--v2]
 if (require.main === module) {
   const args = process.argv.slice(2);
   const contestId = args.find(a => !a.startsWith('--'));
   const isNft = args.includes('--nft');
+  const isV2 = args.includes('--v2');
 
   if (contestId) {
-    const announceFunc = isNft ? announceNftWinner : announceWinner;
-    announceFunc(parseInt(contestId))
+    const parsedId = parseInt(contestId);
+    // Auto-detect V2 if contestId >= V2_START_CONTEST_ID
+    const useV2 = isV2 || (!isNft && parsedId >= CONFIG.V2_START_CONTEST_ID);
+
+    let announceFunc;
+    if (useV2) {
+      announceFunc = announceV2Winners;
+    } else if (isNft) {
+      announceFunc = announceNftWinner;
+    } else {
+      announceFunc = announceWinner;
+    }
+
+    announceFunc(parsedId)
       .then(result => {
         console.log('\n📊 Result:', JSON.stringify(result, null, 2));
         process.exit(result.success ? 0 : 1);
