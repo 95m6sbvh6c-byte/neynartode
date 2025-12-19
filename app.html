@@ -7272,16 +7272,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           <div class="text-center space-y-4">
             ${isMobile ? `
-              <!-- Mobile: Show button to open Warpcast directly -->
+              <!-- Mobile: Show button to open Farcaster app directly via deep link -->
               <p class="text-sm text-[var(--text-secondary)]">
-                Tap the button below to authorize the app in Warpcast.
+                Tap the button below to authorize the app in Farcaster/Warpcast.
               </p>
 
               <a href="${state.signerApprovalUrl}"
-                 target="_blank"
+                 onclick="sessionStorage.setItem('pendingSignerFid', '${state.userFid}')"
                  class="block w-full px-4 py-4 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-semibold rounded-xl transition-colors text-center">
-                Open in Warpcast
+                Open in Farcaster App
               </a>
+
+              <p class="text-xs text-[var(--text-muted)] mt-2">
+                If the app doesn't open, copy this link:<br>
+                <span class="text-[10px] break-all select-all">${state.signerApprovalUrl}</span>
+              </p>
             ` : `
               <!-- Desktop: Show QR code to scan -->
               <p class="text-sm text-[var(--text-secondary)]">
@@ -7307,9 +7312,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
             ${isMobile ? `
               <p class="text-xs text-[var(--text-muted)] mt-2">
-                After approving in Warpcast, return here to continue.
+                After approving in Farcaster, come back to this app to continue.
               </p>
-            ` : ''}
+            ` : `
+              <p class="text-xs text-[var(--text-muted)] mt-2">
+                After scanning, complete authorization in your Farcaster app.
+              </p>
+            `}
           </div>
 
           <button onclick="closeSignerModal()" class="w-full mt-4 px-4 py-3 border border-[var(--border-light)] rounded-xl text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors">

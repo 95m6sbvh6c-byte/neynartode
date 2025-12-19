@@ -159,6 +159,70 @@ From Privy docs:
 - Insufficient gas limit
 - Contract function requirements not met
 
+## Neynar Managed Signers
+
+Signers allow your app to perform actions (like, recast, cast) on behalf of users.
+
+### Signer Approval Flow
+
+1. **Create signer**: `POST /v2/farcaster/signer` - Get signer_uuid and public_key
+2. **Sign the request**: Use EIP-712 to sign with your app's custody address
+3. **Register signed key**: `POST /v2/farcaster/signer/signed_key` - Get approval_url
+4. **User approves**: User clicks approval URL to authorize in Farcaster app
+5. **Poll for approval**: `GET /v2/farcaster/signer?signer_uuid=...` until status is "approved"
+6. **Use signer**: Pass signer_uuid to write APIs
+
+### Mobile vs Desktop Handling
+
+**CRITICAL**: On mobile, do NOT show a QR code - users can't scan their own screen!
+
+```javascript
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+if (isMobile) {
+  // Direct link to Farcaster app (deep link)
+  // Do NOT use target="_blank" - it can break deep links
+  return `<a href="${approval_url}">Open in Farcaster App</a>`;
+} else {
+  // Desktop: Show QR code for user to scan with phone
+  return `<div id="qrcode"></div>`;
+  new QRCode(document.getElementById('qrcode'), approval_url);
+}
+```
+
+### Approval URL Formats
+
+The API returns URLs in these formats:
+- Deep link: `farcaster://signed-key-request?token=0x...`
+- Web link: `https://client.farcaster.xyz/deeplinks/signed-key-request?token=...`
+
+Both work, but deep links are preferred for mobile.
+
+### Signer Status States
+
+| Status | Meaning |
+|--------|---------|
+| `generated` | Signer created, not yet signed |
+| `pending_approval` | Signed and waiting for user approval |
+| `approved` | User approved, ready to use |
+| `revoked` | User revoked the signer |
+
+### Sponsored Signers
+
+You can have Neynar pay the signer registration fee (charged to your Neynar credits):
+
+```javascript
+const signedKeyBody = {
+  signer_uuid: signerData.signer_uuid,
+  app_fid: parseInt(APP_FID),
+  deadline: deadline,
+  signature: signature,
+  sponsor: {
+    sponsored_by_neynar: true  // Neynar pays the $1 fee
+  }
+};
+```
+
 ## API Endpoints
 
 ### Neynar User Lookup
