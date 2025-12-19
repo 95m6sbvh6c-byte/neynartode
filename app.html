@@ -1355,35 +1355,33 @@
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
 
-      // Frame URL - this will render with an "Enter Raffle" button on timeline
-      const frameUrl = `https://frame-opal-eight.vercel.app/api/frame?contestId=${contestId}`;
+      // Farcaster mini app URL - opens directly in Farcaster as mini app
+      const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
 
-      // Share text (no URL in text - frame embed handles the interactive button)
+      // Simple share text with mini app link
       const text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
 
 ${prizeLine}
 ⏱️ ${hoursLeft}h ${minutesLeft}m left
 
-👇 Tap Enter Raffle below!`;
+👇 Tap to enter!
+${miniAppUrl}`;
 
-      console.log('Sharing contest with frame:', { contestId, isNft, frameUrl });
+      console.log('Sharing contest:', { contestId, isNft, nftImage, miniAppUrl });
 
-      // Use SDK composeCast with frame embed
+      // Use SDK composeCast
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
         try {
-          await sdk.actions.composeCast({
-            text: text,
-            embeds: [frameUrl]
-          });
+          await sdk.actions.composeCast({ text: text });
           return;
         } catch (e) {
           console.log('composeCast failed, falling back to URL:', e);
         }
       }
 
-      // Fallback: Build Warpcast compose URL with frame as embed
-      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(frameUrl)}`;
+      // Fallback: Build Warpcast compose URL
+      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
       window.open(warpcastUrl, '_blank');
     }
 
