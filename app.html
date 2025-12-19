@@ -34,26 +34,32 @@
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
 
-    // IMPORTANT: Instantiate connector ONCE and reuse it (per Neynar)
-    const ff = farcasterFrame();
+    // Initialize wagmi (wrapped in try-catch to not block app loading)
+    try {
+      // IMPORTANT: Instantiate connector ONCE and reuse it (per Neynar)
+      const ff = farcasterFrame();
 
-    // Create wagmi config with the single connector instance
-    const wagmiConfig = createConfig({
-      chains: [base],
-      connectors: [ff],  // Use the instance, not farcasterFrame()
-      transports: {
-        [base.id]: http()
-      }
-    });
+      // Create wagmi config with the single connector instance
+      const wagmiConfig = createConfig({
+        chains: [base],
+        connectors: [ff],  // Use the instance, not farcasterFrame()
+        transports: {
+          [base.id]: http()
+        }
+      });
 
-    // Store for use in click handler
-    window.WagmiConfig = wagmiConfig;
-    window.FrameConnector = ff;  // The single instance to reuse
-    window.WagmiConnect = connect;
-    window.WagmiDisconnect = disconnect;
-    window.WagmiGetAccount = getAccount;
-    window.WagmiSendTransaction = sendTransaction;
-    window.WagmiParseEther = parseEther;
+      // Store for use in click handler
+      window.WagmiConfig = wagmiConfig;
+      window.FrameConnector = ff;  // The single instance to reuse
+      window.WagmiConnect = connect;
+      window.WagmiDisconnect = disconnect;
+      window.WagmiGetAccount = getAccount;
+      window.WagmiSendTransaction = sendTransaction;
+      window.WagmiParseEther = parseEther;
+      console.log('Wagmi initialized successfully');
+    } catch (e) {
+      console.error('Wagmi initialization failed:', e);
+    }
 
     // Try to get context
     try {
