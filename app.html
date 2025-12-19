@@ -178,39 +178,40 @@
               throw new Error('Failed to load wagmi');
             }
 
-            // Per Neynar: use wagmi's getAccount and sendTransaction instead of provider.request
-            const config = window.WagmiConfig;
-            const ff = window.FrameConnector;
-            const wagmiConnect = window.WagmiConnect;
-            const wagmiDisconnect = window.WagmiDisconnect;
-            const wagmiGetAccount = window.WagmiGetAccount;
-            const wagmiSendTransaction = window.WagmiSendTransaction;
-            const wagmiParseEther = window.WagmiParseEther;
-
-            // Step 1: Disconnect to clear any existing connection
-            console.log('Step 1: Disconnecting...');
+            // Per Neynar checklist:
+            // 1) Disconnect with wagmi client
+            console.log('Step 1: Disconnecting wagmi...');
             try {
-              await wagmiDisconnect(config);
+              const wagmiDisconnect = window.WagmiDisconnect;
+              await wagmiDisconnect(window.WagmiConfig);
               console.log('Disconnected');
             } catch (e) {
               console.log('Disconnect:', e.message || 'ok');
             }
 
-            // Step 2: Connect with the farcasterFrame connector
-            console.log('Step 2: Connecting with farcasterFrame...');
-            const connectResult = await wagmiConnect(config, { connector: ff });
+            // 2) Connect with fresh farcasterFrame connector
+            console.log('Step 2: Connecting with farcasterFrame()...');
+            const { farcasterFrame } = await import('https://esm.sh/@farcaster/frame-wagmi-connector');
+            const wagmiConnect = window.WagmiConnect;
+            const connectResult = await wagmiConnect(window.WagmiConfig, { connector: farcasterFrame() });
             console.log('Connect result:', connectResult);
+            console.log('Connector ID:', connectResult?.connector?.id || 'unknown');
 
-            // Step 3: Get account from wagmi (bypasses SDK provider)
-            console.log('Step 3: Getting account from wagmi...');
-            const account = wagmiGetAccount(config);
-            console.log('Wagmi account:', account);
+            // 3) Get provider FRESH right after connect
+            console.log('Step 3: Getting provider fresh...');
+            const provider = await sdk.wallet.getEthereumProvider();
 
-            const from = account.address;
+            const ethAccounts = await provider.request({ method: 'eth_accounts' });
+            console.log('eth_accounts:', ethAccounts);
+
+            const accounts = await provider.request({ method: 'eth_requestAccounts' });
+            console.log('eth_requestAccounts:', accounts);
+
+            const from = accounts[0];
             if (!from) {
-              throw new Error('No wallet address from wagmi account');
+              throw new Error('No wallet address from provider');
             }
-            console.log('Using address from wagmi:', from);
+            console.log('Using address:', from);
 
             // Check if user is a holder (100M+ tokens)
             // Use Base RPC directly since embedded wallet doesn't support eth_call
@@ -270,19 +271,21 @@
               console.log('Holder entry successful!');
 
             } else {
-              // Non-holder: Send wash trade transaction using wagmi's sendTransaction
+              // Non-holder: Send wash trade transaction via provider
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
 
-              console.log('Sending wash trade tx via wagmi sendTransaction...');
-              console.log('To:', WASH_TRADER);
-              console.log('Value: 0.0025 ETH');
-              console.log('Data: 0x5a7f2827 (washTrade selector)');
-
-              const txHash = await wagmiSendTransaction(config, {
+              const tx = {
+                from: from,
                 to: WASH_TRADER,
-                value: wagmiParseEther('0.0025'),
+                value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
                 data: '0x5a7f2827', // washTrade() selector
-                gas: 500000n // V4 swaps need more gas
+                gas: '0x7A120' // 500000 gas
+              };
+
+              console.log('Sending wash trade tx:', tx);
+              const txHash = await provider.request({
+                method: 'eth_sendTransaction',
+                params: [tx]
               });
               console.log('Wash trade tx sent:', txHash);
 
