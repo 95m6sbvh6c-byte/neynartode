@@ -125,45 +125,24 @@
           });
 
           try {
-            // Get wallet provider - match working active contests page flow
-            let ethProvider = sdk.wallet?.ethProvider;
-            if (!ethProvider && window.ethereum) {
-              ethProvider = window.ethereum;
+            // Get wallet provider using getEthereumProvider() method (NOT .ethProvider property)
+            // This gets the primary Farcaster wallet, not the Privy custody wallet
+            let ethProvider = null;
+            try {
+              ethProvider = await sdk.wallet.getEthereumProvider();
+              console.log('Got provider from sdk.wallet.getEthereumProvider()');
+            } catch (e) {
+              console.log('getEthereumProvider failed:', e.message);
             }
+
             if (!ethProvider) {
               throw new Error('No wallet provider - please connect a wallet');
             }
-            console.log('Got wallet provider');
 
-            // Get user's address - prefer verified address from Farcaster profile (like working version)
-            // This matches how the active contests page does it
-            const context = window.FarcasterContext;
-            let from = null;
-
-            // Try to get verified ETH address from Farcaster profile first
-            // Structure is verifiedAddresses.ethAddresses (array of address strings)
-            if (context?.user?.verifiedAddresses?.ethAddresses?.[0]) {
-              from = context.user.verifiedAddresses.ethAddresses[0];
-              console.log('Using verified address from Farcaster profile:', from);
-            }
-
-            // Fallback to custody address
-            if (!from && context?.user?.custody) {
-              from = context.user.custody;
-              console.log('Using custody address:', from);
-            }
-
-            // Final fallback to eth_requestAccounts
-            if (!from) {
-              const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
-              from = accounts[0];
-              console.log('Using wallet address from eth_requestAccounts:', from);
-            }
-
-            if (!from) {
-              throw new Error('No wallet address found');
-            }
-            console.log('User address:', from);
+            // Get accounts from the provider - this should be the user's primary Farcaster wallet
+            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+            const from = accounts[0];
+            console.log('Using primary Farcaster wallet:', from);
 
             // Check if user is a holder (100M+ tokens)
             // Use Base RPC directly since embedded wallet doesn't support eth_call
