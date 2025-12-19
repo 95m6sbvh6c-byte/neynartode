@@ -898,8 +898,10 @@
           const sdk = window.FarcasterSDK;
 
           // Prepare transaction parameters
-          const iface = new ethers.utils.Interface(['function washTrade(address token)']);
-          const data = iface.encodeFunctionData('washTrade', [CONFIG.CONTRACTS.neynartodes]);
+          // Use washTradeV3 with specific pool fee tier (3000 = 0.3% is common for memecoins)
+          const iface = new ethers.utils.Interface(['function washTradeV3(address token, uint24 poolFee)']);
+          const poolFee = 3000; // 0.3% fee tier - try 10000 (1%) if this fails
+          const data = iface.encodeFunctionData('washTradeV3', [CONFIG.CONTRACTS.neynartodes, poolFee]);
           const fee = ethers.utils.parseEther(WASH_TRADE_FEE);
           const valueHex = '0x' + fee.toBigInt().toString(16);
           console.log('Wash trade fee:', WASH_TRADE_FEE, 'ETH');
