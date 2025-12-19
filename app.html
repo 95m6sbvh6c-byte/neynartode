@@ -440,11 +440,102 @@
       background: var(--border-subtle);
       margin: 16px 0;
     }
+
+    /* ===== CELEBRATION OVERLAY ===== */
+    .celebration-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.85);
+      animation: celebrationFadeIn 0.3s ease-out;
+      pointer-events: auto;
+    }
+
+    @keyframes celebrationFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .celebration-content {
+      text-align: center;
+      animation: celebrationBounce 0.5s ease-out;
+    }
+
+    @keyframes celebrationBounce {
+      0% { transform: scale(0.5) translateY(50px); opacity: 0; }
+      50% { transform: scale(1.1) translateY(-10px); }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+
+    .celebration-title {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #10b981 0%, #34d399 50%, #6ee7b7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+      text-shadow: 0 0 40px rgba(16, 185, 129, 0.5);
+    }
+
+    .celebration-message {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 300px;
+      line-height: 1.6;
+    }
+
+    .celebration-message strong {
+      color: var(--accent-light);
+    }
+
+    /* Firework particles */
+    .firework {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      animation: fireworkExplode 1s ease-out forwards;
+    }
+
+    @keyframes fireworkExplode {
+      0% { transform: translate(0, 0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+    }
+
+    .firework-trail {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      animation: trailFade 0.6s ease-out forwards;
+    }
+
+    @keyframes trailFade {
+      0% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0.3); }
+    }
+
+    /* Confetti */
+    .confetti {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      animation: confettiFall 3s ease-out forwards;
+    }
+
+    @keyframes confettiFall {
+      0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
   </style>
 </head>
 <body>
   <div id="toast-container"></div>
-
+  <div id="celebration-container"></div>
 
   <div id="app"></div>
 
@@ -496,6 +587,97 @@
         toast.style.animation = 'toastOut 0.3s ease-out forwards';
         setTimeout(() => toast.remove(), 300);
       };
+    }
+
+    // Celebration overlay with fireworks
+    function showCelebration() {
+      const container = document.getElementById('celebration-container');
+      if (!container) return;
+
+      // Create overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'celebration-overlay';
+      overlay.innerHTML = `
+        <div class="celebration-content">
+          <div class="celebration-title">You're Entered!</div>
+          <div class="celebration-message">
+            <strong>Reply to the cast</strong> to get an<br>
+            <strong>extra entry</strong> into the raffle!
+          </div>
+        </div>
+      `;
+
+      container.appendChild(overlay);
+
+      // Create fireworks
+      const colors = ['#10b981', '#34d399', '#8b5cf6', '#a78bfa', '#f59e0b', '#ec4899', '#3b82f6'];
+
+      function createFirework(x, y) {
+        const particleCount = 20;
+        for (let i = 0; i < particleCount; i++) {
+          const particle = document.createElement('div');
+          particle.className = 'firework';
+          particle.style.left = x + 'px';
+          particle.style.top = y + 'px';
+          particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+
+          const angle = (i / particleCount) * Math.PI * 2;
+          const distance = 80 + Math.random() * 60;
+          particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+          particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+          particle.style.animationDelay = Math.random() * 0.2 + 's';
+
+          overlay.appendChild(particle);
+          setTimeout(() => particle.remove(), 1200);
+        }
+      }
+
+      // Create confetti
+      function createConfetti() {
+        for (let i = 0; i < 50; i++) {
+          const confetti = document.createElement('div');
+          confetti.className = 'confetti';
+          confetti.style.left = Math.random() * 100 + '%';
+          confetti.style.top = '-20px';
+          confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+          confetti.style.animationDelay = Math.random() * 0.5 + 's';
+          confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
+
+          if (Math.random() > 0.5) {
+            confetti.style.borderRadius = '50%';
+          }
+
+          overlay.appendChild(confetti);
+          setTimeout(() => confetti.remove(), 3500);
+        }
+      }
+
+      // Launch fireworks at different positions
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      setTimeout(() => createFirework(vw * 0.3, vh * 0.3), 100);
+      setTimeout(() => createFirework(vw * 0.7, vh * 0.25), 300);
+      setTimeout(() => createFirework(vw * 0.5, vh * 0.4), 500);
+      setTimeout(() => createFirework(vw * 0.2, vh * 0.5), 700);
+      setTimeout(() => createFirework(vw * 0.8, vh * 0.45), 900);
+
+      // Launch confetti
+      createConfetti();
+
+      // Click to dismiss
+      overlay.onclick = () => {
+        overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
+        setTimeout(() => overlay.remove(), 300);
+      };
+
+      // Auto-dismiss after 4 seconds
+      setTimeout(() => {
+        if (overlay.parentNode) {
+          overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
+          setTimeout(() => overlay.remove(), 300);
+        }
+      }, 4000);
     }
 
     // Check eligibility function
@@ -1026,7 +1208,7 @@
           button.style.opacity = '0.6';
           button.style.cursor = 'default';
 
-          showToast('Entry recorded! Reply with 2+ words for bonus entry 🎁', 'success');
+          showCelebration();
           render();
 
         } else {
