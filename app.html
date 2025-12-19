@@ -81,6 +81,155 @@
       window.NotificationsEnabled = false;
     }
 
+    // Check for contestId in URL params - set up primary button for quick entry
+    const urlParams = new URLSearchParams(window.location.search);
+    const contestIdParam = urlParams.get('contestId');
+    const actionParam = urlParams.get('action');
+
+    if (contestIdParam && actionParam === 'enter') {
+      console.log('Contest entry mode: setting up primary button for contest', contestIdParam);
+      window.PendingContestId = contestIdParam;
+
+      // Set up the primary button
+      try {
+        await sdk.actions.setPrimaryButton({
+          text: 'Enter Raffle 🎰',
+          loading: false,
+          disabled: false
+        });
+        console.log('Primary button set');
+
+        // Listen for button clicks
+        sdk.on('primaryButtonClicked', async () => {
+          console.log('Primary button clicked - entering contest', contestIdParam);
+
+          // Set loading state
+          await sdk.actions.setPrimaryButton({
+            text: 'Entering...',
+            loading: true,
+            disabled: true
+          });
+
+          try {
+            // Get the Farcaster wallet provider
+            const ethProvider = await sdk.wallet.ethProvider;
+            if (!ethProvider) {
+              throw new Error('No wallet provider available');
+            }
+
+            // Get user's address
+            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+            const userAddress = accounts[0];
+            console.log('User address:', userAddress);
+
+            // Check if user is a holder (100M+ tokens)
+            const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
+            const HOLDER_THRESHOLD = '100000000000000000000000000'; // 100M with 18 decimals
+
+            const balanceHex = await ethProvider.request({
+              method: 'eth_call',
+              params: [{
+                to: NEYNARTODES_TOKEN,
+                data: '0x70a08231000000000000000000000000' + userAddress.slice(2).toLowerCase()
+              }, 'latest']
+            });
+            const balance = BigInt(balanceHex);
+            const isHolder = balance >= BigInt(HOLDER_THRESHOLD);
+            console.log('Is holder:', isHolder, 'Balance:', balance.toString());
+
+            if (isHolder) {
+              // Holder: Call enter-contest API directly
+              const userFid = window.FarcasterContext?.user?.fid;
+              if (!userFid) throw new Error('No FID available');
+
+              const response = await fetch('/api/enter-contest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fid: userFid,
+                  contestId: contestIdParam,
+                  addresses: [userAddress]
+                })
+              });
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Entry failed');
+              }
+
+              // Success!
+              await sdk.actions.setPrimaryButton({
+                text: 'Entered ✓',
+                loading: false,
+                disabled: true
+              });
+              console.log('Holder entry successful!');
+
+            } else {
+              // Non-holder: Send wash trade transaction
+              const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
+              const WASH_TRADE_FEE = '0x8E1BC9BF040000'; // 0.0025 ETH in hex
+
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: userAddress,
+                  to: WASH_TRADER,
+                  value: WASH_TRADE_FEE,
+                  data: '0x5a7f2827' // washTrade() selector
+                }]
+              });
+              console.log('Wash trade tx sent:', txHash);
+
+              // Update button while waiting
+              await sdk.actions.setPrimaryButton({
+                text: 'Confirming...',
+                loading: true,
+                disabled: true
+              });
+
+              // Wait a bit for confirmation, then record entry
+              await new Promise(resolve => setTimeout(resolve, 3000));
+
+              // Record the entry
+              const userFid = window.FarcasterContext?.user?.fid;
+              if (userFid) {
+                await fetch('/api/enter-contest', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    fid: userFid,
+                    contestId: contestIdParam,
+                    addresses: [userAddress],
+                    washTradeTx: txHash
+                  })
+                });
+              }
+
+              // Success!
+              await sdk.actions.setPrimaryButton({
+                text: 'Entered ✓',
+                loading: false,
+                disabled: true
+              });
+              console.log('Non-holder entry successful!');
+            }
+
+          } catch (error) {
+            console.error('Entry failed:', error);
+            await sdk.actions.setPrimaryButton({
+              text: 'Try Again',
+              loading: false,
+              disabled: false
+            });
+          }
+        });
+
+      } catch (e) {
+        console.log('Could not set up primary button:', e);
+      }
+    }
+
     // Signal that SDK is ready - main script will listen for this
     window.FarcasterSDKReady = true;
     window.dispatchEvent(new Event('farcaster-ready'));
