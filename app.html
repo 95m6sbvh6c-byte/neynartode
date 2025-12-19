@@ -34,20 +34,21 @@
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
 
-    // Create wagmi config with farcasterFrame connector
+    // IMPORTANT: Instantiate connector ONCE and reuse it (per Neynar)
+    const ff = farcasterFrame();
+
+    // Create wagmi config with the single connector instance
     const wagmiConfig = createConfig({
       chains: [base],
-      connectors: [farcasterFrame()],
+      connectors: [ff],  // Use the instance, not farcasterFrame()
       transports: {
         [base.id]: http()
       }
     });
+
+    // Store for use in click handler
     window.WagmiConfig = wagmiConfig;
-    window.WagmiConnect = connect;
-    window.WagmiDisconnect = disconnect;
-    window.WagmiGetAccount = getAccount;
-    window.WagmiGetConnectorClient = getConnectorClient;
-    window.FarcasterFrameConnector = farcasterFrame;
+    window.FrameConnector = ff;  // The single instance to reuse
 
     // Try to get context
     try {
@@ -144,37 +145,37 @@
           });
 
           try {
-            // Force-select farcasterFrame by disconnecting first, then connecting
+            // Per Neynar: use single connector instance, correct connect signature
             const config = window.WagmiConfig;
-            const connect = window.WagmiConnect;
-            const disconnect = window.WagmiDisconnect;
-            const farcasterFrame = window.FarcasterFrameConnector;
+            const ff = window.FrameConnector;  // Single instance created at init
 
-            // Step 1: DISCONNECT first to clear any custody connector
-            console.log('Step 1: Disconnecting current connector...');
+            // Step 1: Disconnect to clear any custody connector
+            console.log('Step 1: Disconnecting...');
             try {
-              await disconnect(config);
-              console.log('Disconnected');
+              await config.disconnect();
+              console.log('Disconnected via config.disconnect()');
             } catch (e) {
-              console.log('Disconnect result:', e.message || 'not connected');
+              console.log('Disconnect:', e.message || 'ok');
             }
 
-            // Step 2: Connect explicitly with farcasterFrame
+            // Step 2: Connect with the SAME connector instance
             console.log('Step 2: Connecting with farcasterFrame...');
-            await connect(config, { connector: farcasterFrame() });
-            console.log('Connected with farcasterFrame');
+            const connectResult = await config.connect({ connector: ff });
+            console.log('Connect result:', connectResult);
+            console.log('Connector ID:', connectResult.accounts?.[0], 'Chain:', connectResult.chainId);
 
-            // Step 3: Get provider from SDK (per Neynar - should now be farcasterFrame)
-            console.log('Step 3: Getting provider from sdk.wallet...');
-            const ethProvider = await sdk.wallet.getEthereumProvider();
-            console.log('Got ethProvider');
+            // Step 3: Get provider FRESH at click-time (per Neynar)
+            console.log('Step 3: Getting provider...');
+            const provider = await sdk.wallet.getEthereumProvider();
 
-            // Step 4: Request accounts from the provider
-            console.log('Step 4: Requesting accounts...');
-            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
-            const from = accounts[0];
-            console.log('Account from provider:', from);
+            // Log both eth_accounts results for Neynar
+            const ethAccounts = await provider.request({ method: 'eth_accounts' });
+            console.log('eth_accounts:', ethAccounts);
 
+            const ethRequestAccounts = await provider.request({ method: 'eth_requestAccounts' });
+            console.log('eth_requestAccounts:', ethRequestAccounts);
+
+            const from = ethRequestAccounts[0];
             if (!from) {
               throw new Error('No wallet address from provider');
             }
