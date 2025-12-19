@@ -171,51 +171,44 @@
           });
 
           try {
-            // Load wagmi dynamically (first time only)
-            console.log('Loading wagmi...');
-            const wagmiLoaded = await window.loadWagmi();
-            if (!wagmiLoaded) {
-              throw new Error('Failed to load wagmi');
-            }
-
-            // Per Neynar checklist:
-            // 1) Disconnect with wagmi client
-            console.log('Step 1: Disconnecting wagmi...');
-            try {
-              const wagmiDisconnect = window.WagmiDisconnect;
-              await wagmiDisconnect(window.WagmiConfig);
-              console.log('Disconnected');
-            } catch (e) {
-              console.log('Disconnect:', e.message || 'ok');
-            }
-
-            // 2) Try to get verified ETH address from Farcaster profile first
-            // This is what works on the active contests page
+            // Get verified ETH address from Neynar API using FID
+            // The SDK context does NOT include verifiedAddresses - must fetch from Neynar
             const context = window.FarcasterContext;
-            console.log('Full Farcaster context:', JSON.stringify(context, null, 2));
-            console.log('context.user:', context?.user);
-            console.log('context.user.verifiedAddresses:', context?.user?.verifiedAddresses);
-            let from = context?.user?.verifiedAddresses?.ethAddresses?.[0];
-            console.log('Verified address from Farcaster profile:', from);
+            const userFid = context?.user?.fid;
+            console.log('User FID:', userFid);
 
-            // 3) If no verified address, fall back to wagmi/provider
-            if (!from) {
-              console.log('No verified address, trying wagmi connect...');
-              const { farcasterFrame } = await import('https://esm.sh/@farcaster/frame-wagmi-connector');
-              const wagmiConnect = window.WagmiConnect;
-              const connectResult = await wagmiConnect(window.WagmiConfig, { connector: farcasterFrame() });
-              console.log('Connect result:', connectResult);
-              console.log('Connector ID:', connectResult?.connector?.id || 'unknown');
+            if (!userFid) {
+              throw new Error('No FID available from Farcaster context');
+            }
 
-              // Get provider fresh after connect
-              const provider = await sdk.wallet.getEthereumProvider();
-              const accounts = await provider.request({ method: 'eth_requestAccounts' });
-              console.log('eth_requestAccounts:', accounts);
-              from = accounts[0];
+            // Fetch verified addresses from Neynar API
+            console.log('Fetching verified addresses from Neynar API...');
+            const NEYNAR_API_KEY = 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D';
+            const neynarResponse = await fetch(`https://api.neynar.com/v2/farcaster/user/bulk?fids=${userFid}`, {
+              headers: { 'api_key': NEYNAR_API_KEY }
+            });
+
+            if (!neynarResponse.ok) {
+              throw new Error(`Neynar API error: ${neynarResponse.status}`);
+            }
+
+            const neynarData = await neynarResponse.json();
+            console.log('Neynar user data:', neynarData);
+
+            const neynarUser = neynarData.users?.[0];
+            const verifiedAddresses = neynarUser?.verified_addresses?.eth_addresses || [];
+            console.log('Verified ETH addresses:', verifiedAddresses);
+
+            let from = verifiedAddresses[0];
+
+            // Fallback to custody address if no verified addresses
+            if (!from && neynarUser?.custody_address) {
+              console.log('No verified addresses, using custody address:', neynarUser.custody_address);
+              from = neynarUser.custody_address;
             }
 
             if (!from) {
-              throw new Error('No wallet address available');
+              throw new Error('No wallet address found for user');
             }
             console.log('Using address:', from);
 
@@ -277,11 +270,15 @@
               console.log('Holder entry successful!');
 
             } else {
-              // Non-holder: Send wash trade transaction via provider
+              // Non-holder: Send wash trade transaction via SDK provider
+              // Get provider from SDK (will prompt user to sign in their wallet app)
+              console.log('Getting SDK provider for transaction...');
+              const provider = await sdk.wallet.getEthereumProvider();
+
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
 
               const tx = {
-                from: from,
+                from: from, // This is the verified address from Neynar
                 to: WASH_TRADER,
                 value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
                 data: '0x5a7f2827', // washTrade() selector
@@ -289,6 +286,7 @@
               };
 
               console.log('Sending wash trade tx:', tx);
+              console.log('NOTE: from address is from Neynar API, not SDK provider');
               const txHash = await provider.request({
                 method: 'eth_sendTransaction',
                 params: [tx]
