@@ -3941,10 +3941,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           </div>
 
           <!-- Other navigation tabs (excluding current page) -->
-          <!-- Order: Active, Create, Stats, Ideas -->
+          <!-- Order: Active, History, Create, Stats, Ideas -->
           <nav class="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-xl">
             ${state.currentView !== 'active' ? `
               <button id="viewActive" class="btn-ghost flex-1 text-[10px] py-2 px-1">Active</button>
+            ` : ''}
+            ${state.currentView !== 'history' ? `
+              <button id="viewHistory" class="btn-ghost flex-1 text-[10px] py-2 px-1">History</button>
             ` : ''}
             ${state.currentView !== 'create' ? `
               <button id="viewCreate" class="btn-ghost flex-1 text-[10px] py-2 px-1">Create</button>
