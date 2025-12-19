@@ -1,12 +1,12 @@
 /**
- * Frame Metadata API - HYBRID v1 + v2
+ * Frame Metadata API - Frame v1 (Transaction Button)
  *
- * Returns Frame HTML with both Frame v1 (tx buttons) and Frame v2 (Mini App) formats.
- * Clients will use whichever format they support.
+ * Returns Frame HTML with Frame v1 format for timeline transaction buttons.
+ * When shared, displays an "Enter Raffle" button that triggers a transaction.
  *
  * GET /api/frame?contestId=30
  *
- * Returns: HTML with both fc:frame formats
+ * Returns: HTML with fc:frame v1 metadata
  */
 
 const BASE_URL = process.env.VERCEL_URL
@@ -24,25 +24,9 @@ module.exports = async (req, res) => {
   const imageUrl = `${BASE_URL}/api/frame-image?contestId=${contestId}&t=${Date.now()}`;
   const actionUrl = `${BASE_URL}/api/frame-action?contestId=${contestId}`;
   const callbackUrl = `${BASE_URL}/api/frame-callback?contestId=${contestId}`;
-  const appUrl = `${BASE_URL}/app?contestId=${contestId}&action=enter`;
 
-  // Frame v2 / Mini App embed JSON (for clients that support v2)
-  const frameV2Embed = {
-    version: "1",
-    imageUrl: imageUrl,
-    button: {
-      title: "Enter Raffle",
-      action: {
-        type: "launch_frame",
-        name: "NEYNARtodes",
-        url: appUrl,
-        splashImageUrl: `${BASE_URL}/neynartode-sticker.png`,
-        splashBackgroundColor: "#1a1a2e"
-      }
-    }
-  };
-
-  // Frame HTML with BOTH v1 and v2 formats
+  // Frame v1 HTML - clean format for transaction buttons
+  // No v2 JSON to avoid parser conflicts
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -51,17 +35,14 @@ module.exports = async (req, res) => {
   <meta property="og:description" content="Enter to win! Tap Enter Raffle to join.">
   <meta property="og:image" content="${imageUrl}">
 
-  <!-- Frame v2 / Mini App format (JSON) -->
-  <meta name="fc:frame" content='${JSON.stringify(frameV2Embed)}' />
-
-  <!-- Frame v1 format (individual meta tags) for backward compatibility -->
+  <!-- Frame v1 format -->
   <meta property="fc:frame" content="vNext">
   <meta property="fc:frame:image" content="${imageUrl}">
   <meta property="fc:frame:image:aspect_ratio" content="1.91:1">
   <meta property="fc:frame:post_url" content="${callbackUrl}">
 
   <!-- Button 1: Enter Raffle (transaction) -->
-  <meta property="fc:frame:button:1" content="Enter Raffle">
+  <meta property="fc:frame:button:1" content="Enter Raffle 🎰">
   <meta property="fc:frame:button:1:action" content="tx">
   <meta property="fc:frame:button:1:target" content="${actionUrl}">
   <meta property="fc:frame:button:1:post_url" content="${callbackUrl}">
@@ -71,10 +52,10 @@ module.exports = async (req, res) => {
 <body>
   <h1>NEYNARtodes Contest #${contestId}</h1>
   <p>Enter to win! Tap Enter Raffle to join.</p>
-  <a href="${appUrl}">Open App</a>
 </body>
 </html>`;
 
   res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Cache-Control', 'no-cache'); // Don't cache so image updates
   return res.status(200).send(html);
 };
