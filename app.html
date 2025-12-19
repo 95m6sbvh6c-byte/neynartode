@@ -900,7 +900,8 @@
           // Prepare transaction parameters
           const iface = new ethers.utils.Interface(['function washTrade(address token)']);
           const data = iface.encodeFunctionData('washTrade', [CONFIG.CONTRACTS.neynartodes]);
-          const valueHex = '0x' + BigInt(ethers.utils.parseEther(WASH_TRADE_FEE).toString()).toString(16);
+          const fee = ethers.utils.parseEther(WASH_TRADE_FEE);
+          const valueHex = '0x' + fee.toBigInt().toString(16);
 
           try {
             let txHash;
