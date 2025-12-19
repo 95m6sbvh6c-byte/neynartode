@@ -1307,19 +1307,19 @@
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
 
-      // Frame URL - Farcaster auto-detects and renders as interactive Frame
-      const frameUrl = `https://frame-opal-eight.vercel.app/api/frame?contestId=${contestId}`;
+      // Direct link to mini app with contest ID - opens directly in app
+      const appUrl = `https://frame-opal-eight.vercel.app/app?contestId=${contestId}&action=enter`;
 
-      // Cast text with Frame URL included - Farcaster will render it as an interactive Frame
+      // Simple share text with direct app link
       const text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
 
 ${prizeLine}
 ⏱️ ${hoursLeft}h ${minutesLeft}m left
 
-👇 Enter below!
-${frameUrl}`;
+👇 Tap to enter!
+${appUrl}`;
 
-      console.log('Sharing contest:', { contestId, isNft, nftImage, frameUrl });
+      console.log('Sharing contest:', { contestId, isNft, nftImage, appUrl });
 
       // Use SDK composeCast
       const sdk = window.FarcasterSDK;
@@ -7077,12 +7077,40 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     if (viewParam && ['active', 'create', 'leaderboard', 'suggestions'].includes(viewParam)) {
       state.currentView = viewParam;
       console.log('Deep link: navigating to', viewParam);
-      // Clean up URL without reload
+    }
+
+    // Handle contestId + action params (from shared links)
+    const contestIdParam = urlParams.get('contestId');
+    const actionParam = urlParams.get('action');
+    if (contestIdParam && actionParam === 'enter') {
+      console.log('Deep link: auto-entering contest', contestIdParam);
+      // Store for after render
+      sessionStorage.setItem('pendingEnterContest', contestIdParam);
+    }
+
+    // Clean up URL without reload
+    if (urlParams.toString()) {
       window.history.replaceState({}, '', window.location.pathname);
     }
 
     // Initial render
     render();
+
+    // Check for pending contest entry (from shared link)
+    const pendingContestId = sessionStorage.getItem('pendingEnterContest');
+    if (pendingContestId) {
+      sessionStorage.removeItem('pendingEnterContest');
+      console.log('Auto-triggering entry for contest:', pendingContestId);
+      // Find the Enter button for this contest and click it
+      setTimeout(() => {
+        const enterBtn = document.querySelector(`[data-action="enter-raffle"][data-contest-id="${pendingContestId}"]`);
+        if (enterBtn) {
+          enterBtn.click();
+        } else {
+          console.log('Contest not found, may need to load contests first');
+        }
+      }, 1000); // Wait for contests to load
+    }
 
     // Check for pending signer approval (user returning from Warpcast)
     (async function checkPendingSigner() {
