@@ -4212,6 +4212,56 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       `;
     }
 
+    // Generate stickers that stack up from bottom as more entries come in
+    function generateEntryStickers(participantCount, contestId) {
+      const count = participantCount || 0;
+      if (count === 0) return '';
+
+      // Use contestId as seed for consistent random positions
+      const seededRandom = (seed, i) => {
+        const x = Math.sin(seed * 9999 + i * 7777) * 10000;
+        return x - Math.floor(x);
+      };
+
+      let stickers = '';
+      // Show up to 30 stickers (more entries = more stickers filling up)
+      const displayCount = Math.min(count, 30);
+
+      for (let i = 0; i < displayCount; i++) {
+        const seed = contestId * 100 + i;
+
+        // Stack from bottom-right, spreading left and up as more entries come in
+        // Each sticker gets a "row" based on its index - earlier stickers at bottom
+        const rowSize = 6; // stickers per row
+        const row = Math.floor(i / rowSize);
+        const col = i % rowSize;
+
+        // Base position with some randomness
+        const baseLeft = 15 + col * 14 + (seededRandom(seed, 1) * 10 - 5); // spread across width
+        const baseBottom = 5 + row * 18 + (seededRandom(seed, 2) * 8 - 4); // stack up from bottom
+
+        const size = 22 + seededRandom(seed, 3) * 10; // 22-32px
+        const rotation = -25 + seededRandom(seed, 4) * 50; // -25 to 25 degrees
+        const opacity = 0.35 + seededRandom(seed, 5) * 0.25; // 0.35-0.6 (more visible)
+
+        stickers += `<img
+          src="/neynartode-sticker.png"
+          alt=""
+          class="absolute pointer-events-none"
+          style="
+            left: ${baseLeft}%;
+            bottom: ${baseBottom}%;
+            width: ${size}px;
+            height: ${size}px;
+            transform: rotate(${rotation}deg);
+            opacity: ${opacity};
+            z-index: ${i};
+          "
+        />`;
+      }
+      return stickers;
+    }
+
     function renderActiveContests() {
       const activeContests = state.upcomingContests.filter(c => new Date(c.endTime) > new Date()).slice(0, 20);
 
@@ -4252,9 +4302,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             prizeHtml = `<div class="text-sm font-semibold text-[var(--success)]">${contest.prize}</div>`;
           }
 
+          // Generate entry stickers for this contest
+          const entryStickers = generateEntryStickers(contest.participantCount, contest.contestId);
+
           return `
-            <div class="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-[var(--border-light)] transition-all">
-              <div class="flex items-start justify-between gap-4">
+            <div class="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-[var(--border-light)] transition-all relative overflow-hidden">
+              <!-- Entry stickers background -->
+              ${entryStickers}
+              <div class="flex items-start justify-between gap-4 relative z-10">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-3">
                     ${statusTag}
