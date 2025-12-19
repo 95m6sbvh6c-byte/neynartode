@@ -1307,55 +1307,33 @@
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
 
-      // Simple share text - the Frame embed handles the "Enter Raffle" button
+      // Frame URL - Farcaster auto-detects and renders as interactive Frame
+      const frameUrl = `https://frame-opal-eight.vercel.app/api/frame?contestId=${contestId}`;
+
+      // Cast text with Frame URL included - Farcaster will render it as an interactive Frame
       const text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
 
 ${prizeLine}
 ⏱️ ${hoursLeft}h ${minutesLeft}m left
 
-👇 Tap Enter Raffle below to join!`;
+👇 Enter below!
+${frameUrl}`;
 
-      // Build embeds array (max 2 per Farcaster limits)
-      const embeds = [];
+      console.log('Sharing contest:', { contestId, isNft, nftImage, frameUrl });
 
-      // Add Frame URL as FIRST embed - this shows the "Enter Raffle" button in timeline
-      const frameUrl = `https://frame-opal-eight.vercel.app/api/frame?contestId=${contestId}`;
-      embeds.push(frameUrl);
-
-      console.log('Sharing contest:', { contestId, isNft, nftImage, embeds, castId });
-
-      // Use SDK composeCast - embeds create quote-cast, NOT parent parameter (which creates reply)
+      // Use SDK composeCast
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
         try {
-          const composeOptions = {
-            text: text,
-          };
-
-          // Add embeds (quote-cast URL + optional NFT image)
-          if (embeds.length > 0) {
-            composeOptions.embeds = embeds;
-          }
-
-          // NO parent parameter - that creates a reply, not a quote-cast
-
-          await sdk.actions.composeCast(composeOptions);
+          await sdk.actions.composeCast({ text: text });
           return;
         } catch (e) {
           console.log('composeCast failed, falling back to URL:', e);
         }
       }
 
-      // Fallback: Build Warpcast compose URL with embeds
-      let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
-      embeds.forEach(embed => {
-        warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
-      });
-      // Add cast quote as embed for fallback (URL method)
-      if (castId && hostUsername) {
-        warpcastUrl += `&embeds[]=${encodeURIComponent(`https://warpcast.com/${hostUsername}/${castId}`)}`;
-      }
-
+      // Fallback: Build Warpcast compose URL
+      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
       window.open(warpcastUrl, '_blank');
     }
 
