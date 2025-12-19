@@ -141,11 +141,9 @@
             let from = null;
 
             // Try to get verified ETH address from Farcaster profile first
-            if (context?.user?.verifiedAddresses) {
-              const ethAddresses = context.user.verifiedAddresses
-                .filter(a => a.protocol === 0) // 0 = Ethereum
-                .map(a => a.address);
-              from = ethAddresses[0];
+            // Structure is verifiedAddresses.ethAddresses (array of address strings)
+            if (context?.user?.verifiedAddresses?.ethAddresses?.[0]) {
+              from = context.user.verifiedAddresses.ethAddresses[0];
               console.log('Using verified address from Farcaster profile:', from);
             }
 
