@@ -590,9 +590,12 @@
     }
 
     // Celebration overlay with fireworks
-    function showCelebration() {
+    function showCelebration(castHash) {
       const container = document.getElementById('celebration-container');
       if (!container) return;
+
+      // Build Warpcast reply URL
+      const replyUrl = castHash ? `https://warpcast.com/~/conversations/${castHash}` : null;
 
       // Create overlay
       const overlay = document.createElement('div');
@@ -604,6 +607,22 @@
             <strong>Reply to the cast</strong> to get an<br>
             <strong>extra entry</strong> into the raffle!
           </div>
+          ${replyUrl ? `
+            <button id="reply-btn" style="
+              margin-top: 1.5rem;
+              background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+              color: white;
+              font-weight: 600;
+              padding: 14px 28px;
+              border-radius: 12px;
+              border: none;
+              cursor: pointer;
+              font-size: 1rem;
+              box-shadow: 0 4px 14px var(--accent-glow);
+              transition: all 0.2s ease;
+            ">Reply Now</button>
+          ` : ''}
+          <div style="margin-top: 1rem; color: var(--text-muted); font-size: 0.85rem;">Tap anywhere to close</div>
         </div>
       `;
 
@@ -665,19 +684,30 @@
       // Launch confetti
       createConfetti();
 
-      // Click to dismiss
-      overlay.onclick = () => {
-        overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
-        setTimeout(() => overlay.remove(), 300);
-      };
+      // Handle reply button click
+      const replyBtn = overlay.querySelector('#reply-btn');
+      if (replyBtn && replyUrl) {
+        replyBtn.onclick = (e) => {
+          e.stopPropagation();
+          // Open cast in Warpcast
+          if (window.FarcasterSDK?.actions?.openUrl) {
+            window.FarcasterSDK.actions.openUrl(replyUrl);
+          } else {
+            window.open(replyUrl, '_blank');
+          }
+          // Close celebration
+          overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
+          setTimeout(() => overlay.remove(), 300);
+        };
+      }
 
-      // Auto-dismiss after 4 seconds
-      setTimeout(() => {
-        if (overlay.parentNode) {
+      // Click anywhere else to dismiss
+      overlay.onclick = (e) => {
+        if (e.target === overlay || e.target.closest('.celebration-content') && !e.target.closest('#reply-btn')) {
           overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
           setTimeout(() => overlay.remove(), 300);
         }
-      }, 4000);
+      };
     }
 
     // Check eligibility function
@@ -1208,7 +1238,7 @@
           button.style.opacity = '0.6';
           button.style.cursor = 'default';
 
-          showCelebration();
+          showCelebration(castHash);
           render();
 
         } else {
