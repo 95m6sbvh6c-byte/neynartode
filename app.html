@@ -204,15 +204,18 @@
 
             } else {
               // Non-holder: Send wash trade transaction
+              // Match the working active contests page flow
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
 
               const tx = {
                 from: from,
                 to: WASH_TRADER,
                 value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
-                data: '0x5a7f2827' // washTrade() selector
+                data: '0x5a7f2827', // washTrade() selector
+                gas: '0x493E0' // 300000 gas limit (matches working version)
               };
 
+              console.log('Sending wash trade tx:', tx);
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
                 params: [tx]
