@@ -189,27 +189,33 @@
               console.log('Disconnect:', e.message || 'ok');
             }
 
-            // 2) Connect with fresh farcasterFrame connector
-            console.log('Step 2: Connecting with farcasterFrame()...');
-            const { farcasterFrame } = await import('https://esm.sh/@farcaster/frame-wagmi-connector');
-            const wagmiConnect = window.WagmiConnect;
-            const connectResult = await wagmiConnect(window.WagmiConfig, { connector: farcasterFrame() });
-            console.log('Connect result:', connectResult);
-            console.log('Connector ID:', connectResult?.connector?.id || 'unknown');
+            // 2) Try to get verified ETH address from Farcaster profile first
+            // This is what works on the active contests page
+            const context = window.FarcasterContext;
+            console.log('Full Farcaster context:', JSON.stringify(context, null, 2));
+            console.log('context.user:', context?.user);
+            console.log('context.user.verifiedAddresses:', context?.user?.verifiedAddresses);
+            let from = context?.user?.verifiedAddresses?.ethAddresses?.[0];
+            console.log('Verified address from Farcaster profile:', from);
 
-            // 3) Get provider FRESH right after connect
-            console.log('Step 3: Getting provider fresh...');
-            const provider = await sdk.wallet.getEthereumProvider();
-
-            const ethAccounts = await provider.request({ method: 'eth_accounts' });
-            console.log('eth_accounts:', ethAccounts);
-
-            const accounts = await provider.request({ method: 'eth_requestAccounts' });
-            console.log('eth_requestAccounts:', accounts);
-
-            const from = accounts[0];
+            // 3) If no verified address, fall back to wagmi/provider
             if (!from) {
-              throw new Error('No wallet address from provider');
+              console.log('No verified address, trying wagmi connect...');
+              const { farcasterFrame } = await import('https://esm.sh/@farcaster/frame-wagmi-connector');
+              const wagmiConnect = window.WagmiConnect;
+              const connectResult = await wagmiConnect(window.WagmiConfig, { connector: farcasterFrame() });
+              console.log('Connect result:', connectResult);
+              console.log('Connector ID:', connectResult?.connector?.id || 'unknown');
+
+              // Get provider fresh after connect
+              const provider = await sdk.wallet.getEthereumProvider();
+              const accounts = await provider.request({ method: 'eth_requestAccounts' });
+              console.log('eth_requestAccounts:', accounts);
+              from = accounts[0];
+            }
+
+            if (!from) {
+              throw new Error('No wallet address available');
             }
             console.log('Using address:', from);
 
