@@ -49,6 +49,8 @@
     // Store for use in click handler
     window.WagmiConfig = wagmiConfig;
     window.FrameConnector = ff;  // The single instance to reuse
+    window.WagmiConnect = connect;
+    window.WagmiDisconnect = disconnect;
 
     // Try to get context
     try {
@@ -145,24 +147,26 @@
           });
 
           try {
-            // Per Neynar: use single connector instance, correct connect signature
+            // Per Neynar: use single connector instance
             const config = window.WagmiConfig;
             const ff = window.FrameConnector;  // Single instance created at init
+            const wagmiConnect = window.WagmiConnect;
+            const wagmiDisconnect = window.WagmiDisconnect;
 
             // Step 1: Disconnect to clear any custody connector
             console.log('Step 1: Disconnecting...');
             try {
-              await config.disconnect();
-              console.log('Disconnected via config.disconnect()');
+              await wagmiDisconnect(config);
+              console.log('Disconnected');
             } catch (e) {
               console.log('Disconnect:', e.message || 'ok');
             }
 
-            // Step 2: Connect with the SAME connector instance
+            // Step 2: Connect with the SAME connector instance (ff)
             console.log('Step 2: Connecting with farcasterFrame...');
-            const connectResult = await config.connect({ connector: ff });
+            const connectResult = await wagmiConnect(config, { connector: ff });
             console.log('Connect result:', connectResult);
-            console.log('Connector ID:', connectResult.accounts?.[0], 'Chain:', connectResult.chainId);
+            console.log('Connector ID:', connectResult?.connector?.id || 'unknown');
 
             // Step 3: Get provider FRESH at click-time (per Neynar)
             console.log('Step 3: Getting provider...');
