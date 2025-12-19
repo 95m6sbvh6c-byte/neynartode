@@ -24,7 +24,7 @@ module.exports = async (req, res) => {
   const imageUrl = `${BASE_URL}/api/frame-image?contestId=${contestId}&t=${Date.now()}`;
   const actionUrl = `${BASE_URL}/api/frame-action?contestId=${contestId}`;
   const callbackUrl = `${BASE_URL}/api/frame-callback?contestId=${contestId}`;
-  const appUrl = `${BASE_URL}/app?contestId=${contestId}&action=enter`;
+  const appUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
 
   // Frame v2 / Mini App embed JSON (for clients that support v2)
   const frameV2Embed = {
