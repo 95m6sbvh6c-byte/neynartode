@@ -1307,19 +1307,19 @@
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
 
-      // Direct link to mini app with contest ID - opens directly in app
-      const appUrl = `https://frame-opal-eight.vercel.app/app?contestId=${contestId}&action=enter`;
+      // Farcaster mini app URL - opens directly in Farcaster as mini app
+      const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
 
-      // Simple share text with direct app link
+      // Simple share text with mini app link
       const text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
 
 ${prizeLine}
 ⏱️ ${hoursLeft}h ${minutesLeft}m left
 
 👇 Tap to enter!
-${appUrl}`;
+${miniAppUrl}`;
 
-      console.log('Sharing contest:', { contestId, isNft, nftImage, appUrl });
+      console.log('Sharing contest:', { contestId, isNft, nftImage, miniAppUrl });
 
       // Use SDK composeCast
       const sdk = window.FarcasterSDK;
