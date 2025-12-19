@@ -125,44 +125,46 @@
           });
 
           try {
-            // Debug: Log all available wallet info from SDK
-            console.log('SDK wallet object keys:', Object.keys(sdk.wallet || {}));
-            console.log('SDK context user:', JSON.stringify(window.FarcasterContext?.user, null, 2));
+            // Debug: Log SDK wallet methods available
+            console.log('SDK wallet:', sdk.wallet);
+            console.log('SDK wallet methods:', sdk.wallet ? Object.getOwnPropertyNames(Object.getPrototypeOf(sdk.wallet)) : 'none');
 
-            // Get wallet provider
-            let ethProvider = await sdk.wallet.getEthereumProvider();
+            // Step 1: Try to connect with farcasterFrame connector if available
+            // This should switch from custody/Privy to the user's primary wallet
+            if (typeof sdk.wallet.connect === 'function') {
+              console.log('Calling sdk.wallet.connect()...');
+              try {
+                await sdk.wallet.connect();
+                console.log('sdk.wallet.connect() succeeded');
+              } catch (e) {
+                console.log('sdk.wallet.connect() failed:', e.message);
+              }
+            }
+
+            // Step 2: Get the Ethereum provider
+            const ethProvider = await sdk.wallet.getEthereumProvider();
             console.log('Got ethProvider');
 
-            // Try to get the user's primary/verified wallet address
-            let from = null;
-            const context = window.FarcasterContext;
+            // Step 3: Request accounts - this should now be the primary wallet
+            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+            const from = accounts[0];
+            console.log('Wallet address from provider:', from);
 
-            // Option 1: sdk.wallet.address
-            if (sdk.wallet?.address) {
-              from = sdk.wallet.address;
-              console.log('Option 1 - sdk.wallet.address:', from);
-            }
-            // Option 2: context.user.verifiedAddresses.ethAddresses
-            if (!from && context?.user?.verifiedAddresses?.ethAddresses?.[0]) {
-              from = context.user.verifiedAddresses.ethAddresses[0];
-              console.log('Option 2 - verifiedAddresses.ethAddresses:', from);
-            }
-            // Option 3: Check if verifiedAddresses is a flat array
-            if (!from && Array.isArray(context?.user?.verifiedAddresses) && context.user.verifiedAddresses[0]) {
-              const addr = context.user.verifiedAddresses[0];
-              from = typeof addr === 'string' ? addr : addr.address;
-              console.log('Option 3 - verifiedAddresses array:', from);
-            }
-            // Option 4: context.connectedAddress
-            if (!from && context?.connectedAddress) {
-              from = context.connectedAddress;
-              console.log('Option 4 - context.connectedAddress:', from);
-            }
-            // Fallback: eth_requestAccounts (may be embedded wallet with no funds!)
-            if (!from) {
-              const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
-              from = accounts[0];
-              console.log('Fallback - eth_requestAccounts (embedded):', from);
+            // Check ETH balance to verify this wallet has funds
+            try {
+              const balanceHex = await ethProvider.request({
+                method: 'eth_getBalance',
+                params: [from, 'latest']
+              });
+              const balanceWei = BigInt(balanceHex);
+              const balanceEth = Number(balanceWei) / 1e18;
+              console.log('Wallet ETH balance:', balanceEth.toFixed(6), 'ETH');
+
+              if (balanceEth < 0.003) {
+                console.warn('WARNING: Wallet may not have enough ETH for wash trade (needs ~0.003 ETH)');
+              }
+            } catch (e) {
+              console.log('Could not check ETH balance:', e.message);
             }
 
             console.log('Final from address:', from);
