@@ -4212,7 +4212,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       `;
     }
 
-    // Generate stickers that stack up from bottom as more entries come in
+    // Generate stickers that fill from top-right corner, down and left
     function generateEntryStickers(participantCount, contestId) {
       const count = participantCount || 0;
       if (count === 0) return '';
@@ -4230,15 +4230,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       for (let i = 0; i < displayCount; i++) {
         const seed = contestId * 100 + i;
 
-        // Stack from bottom-right, spreading left and up as more entries come in
-        // Each sticker gets a "row" based on its index - earlier stickers at bottom
-        const rowSize = 6; // stickers per row
+        // Stack from top-right, spreading left and down as more entries come in
+        const rowSize = 5; // stickers per row
         const row = Math.floor(i / rowSize);
         const col = i % rowSize;
 
-        // Base position with some randomness
-        const baseLeft = 15 + col * 14 + (seededRandom(seed, 1) * 10 - 5); // spread across width
-        const baseBottom = 5 + row * 18 + (seededRandom(seed, 2) * 8 - 4); // stack up from bottom
+        // Start from right (low %), go left (higher %) as col increases
+        // Start from top (low %), go down (higher %) as row increases
+        const baseRight = 2 + col * 16 + (seededRandom(seed, 1) * 10 - 5); // spread from right to left
+        const baseTop = 8 + row * 20 + (seededRandom(seed, 2) * 10 - 5); // spread from top to bottom
 
         const size = 22 + seededRandom(seed, 3) * 10; // 22-32px
         const rotation = -25 + seededRandom(seed, 4) * 50; // -25 to 25 degrees
@@ -4249,8 +4249,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           alt=""
           class="absolute pointer-events-none"
           style="
-            left: ${baseLeft}%;
-            bottom: ${baseBottom}%;
+            right: ${baseRight}%;
+            top: ${baseTop}%;
             width: ${size}px;
             height: ${size}px;
             transform: rotate(${rotation}deg);
