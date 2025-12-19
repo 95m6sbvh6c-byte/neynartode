@@ -146,19 +146,33 @@
             console.log('User address:', from);
 
             // Check if user is a holder (100M+ tokens)
+            // Use Base RPC directly since embedded wallet doesn't support eth_call
             const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
             const HOLDER_THRESHOLD = '100000000000000000000000000'; // 100M with 18 decimals
+            const BASE_RPC = 'https://mainnet.base.org';
 
-            const balanceHex = await ethProvider.request({
-              method: 'eth_call',
-              params: [{
-                to: NEYNARTODES_TOKEN,
-                data: '0x70a08231000000000000000000000000' + from.slice(2).toLowerCase()
-              }, 'latest']
-            });
-            const balance = BigInt(balanceHex || '0x0');
-            const isHolder = balance >= BigInt(HOLDER_THRESHOLD);
-            console.log('Is holder:', isHolder, 'Balance:', balance.toString());
+            let isHolder = false;
+            try {
+              const rpcResponse = await fetch(BASE_RPC, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 1,
+                  method: 'eth_call',
+                  params: [{
+                    to: NEYNARTODES_TOKEN,
+                    data: '0x70a08231000000000000000000000000' + from.slice(2).toLowerCase()
+                  }, 'latest']
+                })
+              });
+              const rpcData = await rpcResponse.json();
+              const balance = BigInt(rpcData.result || '0x0');
+              isHolder = balance >= BigInt(HOLDER_THRESHOLD);
+              console.log('Is holder:', isHolder, 'Balance:', balance.toString());
+            } catch (e) {
+              console.log('Balance check failed, assuming non-holder:', e);
+            }
 
             if (isHolder) {
               // Holder: Call enter-contest API directly (free entry)
