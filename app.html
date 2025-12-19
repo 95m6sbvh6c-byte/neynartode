@@ -359,6 +359,48 @@
       border-radius: 8px;
     }
 
+    /* ===== APP LOADING STATE ===== */
+    /* Prevents layout jumping by showing loading splash until app is ready */
+    #app-loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-primary);
+      z-index: 9999;
+      transition: opacity 0.3s ease-out, visibility 0.3s ease-out;
+    }
+
+    #app-loading.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    #app-loading .loading-logo {
+      width: 80px;
+      height: 80px;
+      animation: pulse-glow 1.5s ease-in-out infinite;
+      filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.5));
+    }
+
+    #app-loading .loading-text {
+      margin-top: 16px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    #app {
+      opacity: 0;
+      transition: opacity 0.3s ease-in;
+    }
+
+    #app.ready {
+      opacity: 1;
+    }
+
     /* ===== SCROLLBAR ===== */
     ::-webkit-scrollbar {
       width: 8px;
@@ -546,6 +588,12 @@
   </style>
 </head>
 <body>
+  <!-- Loading splash - shown until app is ready -->
+  <div id="app-loading">
+    <img src="/neynartode-sticker.png" alt="" class="loading-logo" />
+    <div class="loading-text">Loading...</div>
+  </div>
+
   <div id="toast-container"></div>
   <div id="celebration-container"></div>
 
@@ -1528,6 +1576,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // ===== STATE =====
     const state = {
+      // App loading
+      isAppReady: false, // Prevents jumping by hiding content until ready
+
       // Auth
       isLoggedIn: false,
       isCheckingWhitelist: false,
@@ -7095,6 +7146,25 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // Initial render
     render();
+
+    // Mark app as ready after a brief delay to ensure content is rendered
+    function showAppContent() {
+      if (state.isAppReady) return;
+      state.isAppReady = true;
+
+      const appLoading = document.getElementById('app-loading');
+      const app = document.getElementById('app');
+
+      if (appLoading) appLoading.classList.add('hidden');
+      if (app) app.classList.add('ready');
+    }
+
+    // Show app after initial render is complete
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        showAppContent();
+      });
+    });
 
     // Check for pending contest entry (from shared link)
     const pendingContestId = sessionStorage.getItem('pendingEnterContest');
