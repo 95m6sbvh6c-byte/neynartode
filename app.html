@@ -902,6 +902,9 @@
           const data = iface.encodeFunctionData('washTrade', [CONFIG.CONTRACTS.neynartodes]);
           const fee = ethers.utils.parseEther(WASH_TRADE_FEE);
           const valueHex = '0x' + fee.toBigInt().toString(16);
+          console.log('Wash trade fee:', WASH_TRADE_FEE, 'ETH');
+          console.log('Fee in wei:', fee.toString());
+          console.log('Value hex:', valueHex);
 
           try {
             let txHash;
