@@ -27,8 +27,14 @@
   <!-- Farcaster Mini App SDK - loads and signals when ready -->
   <script type="module">
     import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
+    import { farcasterFrame } from 'https://esm.sh/@farcaster/frame-wagmi-connector';
+
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
+
+    // Create farcasterFrame connector for primary wallet access
+    const frameConnector = farcasterFrame();
+    window.FarcasterFrameConnector = frameConnector;
 
     // Try to get context
     try {
@@ -125,30 +131,23 @@
           });
 
           try {
-            // Debug: Log SDK wallet methods available
-            console.log('SDK wallet:', sdk.wallet);
-            console.log('SDK wallet methods:', sdk.wallet ? Object.getOwnPropertyNames(Object.getPrototypeOf(sdk.wallet)) : 'none');
+            // Use farcasterFrame connector to get the user's PRIMARY wallet (not Privy custody)
+            const connector = window.FarcasterFrameConnector;
+            console.log('Using farcasterFrame connector');
 
-            // Step 1: Try to connect with farcasterFrame connector if available
-            // This should switch from custody/Privy to the user's primary wallet
-            if (typeof sdk.wallet.connect === 'function') {
-              console.log('Calling sdk.wallet.connect()...');
-              try {
-                await sdk.wallet.connect();
-                console.log('sdk.wallet.connect() succeeded');
-              } catch (e) {
-                console.log('sdk.wallet.connect() failed:', e.message);
-              }
-            }
+            // Step 1: Connect with the farcasterFrame connector
+            console.log('Connecting with farcasterFrame...');
+            await connector.connect();
+            console.log('farcasterFrame connected');
 
-            // Step 2: Get the Ethereum provider
-            const ethProvider = await sdk.wallet.getEthereumProvider();
-            console.log('Got ethProvider');
+            // Step 2: Get the provider from the connector
+            const ethProvider = await connector.getProvider();
+            console.log('Got provider from farcasterFrame connector');
 
-            // Step 3: Request accounts - this should now be the primary wallet
+            // Step 3: Request accounts - this should be the primary Farcaster wallet
             const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
             const from = accounts[0];
-            console.log('Wallet address from provider:', from);
+            console.log('Primary wallet address:', from);
 
             // Check ETH balance to verify this wallet has funds
             try {
@@ -161,9 +160,10 @@
               console.log('Wallet ETH balance:', balanceEth.toFixed(6), 'ETH');
 
               if (balanceEth < 0.003) {
-                console.warn('WARNING: Wallet may not have enough ETH for wash trade (needs ~0.003 ETH)');
+                throw new Error(`Insufficient ETH balance (${balanceEth.toFixed(4)} ETH). Need at least 0.003 ETH for wash trade.`);
               }
             } catch (e) {
+              if (e.message.includes('Insufficient ETH')) throw e;
               console.log('Could not check ETH balance:', e.message);
             }
 
