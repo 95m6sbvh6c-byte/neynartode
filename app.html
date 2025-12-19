@@ -142,51 +142,42 @@
           });
 
           try {
-            // Use wagmi with farcasterFrame connector to get PRIMARY wallet (not Privy custody)
+            // Flow per Neynar:
+            // 1) Connect with farcasterFrame connector (not custody)
+            // 2) Get provider from sdk.wallet.getEthereumProvider()
+            // 3) Get accounts from provider.request({ method: 'eth_requestAccounts' })
+            // 4) Use accounts[0] as tx.from
+
             const config = window.WagmiConfig;
             const connect = window.WagmiConnect;
-            const getAccount = window.WagmiGetAccount;
             const farcasterFrame = window.FarcasterFrameConnector;
 
-            console.log('Connecting with farcasterFrame via wagmi...');
-
-            // Step 1: Connect with farcasterFrame connector
-            const connectResult = await connect(config, { connector: farcasterFrame() });
-            console.log('Connected:', connectResult);
-
-            // Step 2: Get account info
-            const account = getAccount(config);
-            console.log('Account:', account);
-
-            const from = account.address;
-            if (!from) {
-              throw new Error('No wallet address after connecting');
+            // Step 1: Connect explicitly with farcasterFrame (forces non-custody connector)
+            console.log('Step 1: Connecting with farcasterFrame...');
+            try {
+              await connect(config, { connector: farcasterFrame() });
+              console.log('Connected with farcasterFrame');
+            } catch (e) {
+              // May already be connected
+              console.log('Connect result:', e.message || 'already connected');
             }
-            console.log('Primary wallet address:', from);
 
-            // Step 3: Get provider for transactions
+            // Step 2: Get provider from SDK (canonical provider tied to farcasterFrame)
+            console.log('Step 2: Getting provider...');
             const ethProvider = await sdk.wallet.getEthereumProvider();
             console.log('Got ethProvider');
 
-            // Check ETH balance to verify this wallet has funds
-            try {
-              const balanceHex = await ethProvider.request({
-                method: 'eth_getBalance',
-                params: [from, 'latest']
-              });
-              const balanceWei = BigInt(balanceHex);
-              const balanceEth = Number(balanceWei) / 1e18;
-              console.log('Wallet ETH balance:', balanceEth.toFixed(6), 'ETH');
+            // Step 3: Request accounts from the provider
+            console.log('Step 3: Requesting accounts...');
+            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+            const from = accounts[0];
+            console.log('Account from provider:', from);
 
-              if (balanceEth < 0.003) {
-                throw new Error(`Insufficient ETH balance (${balanceEth.toFixed(4)} ETH). Need at least 0.003 ETH for wash trade.`);
-              }
-            } catch (e) {
-              if (e.message.includes('Insufficient ETH')) throw e;
-              console.log('Could not check ETH balance:', e.message);
+            if (!from) {
+              throw new Error('No wallet address from provider');
             }
 
-            console.log('Final from address:', from);
+            console.log('Using address:', from);
 
             // Check if user is a holder (100M+ tokens)
             // Use Base RPC directly since embedded wallet doesn't support eth_call
