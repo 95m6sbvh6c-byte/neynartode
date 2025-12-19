@@ -82,9 +82,35 @@
     }
 
     // Check for contestId in URL params - set up primary button for quick entry
+    // Try multiple sources: window.location, context.location, and frame launch URL
+    let contestIdParam = null;
+    let actionParam = null;
+
+    // Source 1: window.location
     const urlParams = new URLSearchParams(window.location.search);
-    const contestIdParam = urlParams.get('contestId');
-    const actionParam = urlParams.get('action');
+    contestIdParam = urlParams.get('contestId');
+    actionParam = urlParams.get('action');
+    console.log('URL params from window.location:', { contestIdParam, actionParam, href: window.location.href });
+
+    // Source 2: Check SDK context for frame/location info
+    if (!contestIdParam && window.FarcasterContext) {
+      const ctx = window.FarcasterContext;
+      console.log('Farcaster context:', JSON.stringify(ctx, null, 2));
+
+      // Check if there's a location or frame URL in context
+      if (ctx.location?.searchParams) {
+        contestIdParam = ctx.location.searchParams.get('contestId');
+        actionParam = ctx.location.searchParams.get('action');
+      }
+      // Check frame launch URL
+      if (!contestIdParam && ctx.frame?.launchUrl) {
+        const launchUrl = new URL(ctx.frame.launchUrl);
+        contestIdParam = launchUrl.searchParams.get('contestId');
+        actionParam = launchUrl.searchParams.get('action');
+      }
+    }
+
+    console.log('Final params:', { contestIdParam, actionParam });
 
     if (contestIdParam && actionParam === 'enter') {
       console.log('Contest entry mode: setting up primary button for contest', contestIdParam);
