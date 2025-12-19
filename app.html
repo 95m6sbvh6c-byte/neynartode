@@ -908,12 +908,27 @@
             // Try Farcaster SDK sendTransaction first (native mini app wallet)
             if (sdk?.wallet?.ethProvider) {
               console.log('Using Farcaster SDK ethProvider for transaction');
+              // Get user's primary Farcaster wallet address
+              // Priority: 1) First verified address from profile, 2) state.userAddress, 3) eth_accounts
+              let fromAddress = state.userProfile?.verifiedAddresses?.ethAddresses?.[0] || state.userAddress;
+              if (!fromAddress) {
+                const accounts = await sdk.wallet.ethProvider.request({ method: 'eth_accounts' });
+                fromAddress = accounts?.[0];
+              }
+              if (!fromAddress) {
+                showToast('No wallet address found', 'error');
+                resetEnterButton(button, contestId);
+                return;
+              }
+              console.log('Using Farcaster wallet address:', fromAddress);
               const result = await sdk.wallet.ethProvider.request({
                 method: 'eth_sendTransaction',
                 params: [{
+                  from: fromAddress,
                   to: WASH_TRADER_ADDRESS,
                   value: valueHex,
-                  data: data
+                  data: data,
+                  gas: '0x' + (300000).toString(16) // 300k gas limit
                 }]
               });
               txHash = result;
