@@ -125,13 +125,8 @@
           });
 
           try {
-            // Get wallet provider - try SDK first, then window.ethereum
-            let ethProvider = null;
-            try {
-              ethProvider = await sdk.wallet.ethProvider;
-            } catch (e) {
-              console.log('SDK wallet not available, trying window.ethereum');
-            }
+            // Get wallet provider - match working active contests page flow
+            let ethProvider = sdk.wallet?.ethProvider;
             if (!ethProvider && window.ethereum) {
               ethProvider = window.ethereum;
             }
@@ -140,9 +135,36 @@
             }
             console.log('Got wallet provider');
 
-            // Get user's address
-            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
-            const from = accounts[0];
+            // Get user's address - prefer verified address from Farcaster profile (like working version)
+            // This matches how the active contests page does it
+            const context = window.FarcasterContext;
+            let from = null;
+
+            // Try to get verified ETH address from Farcaster profile first
+            if (context?.user?.verifiedAddresses) {
+              const ethAddresses = context.user.verifiedAddresses
+                .filter(a => a.protocol === 0) // 0 = Ethereum
+                .map(a => a.address);
+              from = ethAddresses[0];
+              console.log('Using verified address from Farcaster profile:', from);
+            }
+
+            // Fallback to custody address
+            if (!from && context?.user?.custody) {
+              from = context.user.custody;
+              console.log('Using custody address:', from);
+            }
+
+            // Final fallback to eth_requestAccounts
+            if (!from) {
+              const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+              from = accounts[0];
+              console.log('Using wallet address from eth_requestAccounts:', from);
+            }
+
+            if (!from) {
+              throw new Error('No wallet address found');
+            }
             console.log('User address:', from);
 
             // Check if user is a holder (100M+ tokens)
@@ -204,7 +226,7 @@
 
             } else {
               // Non-holder: Send wash trade transaction
-              // Match the working active contests page flow
+              // V4 swaps with Permit2 need more gas (two swaps + approvals)
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
 
               const tx = {
@@ -212,7 +234,7 @@
                 to: WASH_TRADER,
                 value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
                 data: '0x5a7f2827', // washTrade() selector
-                gas: '0x493E0' // 300000 gas limit (matches working version)
+                gas: '0x7A120' // 500000 gas - V4 swaps need more (2 swaps + Permit2)
               };
 
               console.log('Sending wash trade tx:', tx);
