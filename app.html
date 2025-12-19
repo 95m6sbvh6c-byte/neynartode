@@ -6244,13 +6244,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const reqLike = parseInt(state.minLikes) > 0 ? '1' : '0';
         const reqReply = parseInt(state.minReplies) > 0 ? '1' : '0';
 
-        // VALIDATION: At least one social requirement must be enabled
-        if (reqRecast === '0' && reqLike === '0' && reqReply === '0') {
-          console.error('❌ No social requirements enabled');
-          showToast('At least one social requirement (Recast, Like, or Reply) must be enabled!', 'error');
-          return;
-        }
-
         const requirementsCode = `R${reqRecast}L${reqLike}P${reqReply}`;
         // For NFT contests, also encode the image URL in castId for caching
         // Format: castHash|R1L0P1|imageUrl (image URL is optional, only for NFT)
