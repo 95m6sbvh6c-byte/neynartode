@@ -531,6 +531,18 @@
       0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
       100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
     }
+
+    /* Floating sticker animation */
+    @keyframes stickerFloat {
+      0%, 100% { transform: translate(0, 0) rotate(var(--rot)); }
+      25% { transform: translate(2px, -3px) rotate(calc(var(--rot) + 2deg)); }
+      50% { transform: translate(-1px, -5px) rotate(calc(var(--rot) - 1deg)); }
+      75% { transform: translate(-3px, -2px) rotate(calc(var(--rot) + 1deg)); }
+    }
+
+    .sticker-float {
+      animation: stickerFloat var(--duration) ease-in-out infinite;
+    }
   </style>
 </head>
 <body>
@@ -4243,17 +4255,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const size = 22 + seededRandom(seed, 3) * 10; // 22-32px
         const rotation = -25 + seededRandom(seed, 4) * 50; // -25 to 25 degrees
         const opacity = 0.35 + seededRandom(seed, 5) * 0.25; // 0.35-0.6 (more visible)
+        const duration = 3 + seededRandom(seed, 6) * 4; // 3-7 seconds
+        const delay = seededRandom(seed, 7) * 2; // 0-2 second delay
 
         stickers += `<img
           src="/neynartode-sticker.png"
           alt=""
-          class="absolute pointer-events-none"
+          class="absolute pointer-events-none sticker-float"
           style="
             right: ${baseRight}%;
             top: ${baseTop}%;
             width: ${size}px;
             height: ${size}px;
-            transform: rotate(${rotation}deg);
+            --rot: ${rotation}deg;
+            --duration: ${duration}s;
+            animation-delay: ${delay}s;
             opacity: ${opacity};
             z-index: ${i};
           "
