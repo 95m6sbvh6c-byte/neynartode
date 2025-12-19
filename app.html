@@ -27,7 +27,7 @@
   <!-- Farcaster Mini App SDK - loads and signals when ready -->
   <script type="module">
     import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
-    import { createConfig, connect, getAccount, http } from 'https://esm.sh/@wagmi/core@2';
+    import { createConfig, connect, disconnect, getAccount, getConnectorClient, http } from 'https://esm.sh/@wagmi/core@2';
     import { base } from 'https://esm.sh/@wagmi/core@2/chains';
     import { farcasterFrame } from 'https://esm.sh/@farcaster/frame-wagmi-connector';
 
@@ -44,7 +44,9 @@
     });
     window.WagmiConfig = wagmiConfig;
     window.WagmiConnect = connect;
+    window.WagmiDisconnect = disconnect;
     window.WagmiGetAccount = getAccount;
+    window.WagmiGetConnectorClient = getConnectorClient;
     window.FarcasterFrameConnector = farcasterFrame;
 
     // Try to get context
@@ -142,33 +144,33 @@
           });
 
           try {
-            // Flow per Neynar:
-            // 1) Connect with farcasterFrame connector (not custody)
-            // 2) Get provider from sdk.wallet.getEthereumProvider()
-            // 3) Get accounts from provider.request({ method: 'eth_requestAccounts' })
-            // 4) Use accounts[0] as tx.from
-
+            // Force-select farcasterFrame by disconnecting first, then connecting
             const config = window.WagmiConfig;
             const connect = window.WagmiConnect;
+            const disconnect = window.WagmiDisconnect;
             const farcasterFrame = window.FarcasterFrameConnector;
 
-            // Step 1: Connect explicitly with farcasterFrame (forces non-custody connector)
-            console.log('Step 1: Connecting with farcasterFrame...');
+            // Step 1: DISCONNECT first to clear any custody connector
+            console.log('Step 1: Disconnecting current connector...');
             try {
-              await connect(config, { connector: farcasterFrame() });
-              console.log('Connected with farcasterFrame');
+              await disconnect(config);
+              console.log('Disconnected');
             } catch (e) {
-              // May already be connected
-              console.log('Connect result:', e.message || 'already connected');
+              console.log('Disconnect result:', e.message || 'not connected');
             }
 
-            // Step 2: Get provider from SDK (canonical provider tied to farcasterFrame)
-            console.log('Step 2: Getting provider...');
+            // Step 2: Connect explicitly with farcasterFrame
+            console.log('Step 2: Connecting with farcasterFrame...');
+            await connect(config, { connector: farcasterFrame() });
+            console.log('Connected with farcasterFrame');
+
+            // Step 3: Get provider from SDK (per Neynar - should now be farcasterFrame)
+            console.log('Step 3: Getting provider from sdk.wallet...');
             const ethProvider = await sdk.wallet.getEthereumProvider();
             console.log('Got ethProvider');
 
-            // Step 3: Request accounts from the provider
-            console.log('Step 3: Requesting accounts...');
+            // Step 4: Request accounts from the provider
+            console.log('Step 4: Requesting accounts...');
             const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
             const from = accounts[0];
             console.log('Account from provider:', from);
@@ -176,7 +178,6 @@
             if (!from) {
               throw new Error('No wallet address from provider');
             }
-
             console.log('Using address:', from);
 
             // Check if user is a holder (100M+ tokens)
