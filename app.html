@@ -1615,6 +1615,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       durationHours: '1',
       durationMinutes: '0',
       upcomingContests: [], // Array of scheduled contests
+      contestsLoading: true, // Loading state for contests
+      headerAnimated: false, // Track if header has been animated
       prizeType: 'token', // 'token' or 'nft'
       prizeTokenAddress: '',
       prizeTokenAmount: '',
@@ -3100,6 +3102,23 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       }
 
       // Fetch active contests from contest-history API
+      // Check for cached contests first (for faster initial load)
+      const cachedContests = sessionStorage.getItem('neynartodes_active_contests');
+      const cachedTime = sessionStorage.getItem('neynartodes_contests_time');
+      const cacheMaxAge = 30000; // 30 seconds
+
+      if (cachedContests && cachedTime && (Date.now() - parseInt(cachedTime)) < cacheMaxAge) {
+        try {
+          state.upcomingContests = JSON.parse(cachedContests);
+          state.contestsLoading = false;
+          console.log('Loaded contests from cache');
+          render();
+        } catch (e) {
+          console.log('Cache parse error, fetching fresh');
+        }
+      }
+
+      state.contestsLoading = !cachedContests;
       try {
         const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
         const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=20&includeUsers=true&status=active`);
@@ -3142,12 +3161,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           state.upcomingContests.filter(c => c.isNft).forEach(c => {
             console.log('NFT Contest:', c.contestId, 'nftImage:', c.nftImage, 'nftName:', c.nftName);
           });
+          // Cache contests for faster subsequent loads
+          try {
+            sessionStorage.setItem('neynartodes_active_contests', JSON.stringify(state.upcomingContests));
+            sessionStorage.setItem('neynartodes_contests_time', Date.now().toString());
+          } catch (e) {
+            console.log('Could not cache contests:', e.message);
+          }
           // Load user's contest entries
           loadContestEntries();
         }
+        state.contestsLoading = false;
       } catch (e) {
         console.error('Error fetching active contests:', e);
         state.upcomingContests = [];
+        state.contestsLoading = false;
       }
 
       // Re-render to show active contests
@@ -3869,8 +3897,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     function renderHeader() {
+      // Only animate on first render, then mark as animated
+      const shouldAnimate = !state.headerAnimated;
+      if (shouldAnimate) state.headerAnimated = true;
+
       return `
-        <header class="glass-card p-4 mb-6 animate-fade-in">
+        <header class="glass-card p-4 mb-6${shouldAnimate ? ' animate-fade-in' : ''}">
           <!-- Top bar with logo and user info -->
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-3">
@@ -4361,6 +4393,66 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const moreText = state.upcomingContests.length > 20
         ? `<div class="mt-4 text-center text-sm text-[var(--text-muted)]">+ ${state.upcomingContests.length - 20} more contests</div>`
         : '';
+
+      // Loading skeleton for contests
+      const loadingSkeleton = `
+        <div class="space-y-3">
+          ${[1,2,3].map(() => `
+            <div class="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-3">
+                    <div class="skeleton w-16 h-5"></div>
+                    <div class="skeleton w-10 h-4"></div>
+                  </div>
+                  <div class="flex items-center gap-2 mb-3">
+                    <div class="skeleton w-6 h-6 rounded-full"></div>
+                    <div class="skeleton w-24 h-4"></div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <div class="skeleton w-12 h-3 mb-1"></div>
+                      <div class="skeleton w-20 h-5"></div>
+                    </div>
+                    <div>
+                      <div class="skeleton w-16 h-3 mb-1"></div>
+                      <div class="skeleton w-14 h-5"></div>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <div class="skeleton w-24 h-9 rounded-xl"></div>
+                    <div class="skeleton w-16 h-9 rounded-xl"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      // Show loading state
+      if (state.contestsLoading) {
+        return `
+          <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+            <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
+            <div class="max-w-6xl mx-auto relative z-10">
+              ${renderHeader()}
+              <div class="glass-card p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 class="text-xl font-bold"><span class="text-[var(--text-primary)]">Active</span> <span class="text-gradient">Contests</span></h2>
+                    <p class="text-sm text-[var(--text-muted)]">Loading contests...</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                </div>
+                ${loadingSkeleton}
+              </div>
+            </div>
+          </div>
+        `;
+      }
 
       if (state.upcomingContests.length > 0) {
         return `
