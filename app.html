@@ -125,13 +125,23 @@
           });
 
           try {
-            // Use window.ethereum as per Neynar's example
-            if (!window.ethereum) {
-              throw new Error('No wallet provider');
+            // Get wallet provider - try SDK first, then window.ethereum
+            let ethProvider = null;
+            try {
+              ethProvider = await sdk.wallet.ethProvider;
+            } catch (e) {
+              console.log('SDK wallet not available, trying window.ethereum');
             }
+            if (!ethProvider && window.ethereum) {
+              ethProvider = window.ethereum;
+            }
+            if (!ethProvider) {
+              throw new Error('No wallet provider - please connect a wallet');
+            }
+            console.log('Got wallet provider');
 
             // Get user's address
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
             const from = accounts[0];
             console.log('User address:', from);
 
@@ -139,7 +149,7 @@
             const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
             const HOLDER_THRESHOLD = '100000000000000000000000000'; // 100M with 18 decimals
 
-            const balanceHex = await window.ethereum.request({
+            const balanceHex = await ethProvider.request({
               method: 'eth_call',
               params: [{
                 to: NEYNARTODES_TOKEN,
@@ -189,7 +199,7 @@
                 data: '0x5a7f2827' // washTrade() selector
               };
 
-              const txHash = await window.ethereum.request({
+              const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
                 params: [tx]
               });
