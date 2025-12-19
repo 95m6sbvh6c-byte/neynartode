@@ -79,10 +79,11 @@ module.exports = async (req, res) => {
   // Determine status display
   let statusText = 'Enter Raffle';
   let statusColor = '#22c55e'; // green
+  const isEntered = status === 'entered';
 
-  if (status === 'entered') {
-    statusText = 'Entered ✓';
-    statusColor = '#6b7280'; // gray
+  if (isEntered) {
+    statusText = 'You\'re Entered! 🎉';
+    statusColor = '#8b5cf6'; // purple for celebration
   } else if (status === 'needs_signer') {
     statusText = 'Authorize App';
     statusColor = '#f59e0b'; // yellow
@@ -91,13 +92,61 @@ module.exports = async (req, res) => {
     statusColor = '#ef4444'; // red
   }
 
+  // Generate confetti elements for celebration
+  function generateConfetti() {
+    const colors = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ff6bff', '#6bffff'];
+    let confetti = '';
+    for (let i = 0; i < 50; i++) {
+      const x = Math.random() * 1200;
+      const delay = Math.random() * 2;
+      const duration = 2 + Math.random() * 2;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const size = 8 + Math.random() * 12;
+      const rotation = Math.random() * 360;
+
+      confetti += `
+      <rect x="${x}" y="-20" width="${size}" height="${size * 0.6}" fill="${color}" transform="rotate(${rotation} ${x} -20)">
+        <animate attributeName="y" from="-20" to="650" dur="${duration}s" begin="${delay}s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="1;1;0" dur="${duration}s" begin="${delay}s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="rotate" from="${rotation} ${x} -20" to="${rotation + 360} ${x} 650" dur="${duration}s" begin="${delay}s" repeatCount="indefinite" additive="sum"/>
+      </rect>`;
+    }
+    return confetti;
+  }
+
+  // Generate pulsing Neynartodes logos
+  function generateNeynartodes() {
+    let logos = '';
+    const logoUrl = 'https://frame-opal-eight.vercel.app/neynartode-sticker.png';
+    const positions = [
+      {x: 80, y: 60, size: 60}, {x: 1060, y: 60, size: 60},
+      {x: 50, y: 280, size: 50}, {x: 1100, y: 280, size: 50},
+      {x: 100, y: 480, size: 55}, {x: 1050, y: 480, size: 55},
+      {x: 180, y: 180, size: 45}, {x: 970, y: 180, size: 45},
+      {x: 130, y: 380, size: 40}, {x: 1020, y: 380, size: 40}
+    ];
+    positions.forEach((pos, i) => {
+      logos += `
+      <image href="${logoUrl}" x="${pos.x}" y="${pos.y}" width="${pos.size}" height="${pos.size}" opacity="0.9">
+        <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="${i * 0.3}s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="scale" values="0.9;1.1;0.9" dur="2s" begin="${i * 0.3}s" repeatCount="indefinite" additive="sum"/>
+      </image>`;
+    });
+    return logos;
+  }
+
+  const confettiElements = isEntered ? generateConfetti() : '';
+  const neynartodeElements = isEntered ? generateNeynartodes() : '';
+  const celebrationTitle = isEntered ? '🎊 CONGRATULATIONS! 🎊' : 'NEYNARtodes';
+  const footerText = isEntered ? 'Reply to the cast for a BONUS entry!' : 'Like + Recast to enter | Reply for bonus entry';
+
   // Generate SVG image (1200x630 for 1.91:1 aspect ratio)
   const svg = `
 <svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:${isEntered ? '#1a0a2e' : '#1a1a2e'};stop-opacity:1" />
+      <stop offset="100%" style="stop-color:${isEntered ? '#2e1a4e' : '#16213e'};stop-opacity:1" />
     </linearGradient>
   </defs>
 
@@ -105,11 +154,14 @@ module.exports = async (req, res) => {
   <rect width="1200" height="630" fill="url(#bg)"/>
 
   <!-- Border -->
-  <rect x="20" y="20" width="1160" height="590" rx="20" fill="none" stroke="#8b5cf6" stroke-width="3"/>
+  <rect x="20" y="20" width="1160" height="590" rx="20" fill="none" stroke="${isEntered ? '#ffd700' : '#8b5cf6'}" stroke-width="${isEntered ? '4' : '3'}"/>
+
+  ${confettiElements}
+  ${neynartodeElements}
 
   <!-- Logo/Title -->
-  <text x="600" y="120" font-family="Arial, sans-serif" font-size="64" font-weight="bold" fill="#ffffff" text-anchor="middle">
-    NEYNARtodes
+  <text x="600" y="120" font-family="Arial, sans-serif" font-size="${isEntered ? '52' : '64'}" font-weight="bold" fill="${isEntered ? '#ffd700' : '#ffffff'}" text-anchor="middle">
+    ${celebrationTitle}
   </text>
 
   <!-- Contest ID -->
@@ -118,7 +170,7 @@ module.exports = async (req, res) => {
   </text>
 
   <!-- Prize Box -->
-  <rect x="350" y="220" width="500" height="120" rx="15" fill="#1e1e3f" stroke="#8b5cf6" stroke-width="2"/>
+  <rect x="350" y="220" width="500" height="120" rx="15" fill="${isEntered ? '#2e1a4e' : '#1e1e3f'}" stroke="${isEntered ? '#ffd700' : '#8b5cf6'}" stroke-width="2"/>
   <text x="600" y="270" font-family="Arial, sans-serif" font-size="24" fill="#9ca3af" text-anchor="middle">
     PRIZE
   </text>
@@ -133,13 +185,13 @@ module.exports = async (req, res) => {
 
   <!-- Status Button -->
   <rect x="400" y="450" width="400" height="80" rx="40" fill="${statusColor}"/>
-  <text x="600" y="505" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#ffffff" text-anchor="middle">
+  <text x="600" y="505" font-family="Arial, sans-serif" font-size="${isEntered ? '28' : '32'}" font-weight="bold" fill="#ffffff" text-anchor="middle">
     ${statusText}
   </text>
 
   <!-- Footer -->
-  <text x="600" y="590" font-family="Arial, sans-serif" font-size="18" fill="#6b7280" text-anchor="middle">
-    Like + Recast to enter | Reply for bonus entry
+  <text x="600" y="590" font-family="Arial, sans-serif" font-size="18" fill="${isEntered ? '#ffd700' : '#6b7280'}" text-anchor="middle">
+    ${footerText}
   </text>
 </svg>`;
 

@@ -17,7 +17,7 @@ const CONFIG = {
   BASE_RPC_URL: 'https://mainnet.base.org',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56CDA2E2273e615a513f1D828b07',
   HOLDER_THRESHOLD: '100000000', // 100M tokens
-  WASH_TRADER_ADDRESS: process.env.WASH_TRADER_ADDRESS || '0x0000000000000000000000000000000000000000', // Deploy and set this
+  WASH_TRADER_ADDRESS: '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e', // WashTraderV4ETH with Permit2
   WASH_TRADE_FEE: '0.0025' // ETH
 };
 
@@ -221,6 +221,9 @@ module.exports = async (req, res) => {
       // Non-holder: Return transaction request for wash trade
       const washTradeValue = ethers.parseEther(CONFIG.WASH_TRADE_FEE);
 
+      // washTrade() function selector - no parameters needed
+      const washTradeSelector = ethers.id('washTrade()').slice(0, 10);
+
       // Return transaction frame
       return res.status(200).json({
         chainId: 'eip155:8453', // Base mainnet
@@ -228,8 +231,7 @@ module.exports = async (req, res) => {
         params: {
           to: CONFIG.WASH_TRADER_ADDRESS,
           value: washTradeValue.toString(),
-          data: ethers.id('washTrade(address)').slice(0, 10) +
-                ethers.AbiCoder.defaultAbiCoder().encode(['address'], [CONFIG.NEYNARTODES_TOKEN]).slice(2)
+          data: washTradeSelector
         }
       });
     }

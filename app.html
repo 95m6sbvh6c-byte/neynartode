@@ -1304,87 +1304,25 @@
     }
 
     async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage) {
-      // Build requirements string
-      const reqs = [];
-      if (requireRecast) reqs.push('🔄 Recast');
-      if (requireLike) reqs.push('❤️ Like');
-      if (requireReply) reqs.push('💬 Reply');
-
-      // Volume/holder requirement - show both paths
-      let volumeLine = '';
-      if (volumeReq > 0) {
-        volumeLine = `\n💎 Trade $${volumeReq} OR Hold 100M $NEYNARTODES to qualify`;
-      }
-
-      const reqsLine = reqs.length > 0 ? `📋 To Enter: ${reqs.join(' + ')}${volumeLine}` : (volumeLine ? `📋 To Enter:${volumeLine}` : '🎁 Open to everyone!');
-      const reactLine = reqs.length > 0 || volumeReq > 0 ? 'React to this or the quoted cast below to enter!! 👇' : '';
-
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
 
-      // Note: Host info shown via quoted cast embed, no @mention needed
+      // Simple share text - the Frame embed handles the "Enter Raffle" button
       const text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
 
 ${prizeLine}
-⏱️ Time Left: ${hoursLeft}h ${minutesLeft}m
-${reqsLine}
-${reactLine}
+⏱️ ${hoursLeft}h ${minutesLeft}m left
 
-🔗 https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
+👇 Tap Enter Raffle below to join!`;
 
       // Build embeds array (max 2 per Farcaster limits)
       const embeds = [];
 
-      // Extract cast hash for quoting
-      // castId may have format: "castHash|R1L0P1" or "castHash|R1L0P1|imageUrl"
-      const castHash = castId ? castId.split('|')[0] : null;
+      // Add Frame URL as FIRST embed - this shows the "Enter Raffle" button in timeline
+      const frameUrl = `https://frame-opal-eight.vercel.app/api/frame?contestId=${contestId}`;
+      embeds.push(frameUrl);
 
-      // Look up the actual cast author (may differ from contest host)
-      // The cast URL needs the author's username, not the contest host
-      let castAuthorUsername = hostUsername;
-      if (castHash) {
-        try {
-          const castResponse = await fetch(
-            `https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash`,
-            { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-          );
-          if (castResponse.ok) {
-            const castData = await castResponse.json();
-            if (castData.cast?.author?.username) {
-              castAuthorUsername = castData.cast.author.username;
-              console.log(`Cast author: @${castAuthorUsername} (host: @${hostUsername})`);
-            }
-          }
-        } catch (e) {
-          console.log('Could not look up cast author, using host:', e);
-        }
-      }
-
-      // Add cast URL as FIRST embed to create quote-cast (not reply)
-      // Using embeds instead of parent parameter creates a quote-cast, not a reply
-      if (castHash && castAuthorUsername) {
-        embeds.push(`https://warpcast.com/${castAuthorUsername}/${castHash}`);
-      }
-
-      // Add NFT image as second embed if available (max 2 embeds)
-      // Try to get image from parameter, fallback to extracting from castId
-      let nftImageUrl = nftImage;
-      if (isNft && !nftImageUrl && castId) {
-        // castId format for NFT: "hash|requirements|imageUrl"
-        const parts = castId.split('|');
-        if (parts.length >= 3 && parts[2]) {
-          nftImageUrl = parts[2];
-          console.log('Extracted NFT image from castId:', nftImageUrl);
-        }
-      }
-
-      if (isNft && nftImageUrl && embeds.length < 2) {
-        // Proxy through our server to avoid IPFS gateway 403 errors
-        const proxyUrl = `https://frame-opal-eight.vercel.app/api/image?url=${encodeURIComponent(nftImageUrl)}`;
-        embeds.push(proxyUrl);
-      }
-
-      console.log('Sharing contest:', { contestId, isNft, nftImageUrl, embeds, castHash });
+      console.log('Sharing contest:', { contestId, isNft, nftImage, embeds, castId });
 
       // Use SDK composeCast - embeds create quote-cast, NOT parent parameter (which creates reply)
       const sdk = window.FarcasterSDK;
@@ -1414,8 +1352,8 @@ ${reactLine}
         warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
       });
       // Add cast quote as embed for fallback (URL method)
-      if (castHash && hostUsername) {
-        warpcastUrl += `&embeds[]=${encodeURIComponent(`https://warpcast.com/${hostUsername}/${castHash}`)}`;
+      if (castId && hostUsername) {
+        warpcastUrl += `&embeds[]=${encodeURIComponent(`https://warpcast.com/${hostUsername}/${castId}`)}`;
       }
 
       window.open(warpcastUrl, '_blank');
