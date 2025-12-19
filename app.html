@@ -277,8 +277,9 @@
 
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
 
+              // NOTE: Don't include 'from' - let the SDK provider use its connected wallet
+              // The 'from' address mismatch can cause simulation failures
               const tx = {
-                from: from, // This is the verified address from Neynar
                 to: WASH_TRADER,
                 value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
                 data: '0x5a7f2827', // washTrade() selector
@@ -286,7 +287,7 @@
               };
 
               console.log('Sending wash trade tx:', tx);
-              console.log('NOTE: from address is from Neynar API, not SDK provider');
+              console.log('Verified address for reference:', from);
               const txHash = await provider.request({
                 method: 'eth_sendTransaction',
                 params: [tx]
