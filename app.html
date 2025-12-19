@@ -663,7 +663,7 @@
     // ENTER RAFFLE V2 - Auto like, recast, and optional wash trade
     // ═══════════════════════════════════════════════════════════════════
 
-    const WASH_TRADER_ADDRESS = '0x440B3C79e7BA52028a85B785EA0Ad5D0B24AE18f';
+    const WASH_TRADER_ADDRESS = '0x1d93d9abb17d218f8aa92001886da7ded36f4392'; // WashTraderV4ETH - native ETH pool - deployed 2025-12-18
     const WASH_TRADE_FEE = '0.0025'; // ETH
 
     // Load which contests user has entered
@@ -898,10 +898,9 @@
           const sdk = window.FarcasterSDK;
 
           // Prepare transaction parameters
-          // Use washTradeV3 with specific pool fee tier (3000 = 0.3% is common for memecoins)
-          const iface = new ethers.utils.Interface(['function washTradeV3(address token, uint24 poolFee)']);
-          const poolFee = 3000; // 0.3% fee tier - try 10000 (1%) if this fails
-          const data = iface.encodeFunctionData('washTradeV3', [CONFIG.CONTRACTS.neynartodes, poolFee]);
+          // WashTraderV4 has a simple washTrade() function with no parameters (uses hardcoded V4 pool)
+          const iface = new ethers.utils.Interface(['function washTrade()']);
+          const data = iface.encodeFunctionData('washTrade', []);
           const fee = ethers.utils.parseEther(WASH_TRADE_FEE);
           const valueHex = '0x' + fee.toBigInt().toString(16);
           console.log('Wash trade fee:', WASH_TRADE_FEE, 'ETH');
@@ -1325,7 +1324,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // === V2 Contracts (new unified system) ===
         contestManager: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Unified contest manager v2 - deployed 2025-12-17
-        washTrader: '0x440B3C79e7BA52028a85B785EA0Ad5D0B24AE18f', // Wash trade for non-holders - deployed 2025-12-17
+        washTrader: '0x1d93d9abb17d218f8aa92001886da7ded36f4392', // WashTraderV4ETH - native ETH pool - deployed 2025-12-18
 
         // === Shared Contracts ===
         prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
@@ -5637,12 +5636,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       'event WinnersSelected(uint256 indexed contestId, address[] winners, uint256 prizePerWinner)'
     ];
 
-    // WashTrader - Atomic buy/sell for non-holders to meet volume requirement
+    // WashTraderV4 - Atomic buy/sell via Uniswap V4 for non-holders to meet volume requirement
     const WASH_TRADER_ABI = [
-      'function washTrade(address token) external payable',
-      'function washTradeV3(address token, uint24 poolFee) external payable',
+      'function washTrade() external payable',
       'function minFee() external view returns (uint256)',
-      'event WashTrade(address indexed user, address indexed token, uint256 tokensBought, uint256 ethSpent, uint256 fee, bool usedV4, uint256 timestamp)'
+      'function v4PoolId() external view returns (bytes32)',
+      'event WashTrade(address indexed user, address indexed token, uint256 tokensBought, uint256 ethSpent, uint256 timestamp)'
     ];
 
     // ERC721_ABI and ERC1155_ABI are defined at the top of the file near CONFIG
