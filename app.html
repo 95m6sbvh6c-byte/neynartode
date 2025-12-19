@@ -27,39 +27,54 @@
   <!-- Farcaster Mini App SDK - loads and signals when ready -->
   <script type="module">
     import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
-    import { createConfig, connect, disconnect, getAccount, sendTransaction, parseEther, http } from 'https://esm.sh/@wagmi/core@2';
-    import { base } from 'https://esm.sh/@wagmi/core@2/chains';
-    import { farcasterFrame } from 'https://esm.sh/@farcaster/frame-wagmi-connector';
 
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
 
-    // Initialize wagmi (wrapped in try-catch to not block app loading)
-    try {
-      // IMPORTANT: Instantiate connector ONCE and reuse it (per Neynar)
-      const ff = farcasterFrame();
+    // Wagmi will be loaded dynamically when needed (to not block app loading)
+    window.WagmiLoaded = false;
+    window.loadWagmi = async function() {
+      if (window.WagmiLoaded) return true;
+      try {
+        console.log('Loading wagmi dynamically...');
+        const [wagmiCore, wagmiChains, frameConnector] = await Promise.all([
+          import('https://esm.sh/@wagmi/core@2'),
+          import('https://esm.sh/@wagmi/core@2/chains'),
+          import('https://esm.sh/@farcaster/frame-wagmi-connector')
+        ]);
 
-      // Create wagmi config with the single connector instance
-      const wagmiConfig = createConfig({
-        chains: [base],
-        connectors: [ff],  // Use the instance, not farcasterFrame()
-        transports: {
-          [base.id]: http()
-        }
-      });
+        const { createConfig, connect, disconnect, getAccount, sendTransaction, parseEther, http } = wagmiCore;
+        const { base } = wagmiChains;
+        const { farcasterFrame } = frameConnector;
 
-      // Store for use in click handler
-      window.WagmiConfig = wagmiConfig;
-      window.FrameConnector = ff;  // The single instance to reuse
-      window.WagmiConnect = connect;
-      window.WagmiDisconnect = disconnect;
-      window.WagmiGetAccount = getAccount;
-      window.WagmiSendTransaction = sendTransaction;
-      window.WagmiParseEther = parseEther;
-      console.log('Wagmi initialized successfully');
-    } catch (e) {
-      console.error('Wagmi initialization failed:', e);
-    }
+        // IMPORTANT: Instantiate connector ONCE and reuse it (per Neynar)
+        const ff = farcasterFrame();
+
+        // Create wagmi config with the single connector instance
+        const wagmiConfig = createConfig({
+          chains: [base],
+          connectors: [ff],
+          transports: {
+            [base.id]: http()
+          }
+        });
+
+        // Store for use in click handler
+        window.WagmiConfig = wagmiConfig;
+        window.FrameConnector = ff;
+        window.WagmiConnect = connect;
+        window.WagmiDisconnect = disconnect;
+        window.WagmiGetAccount = getAccount;
+        window.WagmiSendTransaction = sendTransaction;
+        window.WagmiParseEther = parseEther;
+        window.WagmiLoaded = true;
+        console.log('Wagmi loaded successfully');
+        return true;
+      } catch (e) {
+        console.error('Wagmi load failed:', e);
+        return false;
+      }
+    };
 
     // Try to get context
     try {
@@ -156,9 +171,16 @@
           });
 
           try {
+            // Load wagmi dynamically (first time only)
+            console.log('Loading wagmi...');
+            const wagmiLoaded = await window.loadWagmi();
+            if (!wagmiLoaded) {
+              throw new Error('Failed to load wagmi');
+            }
+
             // Per Neynar: use wagmi's getAccount and sendTransaction instead of provider.request
             const config = window.WagmiConfig;
-            const ff = window.FrameConnector;  // Single instance created at init
+            const ff = window.FrameConnector;
             const wagmiConnect = window.WagmiConnect;
             const wagmiDisconnect = window.WagmiDisconnect;
             const wagmiGetAccount = window.WagmiGetAccount;
