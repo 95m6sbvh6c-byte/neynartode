@@ -81,38 +81,26 @@
       window.NotificationsEnabled = false;
     }
 
-    // Check for contestId in URL params - set up primary button for quick entry
-    // Try multiple sources: window.location, context.location, and frame launch URL
-    let contestIdParam = null;
-    let actionParam = null;
+    // Check for contestId - main script runs first and may have stored it
+    // Also check URL params and SDK context as fallbacks
+    let contestIdParam = window.PendingContestEntry || null;
 
-    // Source 1: window.location
-    const urlParams = new URLSearchParams(window.location.search);
-    contestIdParam = urlParams.get('contestId');
-    actionParam = urlParams.get('action');
-    console.log('URL params from window.location:', { contestIdParam, actionParam, href: window.location.href });
-
-    // Source 2: Check SDK context for frame/location info
-    if (!contestIdParam && window.FarcasterContext) {
-      const ctx = window.FarcasterContext;
-      console.log('Farcaster context:', JSON.stringify(ctx, null, 2));
-
-      // Check if there's a location or frame URL in context
-      if (ctx.location?.searchParams) {
-        contestIdParam = ctx.location.searchParams.get('contestId');
-        actionParam = ctx.location.searchParams.get('action');
-      }
-      // Check frame launch URL
-      if (!contestIdParam && ctx.frame?.launchUrl) {
-        const launchUrl = new URL(ctx.frame.launchUrl);
-        contestIdParam = launchUrl.searchParams.get('contestId');
-        actionParam = launchUrl.searchParams.get('action');
+    // Fallback: check URL params (in case they haven't been cleaned yet)
+    if (!contestIdParam) {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('action') === 'enter') {
+        contestIdParam = urlParams.get('contestId');
       }
     }
 
-    console.log('Final params:', { contestIdParam, actionParam });
+    // Fallback: check sessionStorage
+    if (!contestIdParam) {
+      contestIdParam = sessionStorage.getItem('pendingEnterContest');
+    }
 
-    if (contestIdParam && actionParam === 'enter') {
+    console.log('Primary button check - contestId:', contestIdParam);
+
+    if (contestIdParam) {
       console.log('Contest entry mode: setting up primary button for contest', contestIdParam);
       window.PendingContestId = contestIdParam;
 
@@ -7393,6 +7381,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       console.log('Deep link: auto-entering contest', contestIdParam);
       // Store for after render
       sessionStorage.setItem('pendingEnterContest', contestIdParam);
+      // Also store for SDK module to set up primary button
+      window.PendingContestEntry = contestIdParam;
     }
 
     // Clean up URL without reload
