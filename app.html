@@ -37,18 +37,19 @@
       if (window.WagmiLoaded) return true;
       try {
         console.log('Loading wagmi dynamically...');
-        const [wagmiCore, wagmiChains, frameConnector] = await Promise.all([
+        const [wagmiCore, wagmiChains, miniAppConnector] = await Promise.all([
           import('https://esm.sh/@wagmi/core@2'),
           import('https://esm.sh/@wagmi/core@2/chains'),
-          import('https://esm.sh/@farcaster/frame-wagmi-connector')
+          import('https://esm.sh/@farcaster/miniapp-wagmi-connector')
         ]);
 
         const { createConfig, connect, disconnect, getAccount, sendTransaction, parseEther, http } = wagmiCore;
         const { base } = wagmiChains;
-        const { farcasterFrame } = frameConnector;
+        const { farcasterMiniApp } = miniAppConnector;
 
-        // IMPORTANT: Instantiate connector ONCE and reuse it (per Neynar)
-        const ff = farcasterFrame();
+        // IMPORTANT: Instantiate connector ONCE and reuse it
+        const ff = farcasterMiniApp();
+        console.log('Using farcasterMiniApp connector');
 
         // Create wagmi config with the single connector instance
         const wagmiConfig = createConfig({
@@ -271,21 +272,21 @@
 
             } else {
               // Non-holder: Send wash trade transaction via wagmi (bypasses Privy)
-              console.log('Connecting with farcasterFrame for transaction...');
+              console.log('Sending wash trade via farcasterMiniApp connector...');
 
               // Load wagmi if not loaded
               if (!window.WagmiLoaded) {
                 await window.loadWagmi();
               }
 
-              // Connect with farcasterFrame connector
-              const { farcasterFrame } = await import('https://esm.sh/@farcaster/frame-wagmi-connector');
+              // Use the stored connector instance (created during loadWagmi)
               const wagmiConnect = window.WagmiConnect;
               const config = window.WagmiConfig;
+              const connector = window.FrameConnector;
 
               try {
-                await wagmiConnect(config, { connector: farcasterFrame() });
-                console.log('Connected with farcasterFrame');
+                await wagmiConnect(config, { connector });
+                console.log('Connected with farcasterMiniApp');
               } catch (e) {
                 console.log('Connect error (may already be connected):', e.message);
               }
