@@ -247,12 +247,35 @@
               const userFid = window.FarcasterContext?.user?.fid;
               if (!userFid) throw new Error('No FID available');
 
+              // Fetch contest details first to get cast hash (required by API)
+              let castHash = null;
+              try {
+                const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
+                if (contestRes.ok) {
+                  const contestData = await contestRes.json();
+                  const contest = contestData.contests?.find(c =>
+                    c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
+                  );
+                  if (contest?.castId) {
+                    castHash = contest.castId.split('|')[0];
+                    console.log('Got cast hash for entry:', castHash);
+                  }
+                }
+              } catch (e) {
+                console.log('Could not fetch cast hash:', e);
+              }
+
+              if (!castHash) {
+                throw new Error('Could not get contest cast hash');
+              }
+
               const response = await fetch('/api/enter-contest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   fid: userFid,
                   contestId: contestIdParam,
+                  castHash: castHash,
                   addresses: [from]
                 })
               });
@@ -269,23 +292,6 @@
                 disabled: true
               });
               console.log('Holder entry successful!');
-
-              // Fetch contest details to get cast hash for celebration
-              let castHash = null;
-              try {
-                const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
-                if (contestRes.ok) {
-                  const contestData = await contestRes.json();
-                  const contest = contestData.contests?.find(c =>
-                    c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
-                  );
-                  if (contest?.castId) {
-                    castHash = contest.castId.split('|')[0];
-                  }
-                }
-              } catch (e) {
-                console.log('Could not fetch cast hash:', e);
-              }
 
               // Show celebration animation
               showCelebration(castHash);
@@ -361,19 +367,24 @@
               // Show celebration animation with cast hash for reply link
               showCelebration(castHash);
 
-              // Record the entry in background
+              // Record the entry - include castHash which is required by the API
               const userFid = window.FarcasterContext?.user?.fid;
-              if (userFid) {
+              if (userFid && castHash) {
                 fetch('/api/enter-contest', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     fid: userFid,
                     contestId: contestIdParam,
+                    castHash: castHash,
                     addresses: [from],
                     washTradeTx: txHash
                   })
+                }).then(res => res.json()).then(data => {
+                  console.log('Entry recorded:', data);
                 }).catch(e => console.log('Entry record failed:', e));
+              } else {
+                console.log('Could not record entry - missing userFid or castHash');
               }
             }
 
