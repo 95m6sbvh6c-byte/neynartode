@@ -569,9 +569,12 @@ module.exports = async (req, res) => {
 
     // Apply status filter
     let filteredContests = allContests;
+    const nowTimestamp = Math.floor(Date.now() / 1000);
     if (statusFilter === 'active') {
-      // Only active (status 0) and pending VRF (status 1) contests
-      filteredContests = allContests.filter(c => c.status === 0 || c.status === 1);
+      // Only active (status 0) and pending VRF (status 1) contests that haven't ended yet
+      filteredContests = allContests.filter(c =>
+        (c.status === 0 || c.status === 1) && c.endTime > nowTimestamp
+      );
     } else if (statusFilter === 'history') {
       // Only completed (status 2) or cancelled (status 3) contests (default for history tab)
       filteredContests = allContests.filter(c => c.status === 2 || c.status === 3);
