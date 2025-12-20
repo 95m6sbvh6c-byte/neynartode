@@ -284,16 +284,27 @@
               const provider = await sdk.wallet.getEthereumProvider();
               console.log('Got ethereum provider');
 
-              // Build transaction - let Farcaster/Warpcast handle the wallet selection
-              // Don't specify 'from' or 'chainId' - let the provider handle those
+              // First request accounts to see what address the provider will use
+              const accounts = await provider.request({ method: 'eth_requestAccounts' });
+              console.log('Provider accounts:', accounts);
+              const providerAddress = accounts[0];
+              console.log('Provider will use address:', providerAddress);
+
+              // Check if this matches the verified address
+              if (providerAddress?.toLowerCase() !== from?.toLowerCase()) {
+                console.warn('ADDRESS MISMATCH - Provider:', providerAddress, 'Verified:', from);
+              }
+
+              // Build transaction with explicit from address
               const txParams = {
+                from: providerAddress,
                 to: WASH_TRADER,
                 value: VALUE_HEX,
                 data: '0x5a7f2827' // washTrade() function selector
               };
               console.log('Transaction params:', txParams);
 
-              // Send via eth_sendTransaction - this should show the native confirmation UI
+              // Send via eth_sendTransaction
               const txHash = await provider.request({
                 method: 'eth_sendTransaction',
                 params: [txParams]
