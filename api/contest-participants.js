@@ -48,16 +48,26 @@ module.exports = async (req, res) => {
 
     if (isV2) {
       // For V2 contests, check BOTH key formats and combine (entries may exist in either)
-      const v2Fids = await kv.smembers(`contest_entries:v2-${contestId}`) || [];
-      const legacyFids = await kv.smembers(`contest_entries:${contestId}`) || [];
+      const v2Key = `contest_entries:v2-${contestId}`;
+      const legacyKey = `contest_entries:${contestId}`;
 
-      console.log(`Contest ${contestId} (V2): v2-key has ${v2Fids.length} entries, legacy-key has ${legacyFids.length} entries`);
+      let v2Fids = await kv.smembers(v2Key);
+      let legacyFids = await kv.smembers(legacyKey);
+
+      // Handle null/undefined
+      v2Fids = Array.isArray(v2Fids) ? v2Fids : [];
+      legacyFids = Array.isArray(legacyFids) ? legacyFids : [];
+
+      console.log(`Contest ${contestId} (V2): checking keys:`, { v2Key, legacyKey });
+      console.log(`  v2-key (${v2Key}) has ${v2Fids.length} entries:`, v2Fids.slice(0, 5));
+      console.log(`  legacy-key (${legacyKey}) has ${legacyFids.length} entries:`, legacyFids.slice(0, 5));
 
       // Combine and dedupe
       const allFids = new Set([...v2Fids, ...legacyFids]);
       entryFids = Array.from(allFids);
     } else {
-      entryFids = await kv.smembers(`contest_entries:${contestId}`) || [];
+      let fids = await kv.smembers(`contest_entries:${contestId}`);
+      entryFids = Array.isArray(fids) ? fids : [];
     }
 
     console.log(`Contest ${contestId}: Total ${entryFids.length} participants`);
