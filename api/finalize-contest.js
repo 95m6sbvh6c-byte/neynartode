@@ -1068,18 +1068,66 @@ async function checkAndFinalizeV2Contest(contestId) {
     }
   }
 
-  // Count unique users
+  // Count unique users engaged
   const uniqueUsers = engagement.usersByFid ? engagement.usersByFid.size : 0;
   console.log(`   Unique users engaged: ${uniqueUsers}`);
 
   // Get cast author FID to exclude from winning
   const castAuthorFid = engagement.castAuthorFid;
 
+  // ═══════════════════════════════════════════════════════════════════
+  // CRITICAL: Only consider users who actually clicked the Enter button
+  // Entry is recorded in KV when user clicks Enter in the app
+  // ═══════════════════════════════════════════════════════════════════
+  let enteredFids = new Set();
+  try {
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      // Get all FIDs who clicked Enter for this contest
+      const entryFids = await kv.smembers(`contest_entries:${contestId}`);
+      enteredFids = new Set(entryFids.map(f => parseInt(f)));
+      console.log(`   Users who clicked Enter: ${enteredFids.size}`);
+    }
+  } catch (e) {
+    console.log(`   ⚠️ Could not fetch entries from KV: ${e.message}`);
+  }
+
+  if (enteredFids.size === 0) {
+    console.log('\n❌ No users clicked Enter button - cancelling contest...');
+    try {
+      const tx = await contestManager.cancelContest(contestId, 'No entries via app');
+      console.log(`   TX submitted: ${tx.hash}`);
+      const receipt = await tx.wait();
+      console.log(`   ✅ V2 Contest cancelled, host refunded in block ${receipt.blockNumber}`);
+      return {
+        success: true,
+        contestId,
+        isV2: true,
+        action: 'cancelled',
+        reason: 'No entries via app (users must click Enter button)',
+        txHash: receipt.hash
+      };
+    } catch (cancelError) {
+      console.error('   ❌ Cancel failed:', cancelError.message);
+      return {
+        success: false,
+        error: `Cancel failed: ${cancelError.message}`,
+        contestId,
+        isV2: true
+      };
+    }
+  }
+
   // Filter qualified users by FID (1 entry per user)
-  // V2 doesn't have volume requirements - all social qualifiers are eligible
+  // ONLY consider users who clicked Enter AND meet social requirements
   const qualifiedUsers = [];
 
   for (const [fid, userData] of engagement.usersByFid || new Map()) {
+    // CRITICAL: Skip if user didn't click Enter button
+    if (!enteredFids.has(fid)) {
+      continue;
+    }
+
     // Skip the contest host
     if (fid === castAuthorFid) continue;
 
