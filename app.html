@@ -182,6 +182,102 @@
               throw new Error('No FID available from Farcaster context');
             }
 
+            // Check signer status - need approved signer for like/recast
+            console.log('Checking signer status for FID:', userFid);
+            let signerApproved = false;
+
+            try {
+              const signerStatusRes = await fetch(`/api/signer-status?fid=${userFid}`);
+              if (signerStatusRes.ok) {
+                const signerData = await signerStatusRes.json();
+                signerApproved = signerData.approved === true;
+                console.log('Signer status:', signerData);
+              }
+            } catch (e) {
+              console.log('Signer status check failed:', e);
+            }
+
+            if (!signerApproved) {
+              // Need to create/approve signer
+              console.log('No approved signer - creating one...');
+              sdk.actions.setPrimaryButton({
+                text: 'Authorizing...',
+                loading: true,
+                disabled: true
+              });
+
+              try {
+                const createRes = await fetch('/api/signer-create', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ fid: userFid })
+                });
+
+                if (!createRes.ok) {
+                  throw new Error('Failed to create signer');
+                }
+
+                const createData = await createRes.json();
+                console.log('Signer create response:', createData);
+
+                if (createData.already_approved) {
+                  signerApproved = true;
+                } else if (createData.approval_url) {
+                  // Open approval URL - this will open Warpcast for user to approve
+                  console.log('Opening signer approval URL:', createData.approval_url);
+                  sdk.actions.openUrl(createData.approval_url);
+
+                  // Poll for approval (max 60 seconds)
+                  sdk.actions.setPrimaryButton({
+                    text: 'Waiting for approval...',
+                    loading: true,
+                    disabled: true
+                  });
+
+                  let pollAttempts = 0;
+                  const maxPollAttempts = 30;
+
+                  while (!signerApproved && pollAttempts < maxPollAttempts) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    pollAttempts++;
+
+                    try {
+                      const pollRes = await fetch(`/api/signer-status?fid=${userFid}`);
+                      if (pollRes.ok) {
+                        const pollData = await pollRes.json();
+                        if (pollData.approved) {
+                          signerApproved = true;
+                          console.log('Signer approved!');
+                          break;
+                        }
+                      }
+                    } catch (e) {
+                      console.log('Poll attempt failed:', e);
+                    }
+                  }
+
+                  if (!signerApproved) {
+                    throw new Error('Signer approval timed out. Please try again.');
+                  }
+                }
+              } catch (signerError) {
+                console.error('Signer creation/approval failed:', signerError);
+                sdk.actions.setPrimaryButton({
+                  text: 'Authorization Failed',
+                  loading: false,
+                  disabled: false
+                });
+                throw signerError;
+              }
+            }
+
+            console.log('Signer approved, proceeding with entry...');
+            sdk.actions.setPrimaryButton({
+              text: 'Processing...',
+              loading: true,
+              disabled: true
+            });
+
             // Fetch verified addresses from Neynar API
             console.log('Fetching verified addresses from Neynar API...');
             const NEYNAR_API_KEY = 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D';
