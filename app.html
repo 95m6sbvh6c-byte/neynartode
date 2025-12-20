@@ -247,17 +247,18 @@
               const userFid = window.FarcasterContext?.user?.fid;
               if (!userFid) throw new Error('No FID available');
 
-              // Fetch contest details first to get cast hash (required by API)
+              // Fetch contest details first to get cast hash and other data (required by API)
               let castHash = null;
+              let contestDetails = null;
               try {
                 const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
                 if (contestRes.ok) {
                   const contestData = await contestRes.json();
-                  const contest = contestData.contests?.find(c =>
+                  contestDetails = contestData.contests?.find(c =>
                     c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
                   );
-                  if (contest?.castId) {
-                    castHash = contest.castId.split('|')[0];
+                  if (contestDetails?.castId) {
+                    castHash = contestDetails.castId.split('|')[0];
                     console.log('Got cast hash for entry:', castHash);
                   }
                 }
@@ -295,6 +296,50 @@
 
               // Show celebration animation
               showCelebration(castHash);
+
+              // Auto-cast: Open compose modal with entry announcement
+              if (contestDetails) {
+                try {
+                  const now = new Date();
+                  const endTime = new Date(contestDetails.endTime * 1000);
+                  const diffMs = endTime - now;
+                  const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
+                  const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                  let timeLeftText;
+                  if (hoursLeft > 0 && minutesLeft > 0) {
+                    timeLeftText = `${hoursLeft}h ${minutesLeft}m`;
+                  } else if (hoursLeft > 0) {
+                    timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
+                  } else {
+                    timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+                  }
+
+                  const isNft = contestDetails.isNft || false;
+                  const prizeText = isNft ? (contestDetails.nftName || 'an NFT') : (contestDetails.prize || 'tokens');
+                  const hostUsername = contestDetails.hostUser?.username || '';
+                  const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
+                  const nftImage = contestDetails.nftImage || '';
+
+                  const announcementText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeftText} remaining!
+
+Go check this out!! 👇
+https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
+
+                  const embeds = [];
+                  if (isNft && nftImage) {
+                    embeds.push(nftImage);
+                  }
+
+                  console.log('Opening compose modal for primary button entry announcement');
+                  await sdk.actions.composeCast({
+                    text: announcementText,
+                    embeds: embeds.length > 0 ? embeds : undefined
+                  });
+                } catch (castError) {
+                  console.log('Auto-cast compose failed (non-critical):', castError.message);
+                }
+              }
 
             } else {
               // Non-holder: Send wash trade transaction via SDK ethereum provider
@@ -344,19 +389,20 @@
                 disabled: true
               });
 
-              // Fetch contest details to get cast hash for celebration
+              // Fetch contest details to get cast hash and other data for celebration + auto-cast
               let castHash = null;
+              let contestDetails = null;
               try {
                 const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
                 if (contestRes.ok) {
                   const contestData = await contestRes.json();
                   // Find this contest by ID (check both V1 and V2)
-                  const contest = contestData.contests?.find(c =>
+                  contestDetails = contestData.contests?.find(c =>
                     c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
                   );
-                  if (contest?.castId) {
+                  if (contestDetails?.castId) {
                     // castId format: "0xhash|R1L0P1" - extract just the hash
-                    castHash = contest.castId.split('|')[0];
+                    castHash = contestDetails.castId.split('|')[0];
                     console.log('Got cast hash for celebration:', castHash);
                   }
                 }
@@ -385,6 +431,50 @@
                 }).catch(e => console.log('Entry record failed:', e));
               } else {
                 console.log('Could not record entry - missing userFid or castHash');
+              }
+
+              // Auto-cast: Open compose modal with entry announcement
+              if (contestDetails) {
+                try {
+                  const now = new Date();
+                  const endTime = new Date(contestDetails.endTime * 1000);
+                  const diffMs = endTime - now;
+                  const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
+                  const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                  let timeLeftText;
+                  if (hoursLeft > 0 && minutesLeft > 0) {
+                    timeLeftText = `${hoursLeft}h ${minutesLeft}m`;
+                  } else if (hoursLeft > 0) {
+                    timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
+                  } else {
+                    timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+                  }
+
+                  const isNft = contestDetails.isNft || false;
+                  const prizeText = isNft ? (contestDetails.nftName || 'an NFT') : (contestDetails.prize || 'tokens');
+                  const hostUsername = contestDetails.hostUser?.username || '';
+                  const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
+                  const nftImage = contestDetails.nftImage || '';
+
+                  const announcementText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeftText} remaining!
+
+Go check this out!! 👇
+https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
+
+                  const embeds = [];
+                  if (isNft && nftImage) {
+                    embeds.push(nftImage);
+                  }
+
+                  console.log('Opening compose modal for non-holder entry announcement');
+                  await sdk.actions.composeCast({
+                    text: announcementText,
+                    embeds: embeds.length > 0 ? embeds : undefined
+                  });
+                } catch (castError) {
+                  console.log('Auto-cast compose failed (non-critical):', castError.message);
+                }
               }
             }
 
@@ -1458,6 +1548,15 @@
       const castId = button.dataset.castId;
       const isV2 = button.dataset.isV2 === 'true';
 
+      // Extract additional data for auto-cast announcement
+      const prize = decodeURIComponent(button.dataset.prize || '');
+      const hoursLeft = parseInt(button.dataset.hours) || 0;
+      const minutesLeft = parseInt(button.dataset.minutes) || 0;
+      const hostUsername = decodeURIComponent(button.dataset.host || '');
+      const isNft = button.dataset.isNft === 'true';
+      const nftImage = decodeURIComponent(button.dataset.nftImage || '');
+      const nftName = decodeURIComponent(button.dataset.nftName || '');
+
       if (!state.userFid) {
         showToast('Please connect your Farcaster account first', 'warning');
         return;
@@ -1640,6 +1739,48 @@
           button.style.cursor = 'default';
 
           showCelebration(castHash);
+
+          // Auto-cast: Open compose modal with entry announcement
+          try {
+            // Build time remaining text
+            let timeLeftText;
+            if (hoursLeft > 0 && minutesLeft > 0) {
+              timeLeftText = `${hoursLeft}h ${minutesLeft}m`;
+            } else if (hoursLeft > 0) {
+              timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
+            } else {
+              timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+            }
+
+            // Build prize text
+            const prizeText = isNft ? `${nftName || 'an NFT'}` : prize;
+
+            // Build announcement text
+            const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
+            const announcementText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeftText} remaining!
+
+Go check this out!! 👇
+https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
+
+            // Build embeds - add NFT image if available
+            const embeds = [];
+            if (isNft && nftImage) {
+              embeds.push(nftImage);
+            }
+
+            console.log('Opening compose modal for entry announcement');
+
+            const sdk = window.FarcasterSDK;
+            if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
+              await sdk.actions.composeCast({
+                text: announcementText,
+                embeds: embeds.length > 0 ? embeds : undefined
+              });
+            }
+          } catch (castError) {
+            console.log('Auto-cast compose failed (non-critical):', castError.message);
+          }
+
           render();
 
         } else {
@@ -4824,6 +4965,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       data-contest-id="${contest.contestId}"
                       data-cast-id="${contest.castId || ''}"
                       data-is-v2="${contest.isV2 || false}"
+                      data-prize="${encodeURIComponent(contest.prize)}"
+                      data-hours="${hoursLeft}"
+                      data-minutes="${minutesLeft}"
+                      data-host="${encodeURIComponent(contest.hostUser?.username || '')}"
+                      data-is-nft="${contest.isNft || false}"
+                      data-nft-image="${encodeURIComponent(contest.nftImage || '')}"
+                      data-nft-name="${encodeURIComponent(contest.nftName || '')}"
                       onclick="enterRaffle(this)"
                       class="btn-primary text-sm py-2 px-4 enter-raffle-btn"
                       id="enter-btn-${contest.contestId}${contest.isV2 ? '-v2' : ''}"
