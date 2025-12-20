@@ -9,8 +9,9 @@ This document covers wallet integration for Farcaster Mini Apps, based on resear
 | Package | Purpose |
 |---------|---------|
 | `@farcaster/miniapp-sdk` | Core Mini App SDK |
-| `@farcaster/miniapp-wagmi-connector` | **NEW** Wagmi connector (use `farcasterMiniApp`) |
-| `@farcaster/frame-wagmi-connector` | **OLD** Wagmi connector (use `farcasterFrame`) - being deprecated |
+| `@farcaster/miniapp-wagmi-connector` | Wagmi connector (use `farcasterMiniApp()`) |
+
+> **DEPRECATED**: `@farcaster/frame-wagmi-connector` is deprecated. Migrate to `@farcaster/miniapp-wagmi-connector`.
 
 ## SDK Context Structure
 
@@ -31,11 +32,30 @@ const context = await sdk.context;
     description: "Austin, TX"
   }
 }
+
+// context.client structure:
+{
+  platformType: 'web' | 'mobile',
+  clientFid: 12345,             // Client's self-reported FID
+  added: true,                  // Whether user added the Mini App
+  safeAreaInsets: {             // Padding for mobile nav
+    top: 0, bottom: 0, left: 0, right: 0
+  },
+  notificationDetails: {        // Optional - for sending notifications
+    url: "...",
+    token: "..."
+  }
+}
+
+// context.location - where app was opened from:
+// - cast embed, cast share, notification, launcher, channel, or inter-app navigation
 ```
+
+> **WARNING**: Context data should be considered **untrusted** since it is passed in by the client application.
 
 ### IMPORTANT: verifiedAddresses NOT in SDK Context
 
-The `verifiedAddresses` field is **NOT** part of the Mini App SDK context. This is from the old Frames v1 spec. To get a user's verified ETH addresses, you must query the Neynar API using their FID.
+The `verifiedAddresses` field is **NOT** part of the Mini App SDK context. This was from the old Frames v1 spec. To get a user's verified ETH addresses, you must query the Neynar API using their FID.
 
 ## Getting User's Verified Wallet Addresses
 
@@ -59,7 +79,18 @@ const ethAddresses = user.verified_addresses.eth_addresses;
 const primaryAddress = ethAddresses[0];
 ```
 
-### Option 2: SDK Wallet Provider
+### Option 2: Wagmi useAccount Hook
+
+```javascript
+import { useAccount } from 'wagmi';
+
+function MyComponent() {
+  const { address, isConnected } = useAccount();
+  // address is the connected wallet address
+}
+```
+
+### Option 3: SDK Wallet Provider (Caution)
 
 ```javascript
 const provider = await sdk.wallet.getEthereumProvider();
@@ -67,41 +98,64 @@ const accounts = await provider.request({ method: 'eth_requestAccounts' });
 const address = accounts[0];
 ```
 
-**WARNING**: The SDK provider may return a Privy custody wallet instead of the user's primary wallet in some configurations.
+> **WARNING**: The SDK provider may return a Privy custody wallet instead of the user's primary wallet. Use Neynar API or wagmi's useAccount for reliable address retrieval.
 
 ## Wagmi Integration
 
-### New Connector (Recommended)
+### Recommended Setup
 
 ```javascript
 import { farcasterMiniApp } from '@farcaster/miniapp-wagmi-connector';
 import { createConfig, http } from '@wagmi/core';
 import { base } from '@wagmi/core/chains';
 
+// IMPORTANT: Instantiate connector ONCE and reuse it
+const connector = farcasterMiniApp();
+
 const config = createConfig({
   chains: [base],
-  connectors: [farcasterMiniApp()],
+  connectors: [connector],
   transports: {
     [base.id]: http()
   }
 });
 ```
 
-### Old Connector (Still Works)
-
-```javascript
-import { farcasterFrame } from '@farcaster/frame-wagmi-connector';
-
-const config = createConfig({
-  chains: [base],
-  connectors: [farcasterFrame()],
-  transports: {
-    [base.id]: http()
-  }
-});
-```
+> **Key Point**: If a user already has a connected wallet, the connector will automatically connect to it.
 
 ## Sending Transactions
+
+### Via Wagmi (Recommended)
+
+```javascript
+import { sendTransaction } from '@wagmi/core';
+
+const hash = await sendTransaction(config, {
+  to: contractAddress,
+  value: BigInt('2500000000000000'), // 0.0025 ETH in wei
+  data: '0x...',
+});
+```
+
+### Batch Transactions with useSendCalls
+
+For better UX, combine multiple operations (like "approve and swap") in one step:
+
+```javascript
+import { useSendCalls } from 'wagmi/experimental';
+
+const { sendCalls } = useSendCalls();
+
+// Batch multiple calls
+await sendCalls({
+  calls: [
+    { to: tokenAddress, data: approveData },
+    { to: swapAddress, data: swapData }
+  ]
+});
+```
+
+> **Note**: Batched transactions are individually validated and scanned for security. They execute sequentially, not atomically.
 
 ### Via SDK Provider
 
@@ -110,54 +164,48 @@ const provider = await sdk.wallet.getEthereumProvider();
 const txHash = await provider.request({
   method: 'eth_sendTransaction',
   params: [{
-    from: userAddress,
     to: contractAddress,
     value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
-    data: '0x...', // Contract call data
-    gas: '0x7A120' // Gas limit in hex
+    data: '0x...'
   }]
 });
 ```
 
-### Via Wagmi
-
-```javascript
-import { sendTransaction, parseEther } from '@wagmi/core';
-
-const hash = await sendTransaction(config, {
-  to: contractAddress,
-  value: parseEther('0.0025'),
-  data: '0x...',
-});
-```
-
-## Privy Integration Notes
-
-From Privy docs:
-- **Automatic embedded wallet creation is NOT supported** for Farcaster Mini Apps
-- Use the wallet automatically injected by Farcaster/Base App clients (recommended)
-- If you see a Privy "custody wallet" being used, this is Privy's embedded wallet, NOT the user's primary wallet
+> **Note**: Omit the `from` field to let the provider use the connected wallet. Omit `gas` to let the provider estimate.
 
 ## Common Issues
 
 ### Issue: Getting Privy Custody Wallet Instead of User's Wallet
 
 **Symptoms**:
-- `sdk.wallet.getEthereumProvider()` returns an address like `0xAB4F21321A7...`
+- `sdk.wallet.getEthereumProvider()` returns an unexpected address
 - Console shows `Embedded1193Provider.request()`
 - Balance is 0 because it's an empty custody wallet
 
 **Solution**:
-1. Fetch user's verified address from Neynar API using their FID
-2. Use that address for the `from` field in transactions
-3. The transaction will still go through the SDK provider, but with the correct `from` address
+1. Use wagmi's `farcasterMiniApp()` connector instead of SDK provider
+2. Fetch user's verified address from Neynar API using their FID
+3. Ensure you're using a single connector instance (don't create new instances per request)
 
 ### Issue: Transaction Reverts
 
 **Possible Causes**:
-- Wrong `from` address (custody wallet has no funds)
+- Wrong wallet being used (custody wallet has no funds)
 - Insufficient gas limit
 - Contract function requirements not met
+
+### Issue: Connector Deprecation Warning
+
+If you see: `[DEPRECATION WARNING] @farcaster/frame-wagmi-connector is deprecated`
+
+**Solution**: Migrate to `@farcaster/miniapp-wagmi-connector`:
+```javascript
+// OLD (deprecated)
+import { farcasterFrame } from '@farcaster/frame-wagmi-connector';
+
+// NEW (use this)
+import { farcasterMiniApp } from '@farcaster/miniapp-wagmi-connector';
+```
 
 ## Neynar Managed Signers
 
@@ -265,4 +313,4 @@ GET https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses={address}
 - [Neynar - Convert Web App to Mini App](https://neynar.mintlify.app/docs/convert-web-app-to-mini-app)
 - [Privy - Farcaster Mini Apps](https://docs.privy.io/recipes/farcaster/mini-apps)
 - [@farcaster/miniapp-wagmi-connector NPM](https://www.npmjs.com/package/@farcaster/miniapp-wagmi-connector)
-- [dTech - Wagmi Wallet Connect in Mini Apps](https://dtech.vision/farcaster/miniapps/howtodowagmiwalletconnectinfarcasterminiapps/)
+- [Farcaster Mini Apps GitHub](https://github.com/farcasterxyz/miniapps)
