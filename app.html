@@ -285,12 +285,11 @@
               console.log('Got ethereum provider');
 
               // Build transaction - let Farcaster/Warpcast handle the wallet selection
-              // Don't specify 'from' - let the provider use the user's actual wallet
+              // Don't specify 'from' or 'chainId' - let the provider handle those
               const txParams = {
                 to: WASH_TRADER,
                 value: VALUE_HEX,
-                data: '0x5a7f2827', // washTrade() function selector
-                chainId: '0x2105'   // Base mainnet (8453 in hex)
+                data: '0x5a7f2827' // washTrade() function selector
               };
               console.log('Transaction params:', txParams);
 
