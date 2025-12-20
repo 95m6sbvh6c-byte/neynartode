@@ -52,8 +52,19 @@ module.exports = async (req, res) => {
       const ids = contestIds.split(',').map(id => id.trim());
 
       // Fetch all entries in parallel
+      // For V2 contests (v2-{id}), also check the legacy key format ({id}) for backwards compatibility
       const entryPromises = ids.map(async (contestId) => {
-        const entry = await kv.get(`entry:${contestId}:${fid}`);
+        let entry = await kv.get(`entry:${contestId}:${fid}`);
+
+        // If not found and this is a V2 contest key (v2-{id}), try the legacy format
+        if (!entry && contestId.startsWith('v2-')) {
+          const legacyId = contestId.replace('v2-', '');
+          entry = await kv.get(`entry:${legacyId}:${fid}`);
+          if (entry) {
+            console.log(`Found legacy entry for ${contestId} using key entry:${legacyId}:${fid}`);
+          }
+        }
+
         return { contestId, entry };
       });
 
