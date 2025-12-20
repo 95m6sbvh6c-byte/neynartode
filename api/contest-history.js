@@ -636,8 +636,8 @@ module.exports = async (req, res) => {
       try {
         const { kv } = require('@vercel/kv');
         const participantPromises = limitedContests.map(async (contest) => {
-          // Use contestId for lookup - handles both V1 and V2 since we store by contestId
-          const contestKey = contest.isV2 ? `v2-${contest.contestId}` : contest.contestId.toString();
+          // Use plain contestId for lookup - enter-contest stores without v2- prefix
+          const contestKey = contest.contestId.toString();
           const count = await kv.scard(`contest_entries:${contestKey}`).catch(() => 0);
           return { contestId: contest.contestId, isV2: contest.isV2, count };
         });
