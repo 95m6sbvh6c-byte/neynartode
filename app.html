@@ -1493,7 +1493,23 @@ https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
 
     // Load which contests user has entered
     async function loadContestEntries() {
-      if (!state.userFid) return;
+      // Get FID from state or Farcaster context
+      let fid = state.userFid || window.FarcasterContext?.user?.fid;
+      if (!fid) return;
+
+      // Sync FID to state if not already set
+      if (!state.userFid && fid) {
+        state.userFid = fid;
+        const user = window.FarcasterContext?.user;
+        if (user) {
+          state.userProfile = {
+            fid: user.fid,
+            username: user.username,
+            displayName: user.displayName,
+            pfpUrl: user.pfp?.url
+          };
+        }
+      }
 
       // Use proper entry keys - v2-{id} for V2 contests, {id} for V1
       const contestIds = (state.upcomingContests || []).map(c =>
@@ -1502,7 +1518,7 @@ https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
       if (!contestIds) return;
 
       try {
-        const response = await fetch(`/api/check-entries?fid=${state.userFid}&contestIds=${contestIds}`);
+        const response = await fetch(`/api/check-entries?fid=${fid}&contestIds=${contestIds}`);
         if (response.ok) {
           const data = await response.json();
           state.contestEntries = data.entries || {};
