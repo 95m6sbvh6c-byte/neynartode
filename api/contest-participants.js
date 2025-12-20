@@ -12,8 +12,8 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  // Disable cache for debugging
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  // Cache for 2 minutes
+  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -58,10 +58,6 @@ module.exports = async (req, res) => {
       v2Fids = Array.isArray(v2Fids) ? v2Fids : [];
       legacyFids = Array.isArray(legacyFids) ? legacyFids : [];
 
-      console.log(`Contest ${contestId} (V2): checking keys:`, { v2Key, legacyKey });
-      console.log(`  v2-key (${v2Key}) has ${v2Fids.length} entries:`, v2Fids.slice(0, 5));
-      console.log(`  legacy-key (${legacyKey}) has ${legacyFids.length} entries:`, legacyFids.slice(0, 5));
-
       // Combine and dedupe
       const allFids = new Set([...v2Fids, ...legacyFids]);
       entryFids = Array.from(allFids);
@@ -69,8 +65,6 @@ module.exports = async (req, res) => {
       let fids = await kv.smembers(`contest_entries:${contestId}`);
       entryFids = Array.isArray(fids) ? fids : [];
     }
-
-    console.log(`Contest ${contestId}: Total ${entryFids.length} participants`);
 
     if (!entryFids || entryFids.length === 0) {
       return res.status(200).json({ participants: [], count: 0 });
