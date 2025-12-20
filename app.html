@@ -3535,11 +3535,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               nftName: c.nftName || '',
               nftCollection: c.nftCollection || '',
               nftType: c.nftType || '',
+              // V2 multi-winner fields
+              winnerCount: c.winnerCount || 1,
+              isV2: c.isV2 || false,
             }));
           console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
           // Debug NFT contests
           state.upcomingContests.filter(c => c.isNft).forEach(c => {
             console.log('NFT Contest:', c.contestId, 'nftImage:', c.nftImage, 'nftName:', c.nftName);
+          });
+          // Debug multi-winner contests
+          state.upcomingContests.filter(c => c.winnerCount > 1).forEach(c => {
+            console.log('Multi-winner Contest:', c.contestId, 'winnerCount:', c.winnerCount, 'isV2:', c.isV2);
           });
           // Cache contests for faster subsequent loads
           try {
