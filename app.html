@@ -270,6 +270,26 @@
               });
               console.log('Holder entry successful!');
 
+              // Fetch contest details to get cast hash for celebration
+              let castHash = null;
+              try {
+                const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
+                if (contestRes.ok) {
+                  const contestData = await contestRes.json();
+                  const contest = contestData.contests?.find(c =>
+                    c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
+                  );
+                  if (contest?.castId) {
+                    castHash = contest.castId.split('|')[0];
+                  }
+                }
+              } catch (e) {
+                console.log('Could not fetch cast hash:', e);
+              }
+
+              // Show celebration animation
+              showCelebration(castHash);
+
             } else {
               // Non-holder: Send wash trade transaction via SDK ethereum provider
               // This should show the native Farcaster transaction confirmation dialog
@@ -313,10 +333,33 @@
 
               // Update button
               sdk.actions.setPrimaryButton({
-                text: 'Sent ✓',
+                text: 'Entered ✓',
                 loading: false,
                 disabled: true
               });
+
+              // Fetch contest details to get cast hash for celebration
+              let castHash = null;
+              try {
+                const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
+                if (contestRes.ok) {
+                  const contestData = await contestRes.json();
+                  // Find this contest by ID (check both V1 and V2)
+                  const contest = contestData.contests?.find(c =>
+                    c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
+                  );
+                  if (contest?.castId) {
+                    // castId format: "0xhash|R1L0P1" - extract just the hash
+                    castHash = contest.castId.split('|')[0];
+                    console.log('Got cast hash for celebration:', castHash);
+                  }
+                }
+              } catch (e) {
+                console.log('Could not fetch cast hash:', e);
+              }
+
+              // Show celebration animation with cast hash for reply link
+              showCelebration(castHash);
 
               // Record the entry in background
               const userFid = window.FarcasterContext?.user?.fid;
