@@ -1937,6 +1937,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       durationHours: '1',
       durationMinutes: '0',
       upcomingContests: [], // Array of scheduled contests
+      contestParticipants: {}, // Map of contestId -> [{ fid, pfpUrl, username }]
       contestsLoading: true, // Loading state for contests
       headerAnimated: false, // Track if header has been animated
       prizeType: 'token', // 'token' or 'nft'
@@ -3492,6 +3493,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
           // Load user's contest entries
           loadContestEntries();
+          // Load participant PFPs for floating avatars (don't block render)
+          loadContestParticipants();
         }
         state.contestsLoading = false;
       } catch (e) {
@@ -3502,6 +3505,32 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
       // Re-render to show active contests
       render();
+    }
+
+    // Fetch participant PFPs for all active contests (for floating avatars)
+    async function loadContestParticipants() {
+      const activeContests = state.upcomingContests.filter(c => new Date(c.endTime * 1000) > new Date());
+      if (activeContests.length === 0) return;
+
+      // Fetch participants for each contest in parallel
+      const fetchPromises = activeContests.map(async (contest) => {
+        try {
+          const response = await fetch(`/api/contest-participants?contestId=${contest.contestId}`);
+          if (!response.ok) return;
+          const data = await response.json();
+          if (data.participants && data.participants.length > 0) {
+            state.contestParticipants[contest.contestId] = data.participants;
+          }
+        } catch (e) {
+          console.log(`Could not fetch participants for contest ${contest.contestId}:`, e.message);
+        }
+      });
+
+      await Promise.all(fetchPromises);
+      // Re-render to show PFPs
+      if (Object.keys(state.contestParticipants).length > 0) {
+        render();
+      }
     }
 
     // Fetch vote scores from VotingManager contract and update leaderboard
@@ -4548,10 +4577,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       `;
     }
 
-    // Generate stickers that fill from top-right corner, down and left
+    // Generate floating avatars (PFPs) or stickers that fill from top-right corner
     function generateEntryStickers(participantCount, contestId) {
       const count = participantCount || 0;
       if (count === 0) return '';
+
+      // Get participant PFPs if available
+      const participants = state.contestParticipants[contestId] || [];
+      const hasPfps = participants.length > 0;
 
       // Use contestId as seed for consistent random positions
       const seededRandom = (seed, i) => {
@@ -4559,47 +4592,59 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         return x - Math.floor(x);
       };
 
-      let stickers = '';
-      // Show up to 30 stickers (more entries = more stickers filling up)
+      let elements = '';
+      // Show up to 30 avatars/stickers (more entries = more filling up)
       const displayCount = Math.min(count, 30);
 
       for (let i = 0; i < displayCount; i++) {
         const seed = contestId * 100 + i;
 
         // Stack from top-right, spreading left and down as more entries come in
-        const rowSize = 5; // stickers per row
+        const rowSize = 5; // items per row
         const row = Math.floor(i / rowSize);
         const col = i % rowSize;
 
         // Start from right (low %), go left (higher %) as col increases
         // Start from top (low %), go down (higher %) as row increases
-        const baseRight = 2 + col * 16 + (seededRandom(seed, 1) * 10 - 5); // spread from right to left
-        const baseTop = 8 + row * 20 + (seededRandom(seed, 2) * 10 - 5); // spread from top to bottom
+        const baseRight = 2 + col * 16 + (seededRandom(seed, 1) * 10 - 5);
+        const baseTop = 8 + row * 20 + (seededRandom(seed, 2) * 10 - 5);
 
-        const size = 22 + seededRandom(seed, 3) * 10; // 22-32px
-        const rotation = -25 + seededRandom(seed, 4) * 50; // -25 to 25 degrees
-        const opacity = 0.35 + seededRandom(seed, 5) * 0.25; // 0.35-0.6 (more visible)
-        const duration = 3 + seededRandom(seed, 6) * 4; // 3-7 seconds
-        const delay = seededRandom(seed, 7) * 2; // 0-2 second delay
+        const size = 26 + seededRandom(seed, 3) * 8; // 26-34px for PFPs
+        const rotation = hasPfps ? 0 : (-25 + seededRandom(seed, 4) * 50); // No rotation for PFPs
+        const opacity = hasPfps ? (0.7 + seededRandom(seed, 5) * 0.3) : (0.35 + seededRandom(seed, 5) * 0.25);
+        const duration = 3 + seededRandom(seed, 6) * 4;
+        const delay = seededRandom(seed, 7) * 2;
 
-        stickers += `<img
-          src="/neynartode-sticker.png"
+        // Use PFP if available, otherwise fallback to sticker
+        const participant = participants[i];
+        const imgSrc = participant?.pfpUrl || '/neynartode-sticker.png';
+        const borderRadius = hasPfps && participant?.pfpUrl ? 'border-radius: 50%;' : '';
+        const border = hasPfps && participant?.pfpUrl ? 'border: 2px solid rgba(139, 92, 246, 0.5); box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);' : '';
+        const title = participant?.username ? `title="@${participant.username}"` : '';
+
+        elements += `<img
+          src="${imgSrc}"
           alt=""
+          ${title}
           class="absolute pointer-events-none sticker-float"
           style="
             right: ${baseRight}%;
             top: ${baseTop}%;
             width: ${size}px;
             height: ${size}px;
+            ${borderRadius}
+            ${border}
             --rot: ${rotation}deg;
             --duration: ${duration}s;
             animation-delay: ${delay}s;
             opacity: ${opacity};
             z-index: ${i};
+            object-fit: cover;
           "
+          onerror="this.src='/neynartode-sticker.png'; this.style.borderRadius='0'; this.style.border='none';"
         />`;
       }
-      return stickers;
+      return elements;
     }
 
     function renderActiveContests() {
