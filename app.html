@@ -907,6 +907,25 @@
     .sticker-float {
       animation: stickerFloat var(--duration) ease-in-out infinite;
     }
+
+    /* Horizontal drift animations for PFP rows */
+    @keyframes driftRight {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(6px); }
+    }
+
+    @keyframes driftLeft {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(-6px); }
+    }
+
+    .drift-right {
+      animation: driftRight var(--drift-duration) ease-in-out infinite;
+    }
+
+    .drift-left {
+      animation: driftLeft var(--drift-duration) ease-in-out infinite;
+    }
   </style>
 </head>
 <body>
@@ -4638,7 +4657,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           />`;
         });
 
-        rowsHtml += `<div class="flex items-center justify-end" style="margin-top: ${rowIndex === 0 ? '0' : rowGap + 'px'};">${rowPfps}</div>`;
+        // Odd rows (1, 3) drift right, even rows (2) drift left
+        // rowIndex is 0-based, so index 0 = row 1 (odd), index 1 = row 2 (even)
+        const driftClass = rowIndex % 2 === 0 ? 'drift-right' : 'drift-left';
+        rowsHtml += `<div class="flex items-center justify-end ${driftClass}" style="margin-top: ${rowIndex === 0 ? '0' : rowGap + 'px'}; --drift-duration: ${3 + rowIndex * 0.5}s;">${rowPfps}</div>`;
       });
 
       // Add "+X more" indicator if there are more participants
@@ -4647,17 +4669,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         rowsHtml += `<div class="text-xs text-[var(--text-muted)] text-right mt-1">+${remaining} more</div>`;
       }
 
-      // Animation duration based on contestId for variety
-      const duration = 4 + seededRandom(contestId, 1) * 3; // 4-7 seconds
-
-      // Wrap all rows in a container that floats as one unit
+      // Container for rows - each row animates independently
       return `<div
-        class="absolute flex flex-col items-end sticker-float"
+        class="absolute flex flex-col items-end"
         style="
           top: 6px;
           right: 6px;
-          --rot: 0deg;
-          --duration: ${duration}s;
           opacity: 0.95;
           z-index: 10;
         "
