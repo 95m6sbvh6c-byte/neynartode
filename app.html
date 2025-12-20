@@ -292,16 +292,18 @@
 
               // Use wagmi sendTransaction
               const wagmiSendTx = window.WagmiSendTransaction;
-              const wagmiParseEther = window.WagmiParseEther;
 
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
+              // 0.0025 ETH = 2500000000000000 wei
+              const VALUE_WEI = BigInt('2500000000000000');
 
               console.log('Sending wash trade via wagmi sendTransaction...');
               console.log('Verified address for reference:', from);
+              console.log('Value:', VALUE_WEI.toString(), 'wei');
 
               const txHash = await wagmiSendTx(config, {
                 to: WASH_TRADER,
-                value: wagmiParseEther('0.0025'),
+                value: VALUE_WEI,
                 data: '0x5a7f2827' // washTrade() selector
               });
               console.log('Wash trade tx sent:', txHash);
