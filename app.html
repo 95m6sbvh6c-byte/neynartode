@@ -277,8 +277,8 @@
               console.log('Verified address:', from);
 
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
-              // 0.0025 ETH = 2500000000000000 wei = 0x8E1BC9BF040000 hex
-              const VALUE_HEX = '0x8E1BC9BF040000';
+              // 0.0025 ETH = 2500000000000000 wei = 0x8e1bc9bf04000 hex (NOT 0x8E1BC9BF040000 - that's 10x too much!)
+              const VALUE_HEX = '0x8e1bc9bf04000';
 
               // Get SDK's ethereum provider
               const provider = await sdk.wallet.getEthereumProvider();
