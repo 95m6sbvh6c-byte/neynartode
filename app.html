@@ -277,13 +277,11 @@
 
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
 
-              // NOTE: Don't include 'from' - let the SDK provider use its connected wallet
-              // The 'from' address mismatch can cause simulation failures
+              // NOTE: Don't include 'from' or 'gas' - let the SDK provider handle them
               const tx = {
                 to: WASH_TRADER,
                 value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
-                data: '0x5a7f2827', // washTrade() selector
-                gas: '0x7A120' // 500000 gas
+                data: '0x5a7f2827' // washTrade() selector
               };
 
               console.log('Sending wash trade tx:', tx);
