@@ -270,25 +270,39 @@
               console.log('Holder entry successful!');
 
             } else {
-              // Non-holder: Send wash trade transaction via SDK provider
-              // Get provider from SDK (will prompt user to sign in their wallet app)
-              console.log('Getting SDK provider for transaction...');
-              const provider = await sdk.wallet.getEthereumProvider();
+              // Non-holder: Send wash trade transaction via wagmi (bypasses Privy)
+              console.log('Connecting with farcasterFrame for transaction...');
+
+              // Load wagmi if not loaded
+              if (!window.WagmiLoaded) {
+                await window.loadWagmi();
+              }
+
+              // Connect with farcasterFrame connector
+              const { farcasterFrame } = await import('https://esm.sh/@farcaster/frame-wagmi-connector');
+              const wagmiConnect = window.WagmiConnect;
+              const config = window.WagmiConfig;
+
+              try {
+                await wagmiConnect(config, { connector: farcasterFrame() });
+                console.log('Connected with farcasterFrame');
+              } catch (e) {
+                console.log('Connect error (may already be connected):', e.message);
+              }
+
+              // Use wagmi sendTransaction
+              const wagmiSendTx = window.WagmiSendTransaction;
+              const wagmiParseEther = window.WagmiParseEther;
 
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
 
-              // NOTE: Don't include 'from' or 'gas' - let the SDK provider handle them
-              const tx = {
-                to: WASH_TRADER,
-                value: '0x8E1BC9BF040000', // 0.0025 ETH in hex
-                data: '0x5a7f2827' // washTrade() selector
-              };
-
-              console.log('Sending wash trade tx:', tx);
+              console.log('Sending wash trade via wagmi sendTransaction...');
               console.log('Verified address for reference:', from);
-              const txHash = await provider.request({
-                method: 'eth_sendTransaction',
-                params: [tx]
+
+              const txHash = await wagmiSendTx(config, {
+                to: WASH_TRADER,
+                value: wagmiParseEther('0.0025'),
+                data: '0x5a7f2827' // washTrade() selector
               });
               console.log('Wash trade tx sent:', txHash);
 
