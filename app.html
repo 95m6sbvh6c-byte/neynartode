@@ -1688,33 +1688,68 @@
       const castId = button.dataset.castId || '';
       const isNft = button.dataset.isNft === 'true';
       const nftImage = decodeURIComponent(button.dataset.nftImage || '');
+      const winnerCount = parseInt(button.dataset.winnerCount) || 1;
+      const participantCount = parseInt(button.dataset.participantCount) || 0;
+      const isV2 = button.dataset.isV2 === 'true';
 
-      shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage);
+      shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage, winnerCount, participantCount, isV2);
     }
 
-    async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage) {
+    async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage, winnerCount = 1, participantCount = 0, isV2 = false) {
       // Different prize line for NFT vs token
       const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
+
+      // Winner count line (for multi-winner contests)
+      const winnersLine = winnerCount > 1 ? `👥 ${winnerCount} Winners!` : '';
+
+      // Participants line (if we have participant data)
+      const participantsLine = participantCount > 0 ? `🎟️ ${participantCount} entries so far` : '';
+
+      // Time remaining - format nicely
+      let timeLeftText;
+      if (hoursLeft > 0 && minutesLeft > 0) {
+        timeLeftText = `${hoursLeft}h ${minutesLeft}m left`;
+      } else if (hoursLeft > 0) {
+        timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''} left`;
+      } else {
+        timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''} left`;
+      }
 
       // Mini app URL - Warpcast handles these specially to show mini app card
       const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
 
-      // Share text with mini app link (Warpcast renders mini app URLs as cards)
-      const text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
+      // Build the share text with all info
+      let text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
 
 ${prizeLine}
-⏱️ ${hoursLeft}h ${minutesLeft}m left
+⏱️ ${timeLeftText}`;
 
-👇 Tap to enter!
-${miniAppUrl}`;
+      // Add optional lines
+      if (winnersLine) text += `\n${winnersLine}`;
+      if (participantsLine) text += `\n${participantsLine}`;
 
-      console.log('Sharing contest with mini app URL:', { contestId, isNft, miniAppUrl });
+      text += `\n\n👇 Tap to enter!\n${miniAppUrl}`;
+
+      console.log('Sharing contest with mini app URL:', { contestId, isNft, winnerCount, participantCount, miniAppUrl });
+
+      // Build embeds - quote the original cast, add NFT image if available
+      const embeds = [];
+      if (castId) {
+        const cleanCastHash = castId.split('|')[0]; // Strip encoded requirements
+        embeds.push(`https://warpcast.com/~/conversations/${cleanCastHash}`);
+      }
+      if (isNft && nftImage) {
+        embeds.push(nftImage);
+      }
 
       // Use SDK composeCast
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
         try {
-          await sdk.actions.composeCast({ text: text });
+          await sdk.actions.composeCast({
+            text: text,
+            embeds: embeds.length > 0 ? embeds : undefined
+          });
           return;
         } catch (e) {
           console.log('composeCast failed, falling back to URL:', e);
@@ -1722,7 +1757,10 @@ ${miniAppUrl}`;
       }
 
       // Fallback: Build Warpcast compose URL
-      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
+      let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
+      embeds.forEach(embed => {
+        warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
+      });
       window.open(warpcastUrl, '_blank');
     }
 
@@ -4140,7 +4178,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     function renderLaunchSuccess() {
-      const { contestId, castHash, txHash, txUrl } = state.launchSuccess;
+      const { contestId, txHash, txUrl, winnerCount, isNft, nftName, prizeAmount, prizeTicker } = state.launchSuccess;
+
+      // Build prize display
+      const prizeDisplay = isNft
+        ? `🖼️ ${nftName}`
+        : `🎁 ${prizeAmount || '?'} $${prizeTicker || 'ETH'}`;
+
+      // Multi-winner display
+      const winnersDisplay = (winnerCount && winnerCount > 1)
+        ? `<div>
+            <p class="text-xs text-[var(--text-muted)]">Winners</p>
+            <p class="text-sm text-[var(--accent-light)]">👥 ${winnerCount} Winners!</p>
+          </div>`
+        : '';
+
       return `
         <div class="min-h-screen flex items-center justify-center p-6" style="background: var(--bg-primary);">
           <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.15) 0%, transparent 60%);"></div>
@@ -4149,15 +4201,23 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--success-glow)] flex items-center justify-center text-3xl">
               🎉
             </div>
-            <h1 class="text-2xl font-bold text-[var(--success)] mb-6">
+            <h1 class="text-2xl font-bold text-[var(--success)] mb-2">
               Contest Launched!
             </h1>
+            <p class="text-sm text-[var(--text-secondary)] mb-6">
+              📣 Announcement ready to post on your profile
+            </p>
 
             <div class="bg-[var(--bg-secondary)] rounded-xl p-4 mb-6 text-left space-y-3">
               <div>
                 <p class="text-xs text-[var(--text-muted)]">Contest ID</p>
                 <p class="text-lg font-bold text-[var(--text-primary)]">#${contestId}</p>
               </div>
+              <div>
+                <p class="text-xs text-[var(--text-muted)]">Prize</p>
+                <p class="text-sm text-[var(--text-primary)]">${prizeDisplay}</p>
+              </div>
+              ${winnersDisplay}
               <div>
                 <p class="text-xs text-[var(--text-muted)]">Status</p>
                 <p class="text-sm text-[var(--success)]">Prize locked in escrow</p>
@@ -4175,17 +4235,17 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             </div>
 
             <button
-              id="castSuccessButton"
+              onclick="state.launchSuccess = null; state.currentView = 'active'; render();"
               class="btn-primary w-full py-3 mb-3"
             >
-              📣 Cast It
+              View Active Contests
             </button>
 
             <button
               onclick="state.launchSuccess = null; render();"
               class="btn-ghost w-full py-3"
             >
-              Return to App
+              Create Another Contest
             </button>
 
             <a
@@ -4778,6 +4838,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       data-cast-id="${contest.castId || ''}"
                       data-is-nft="${contest.isNft || false}"
                       data-nft-image="${encodeURIComponent(contest.nftImage || '')}"
+                      data-winner-count="${contest.winnerCount || 1}"
+                      data-participant-count="${contest.participantCount || 0}"
+                      data-is-v2="${contest.isV2 || false}"
                       onclick="openCastModalFromData(this)"
                       class="btn-secondary text-sm py-2 px-4"
                     >
@@ -5764,55 +5827,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         };
       }
 
-      // Cast success button - on contest creation confirmation page
-      const castSuccessButton = document.getElementById('castSuccessButton');
-      if (castSuccessButton && state.launchSuccess) {
-        castSuccessButton.onclick = () => {
-          const {
-            contestId,
-            castHash,
-            prizeAmount,
-            prizeTicker,
-            durationHours,
-            durationMinutes,
-            requireRecast,
-            requireLike,
-            requireReply,
-            volumeReq,
-            tokenTicker,
-            isNft,
-            nftImage,
-            nftName
-          } = state.launchSuccess;
-
-          // Get user tag
-          const hostUsername = state.userProfile?.username || '';
-
-          // Build prize string - use NFT name for NFT contests
-          const prize = isNft ? nftName : `${prizeAmount} $${prizeTicker}`;
-
-          // Build duration string
-          const hours = parseInt(durationHours) || 0;
-          const mins = parseInt(durationMinutes) || 0;
-
-          // Call shareContest directly (no modal needed)
-          shareContest(
-            contestId,
-            prize,
-            hours,
-            mins,
-            volumeReq || 0,
-            tokenTicker,
-            hostUsername,
-            requireRecast,
-            requireLike,
-            requireReply,
-            castHash,
-            isNft,
-            nftImage
-          );
-        };
-      }
+      // (Cast success button removed - compose modal opens automatically on contest creation)
 
       // View switching
       const viewCreate = document.getElementById('viewCreate');
@@ -7151,6 +7166,68 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           console.log('⚠️ Could not send notification:', e.message);
         }
 
+        // Prepare announcement cast text for compose modal
+        // Build announcement cast text
+        const isNftContest = state.prizeType === 'nft';
+        const hours = parseInt(state.durationHours) || 0;
+        const mins = parseInt(state.durationMinutes) || 0;
+        const durationText = hours > 0 && mins > 0 ? `${hours}h ${mins}m`
+          : hours > 0 ? `${hours} hour${hours > 1 ? 's' : ''}`
+          : `${mins} minute${mins > 1 ? 's' : ''}`;
+
+        // Prize line
+        let prizeLine;
+        if (isNftContest) {
+          prizeLine = `🖼️ Prize: ${state.prizeNftName || 'NFT'} #${state.prizeNftTokenId || '?'}`;
+        } else {
+          prizeLine = `🎁 Prize: ${state.prizeTokenAmount || '?'} $${state.prizeTokenTicker || 'ETH'}`;
+        }
+
+        // Winner count (V2 contests can have multiple winners)
+        const winnerCount = parseInt(state.winnerCount) || 1;
+        const winnersLine = winnerCount > 1 ? `👥 ${winnerCount} Winners!` : '';
+
+        // Build the cast text with mini app URL
+        const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
+
+        const announcementCastText = `🦎 I just launched Contest #${contestId} on $NEYNARTODES! 🔥
+
+${prizeLine}
+⏱️ Duration: ${durationText}${winnersLine ? '\n' + winnersLine : ''}
+
+👇 Enter now!
+${miniAppUrl}`;
+
+        // Build embeds - quote the original cast, add NFT image if available
+        const announcementEmbeds = [];
+        const cleanCastHash = castId.split('|')[0]; // Strip encoded requirements
+        announcementEmbeds.push(`https://warpcast.com/~/conversations/${cleanCastHash}`); // Quote original cast
+        if (isNftContest && state.prizeNftImage) {
+          announcementEmbeds.push(state.prizeNftImage);
+        }
+
+        // Open compose modal for host to review/edit before posting
+        console.log('📣 Opening compose modal for contest announcement...');
+        const sdk = window.FarcasterSDK;
+        if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
+          try {
+            await sdk.actions.composeCast({
+              text: announcementCastText,
+              embeds: announcementEmbeds
+            });
+            console.log('✅ Compose modal opened for announcement');
+          } catch (e) {
+            console.log('⚠️ Could not open compose modal:', e.message);
+            // Fallback: open Warpcast compose URL
+            const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(announcementCastText)}&embeds[]=${encodeURIComponent(announcementEmbeds[0])}`;
+            window.open(warpcastUrl, '_blank');
+          }
+        } else {
+          // Fallback: open Warpcast compose URL
+          const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(announcementCastText)}&embeds[]=${encodeURIComponent(announcementEmbeds[0])}`;
+          window.open(warpcastUrl, '_blank');
+        }
+
         // Add contest to state ONLY after successful on-chain tx
         contest.onChainId = contestId;
         contest.contestId = contestId !== 'Unknown' ? parseInt(contestId) : null;
@@ -7158,22 +7235,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.upcomingContests.sort((a, b) => a.startTime - b.startTime);
 
         // Show success screen (don't use alert - Warpcast blocks it)
-        // Save all contest details BEFORE form reset for Cast It
+        // Save all contest details BEFORE form reset
         state.launchSuccess = {
           contestId,
           castHash: castId,
           txHash: tx.hash,
           txUrl,
-          // Contest details for Cast It
+          // Contest details
           prizeAmount: state.prizeTokenAmount,
           prizeTicker: state.prizeTokenTicker || 'ETH',
           durationHours: state.durationHours || '24',
           durationMinutes: state.durationMinutes || '0',
-          requireRecast: parseInt(state.minRecasts) > 0,
-          requireLike: parseInt(state.minLikes) > 0,
-          requireReply: parseInt(state.minReplies) > 0,
-          volumeReq: state.minTradeVolume ? parseFloat(state.minTradeVolume) : 0,
-          tokenTicker: state.tokenTicker || 'NEYNARTODES',
+          winnerCount: parseInt(state.winnerCount) || 1,
           // NFT-specific fields
           isNft: state.prizeType === 'nft',
           nftImage: state.prizeType === 'nft' ? state.prizeNftImage : '',

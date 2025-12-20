@@ -288,10 +288,15 @@ GitHub Repo
 | `/api/check-eligibility` | Validate participant requirements |
 | `/api/connect` | Wallet connection |
 | `/api/contest-history` | Fetch contest data |
-| `/api/finalize-contest` | Contest finalization + VRF |
+| `/api/contest-participants` | Get participant PFPs for active contests |
+| `/api/enter-contest` | Record contest entry + auto like/recast |
+| `/api/finalize-contest` | Contest finalization + VRF (V1 + V2) |
 | `/api/get-user-nfts` | NFT picker (Alchemy API) |
 | `/api/image` | Frame OG image generator |
 | `/api/leaderboard` | Leaderboard rankings |
+| `/api/post-cast` | Post cast on behalf of user via signer |
+| `/api/signer-create` | Create Neynar managed signer for user |
+| `/api/signer-status` | Check signer approval status |
 | `/api/store?type=message` | Contest message storage |
 | `/api/store?type=price` | Token price capture |
 
@@ -355,6 +360,57 @@ app.html
 | Create | `renderCreateContest()` | Contest creation form |
 | History | `renderHistory()` | Past contests table |
 | Leaderboard | `renderLeaderboard()` | Host rankings + voting |
+
+---
+
+## Farcaster SDK Integration
+
+The app uses the Farcaster Mini App SDK for native integration with Warpcast.
+
+### SDK Initialization
+
+```javascript
+import sdk from '@farcaster/frame-sdk';
+await sdk.actions.ready(); // Signal app is ready
+const context = await sdk.context; // Get user context (FID, username, etc.)
+```
+
+### SDK Actions Used
+
+| Action | Purpose | Usage |
+|--------|---------|-------|
+| `sdk.actions.ready()` | Signal app is loaded and ready | Called on startup |
+| `sdk.context` | Get user's Farcaster context (FID, profile, etc.) | Authentication |
+| `sdk.actions.composeCast({ text, embeds })` | Open compose modal with pre-filled text | Contest announcements, sharing |
+| `sdk.actions.swapToken({ buyToken })` | Open token swap interface | Buy $NEYNARTODES |
+| `sdk.actions.addFrame()` | Request notification permissions | Enable push notifications |
+| `sdk.wallet.ethProvider` | Get Ethereum provider for transactions | Contest creation, voting |
+
+### Neynar Managed Signers
+
+For actions that require posting casts on behalf of users (auto like/recast on entry):
+
+```
+User App Flow:
+1. User connects → /api/signer-create creates managed signer
+2. User approves in Warpcast (QR code or deep link)
+3. /api/signer-status polls for approval
+4. Approved signer_uuid stored in KV (signer:{fid})
+5. Future actions use signer to post casts via Neynar API
+```
+
+### Posting Casts via Signer
+
+```javascript
+// POST /api/post-cast
+{
+  fid: 12345,
+  text: "Cast content...",
+  quoteCastHash: "0x...",  // Optional: quote a cast
+  embedUrls: ["https://..."],  // Optional: image/link embeds
+  replyTo: "0x..."  // Optional: reply to a cast
+}
+```
 
 ---
 
