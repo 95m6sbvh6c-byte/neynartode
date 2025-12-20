@@ -3,18 +3,23 @@
  *
  * This endpoint checks if a contest has ended and finalizes it by:
  * 1. Fetching social engagement data from Neynar
- * 2. Fetching trading volume data from GeckoTerminal (FREE API)
+ * 2. Fetching trading volume data (V1 only - V2 has no volume requirement)
  * 3. Filtering qualified participants
- * 4. Calling finalizeContest() on ContestEscrow (ETH or NFT)
+ * 4. Calling finalizeContest() on the appropriate contract
  *
- * Supports both ETH prize contests and NFT prize contests.
+ * Supports:
+ * - V1 ETH prize contests (ContestEscrow)
+ * - V1 NFT prize contests (NFTContestEscrow)
+ * - V2 contests (ContestManager - multi-winner, no volume requirements)
  *
  * Can be called manually or via Vercel Cron
  *
  * Usage:
- *   GET /api/finalize-contest?contestId=1           (ETH contest)
- *   GET /api/finalize-contest?contestId=1&nft=true  (NFT contest)
- *   POST /api/finalize-contest (for cron - checks all pending ETH + NFT contests)
+ *   GET /api/finalize-contest?contestId=1              (V1 ETH contest)
+ *   GET /api/finalize-contest?contestId=1&nft=true     (V1 NFT contest)
+ *   GET /api/finalize-contest?contestId=108&v2=true    (V2 contest - explicit)
+ *   GET /api/finalize-contest?contestId=108            (V2 contest - auto-detected if >= 105)
+ *   POST /api/finalize-contest (for cron - checks all pending V1 + V2 contests)
  */
 
 const { ethers } = require('ethers');
@@ -24,9 +29,14 @@ const { ethers } = require('ethers');
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
-  // Contract addresses
+  // V1 Contract addresses (legacy)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
+
+  // V2 Contract (multi-winner support) - deployed 2025-12-17
+  CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
+  V2_START_CONTEST_ID: 105, // V2 contests start at ID 105
+
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
 
   // RPC
@@ -54,6 +64,17 @@ const CONTEST_ESCROW_ABI = [
 
 const NFT_CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function finalizeContest(uint256 _contestId, address[] calldata _qualifiedAddresses) external returns (uint256 requestId)',
+  'function cancelContest(uint256 _contestId, string calldata _reason) external',
+  'function nextContestId() external view returns (uint256)',
+];
+
+// V2 ContestManager ABI - unified contest manager with multi-winner support
+const CONTEST_MANAGER_V2_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
+  'function getQualifiedEntries(uint256 _contestId) external view returns (address[] memory)',
+  'function getWinners(uint256 _contestId) external view returns (address[] memory)',
+  'function canFinalize(uint256 _contestId) external view returns (bool)',
   'function finalizeContest(uint256 _contestId, address[] calldata _qualifiedAddresses) external returns (uint256 requestId)',
   'function cancelContest(uint256 _contestId, string calldata _reason) external',
   'function nextContestId() external view returns (uint256)',
@@ -949,8 +970,319 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
 }
 
 /**
+ * Check and finalize a V2 ContestManager contest
+ * V2 contests are simpler - no volume/token requirements, just social engagement
+ * Supports multiple winners
+ * @param {number} contestId - Contest ID to finalize
+ * @returns {Object} Result of finalization attempt
+ */
+async function checkAndFinalizeV2Contest(contestId) {
+  const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
+
+  // Need private key to call finalizeContest (owner only)
+  if (!process.env.PRIVATE_KEY) {
+    return { success: false, error: 'PRIVATE_KEY not configured', isV2: true };
+  }
+
+  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+
+  const contestManager = new ethers.Contract(
+    CONFIG.CONTEST_MANAGER_V2,
+    CONTEST_MANAGER_V2_ABI,
+    wallet
+  );
+
+  // Get contest details
+  // V2: host, contestType, status, castId, endTime, prizeToken, prizeAmount, winnerCount, winners
+  const contest = await contestManager.getContest(contestId);
+  const [host, contestType, status, castId, endTime, prizeToken, prizeAmount, winnerCount, winners] = contest;
+
+  // Contest types: 0=ETH, 1=ERC20, 2=NFT
+  const contestTypeNames = ['ETH', 'ERC20', 'NFT'];
+  const typeName = contestTypeNames[Number(contestType)] || 'Unknown';
+
+  // Status: 0=Active, 1=PendingVRF, 2=Completed, 3=Cancelled
+  if (status !== 0n) {
+    return {
+      success: false,
+      error: `V2 Contest not active (status: ${status})`,
+      contestId,
+      isV2: true
+    };
+  }
+
+  // Check if contest has ended
+  const now = Math.floor(Date.now() / 1000);
+  if (now < Number(endTime)) {
+    return {
+      success: false,
+      error: `V2 Contest not ended yet (ends: ${new Date(Number(endTime) * 1000).toISOString()})`,
+      contestId,
+      isV2: true
+    };
+  }
+
+  console.log(`\n📋 Processing V2 ${typeName} Contest #${contestId}`);
+  console.log(`   Host: ${host}`);
+  console.log(`   Cast ID (raw): ${castId}`);
+  console.log(`   Winner Count: ${winnerCount}`);
+  console.log(`   Prize: ${ethers.formatEther(prizeAmount)} ${typeName === 'ETH' ? 'ETH' : 'tokens'}`);
+
+  // Extract actual cast hash (strip requirements if encoded)
+  const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+  console.log(`   Actual Cast Hash: ${actualCastHash}`);
+
+  // Get social engagement
+  console.log('\n🔍 Fetching social engagement from Neynar...');
+  const engagement = await getCastEngagement(actualCastHash);
+
+  if (engagement.error) {
+    console.log(`   ⚠️ Could not fetch cast: ${engagement.error}`);
+    return {
+      success: false,
+      error: `Cast not found: ${castId}`,
+      contestId,
+      isV2: true
+    };
+  }
+
+  // Parse social requirements from castId (format: "hash|R1L0P1")
+  let socialRequirements = {
+    requireRecast: true,
+    requireReply: true,
+    requireLike: false,
+  };
+
+  if (castId.includes('|')) {
+    const [, reqCode] = castId.split('|');
+    if (reqCode) {
+      const recastMatch = reqCode.match(/R(\d)/);
+      const likeMatch = reqCode.match(/L(\d)/);
+      const replyMatch = reqCode.match(/P(\d)/);
+
+      if (recastMatch) socialRequirements.requireRecast = recastMatch[1] !== '0';
+      if (likeMatch) socialRequirements.requireLike = likeMatch[1] !== '0';
+      if (replyMatch) socialRequirements.requireReply = replyMatch[1] !== '0';
+
+      console.log(`   Parsed requirements: R=${socialRequirements.requireRecast ? 1 : 0} L=${socialRequirements.requireLike ? 1 : 0} P=${socialRequirements.requireReply ? 1 : 0}`);
+    }
+  }
+
+  // Count unique users
+  const uniqueUsers = engagement.usersByFid ? engagement.usersByFid.size : 0;
+  console.log(`   Unique users engaged: ${uniqueUsers}`);
+
+  // Get cast author FID to exclude from winning
+  const castAuthorFid = engagement.castAuthorFid;
+
+  // Filter qualified users by FID (1 entry per user)
+  // V2 doesn't have volume requirements - all social qualifiers are eligible
+  const qualifiedUsers = [];
+
+  for (const [fid, userData] of engagement.usersByFid || new Map()) {
+    // Skip the contest host
+    if (fid === castAuthorFid) continue;
+
+    // Skip blocked FIDs
+    if (CONFIG.BLOCKED_FIDS.includes(fid)) {
+      console.log(`   Skipping blocked FID: ${fid} (@${userData.username})`);
+      continue;
+    }
+
+    // Check if user meets social requirements
+    let meetsRequirements = true;
+
+    if (socialRequirements.requireRecast && !userData.recasted) {
+      meetsRequirements = false;
+    }
+    if (socialRequirements.requireLike && !userData.liked) {
+      meetsRequirements = false;
+    }
+    if (socialRequirements.requireReply && !userData.replied) {
+      meetsRequirements = false;
+    }
+
+    // If no requirements set, any engagement qualifies
+    if (!socialRequirements.requireRecast && !socialRequirements.requireLike && !socialRequirements.requireReply) {
+      meetsRequirements = userData.liked || userData.recasted || userData.replied;
+    }
+
+    if (meetsRequirements && userData.addresses.length > 0) {
+      const prizeAddress = userData.primaryAddress || userData.addresses[0];
+      qualifiedUsers.push({
+        fid: userData.fid,
+        username: userData.username,
+        addresses: userData.addresses,
+        primaryAddress: prizeAddress
+      });
+    }
+  }
+
+  console.log(`\n✅ Qualified users: ${qualifiedUsers.length} (1 entry per FID)`);
+
+  if (qualifiedUsers.length === 0) {
+    // No qualified participants - auto-cancel and refund host
+    console.log('\n❌ No qualified participants - cancelling V2 contest and refunding host...');
+    try {
+      const tx = await contestManager.cancelContest(contestId, 'No qualified participants');
+      console.log(`   TX submitted: ${tx.hash}`);
+      const receipt = await tx.wait();
+      console.log(`   ✅ V2 Contest cancelled, host refunded in block ${receipt.blockNumber}`);
+      return {
+        success: true,
+        contestId,
+        isV2: true,
+        action: 'cancelled',
+        reason: 'No qualified participants',
+        txHash: receipt.hash
+      };
+    } catch (cancelError) {
+      console.error('   ❌ Cancel failed:', cancelError.message);
+      return {
+        success: false,
+        error: `Cancel failed: ${cancelError.message}`,
+        contestId,
+        isV2: true
+      };
+    }
+  }
+
+  // Build final entries: 1 primary address per qualified user
+  // Bonus: Users who replied with 2+ words get a second entry
+  const qualifiedAddresses = [];
+
+  for (const user of qualifiedUsers) {
+    qualifiedAddresses.push(user.primaryAddress);
+
+    const userData = engagement.usersByFid?.get(user.fid);
+    if (userData && userData.replied && userData.wordCount >= 2) {
+      qualifiedAddresses.push(user.primaryAddress);
+      console.log(`   🎁 Bonus entry for @${user.username || user.fid} (replied with ${userData.wordCount} words)`);
+    }
+  }
+
+  const bonusEntries = qualifiedAddresses.length - qualifiedUsers.length;
+  if (bonusEntries > 0) {
+    console.log(`   📝 Added ${bonusEntries} bonus entries for replies`);
+  }
+
+  // Limit entries to avoid gas limit errors
+  const MAX_ENTRIES = 1000;
+  let finalEntries = qualifiedAddresses;
+
+  if (qualifiedAddresses.length > MAX_ENTRIES) {
+    console.log(`\n⚠️ Too many entries (${qualifiedAddresses.length}), randomly sampling ${MAX_ENTRIES}...`);
+    const shuffled = [...qualifiedAddresses].sort(() => Math.random() - 0.5);
+    finalEntries = shuffled.slice(0, MAX_ENTRIES);
+  }
+
+  console.log(`\n🎲 Finalizing V2 contest with ${finalEntries.length} entries (${winnerCount} winners)...`);
+
+  try {
+    const tx = await contestManager.finalizeContest(contestId, finalEntries);
+    console.log(`   TX submitted: ${tx.hash}`);
+
+    const receipt = await tx.wait();
+    console.log(`   ✅ Confirmed in block ${receipt.blockNumber}`);
+
+    // Store the finalize TX hash in KV for announcement
+    try {
+      if (process.env.KV_REST_API_URL) {
+        const { kv } = require('@vercel/kv');
+        await kv.set(`finalize_tx_v2_${contestId}`, tx.hash);
+        console.log(`   📝 Stored finalize TX hash in KV (finalize_tx_v2_${contestId})`);
+      }
+    } catch (e) {
+      console.log(`   Could not store TX hash:`, e.message);
+    }
+
+    // Poll for winners (VRF callback usually takes 1-3 blocks on Base)
+    console.log('\n⏳ Waiting for Chainlink VRF to select winners...');
+    let selectedWinners = [];
+    let attempts = 0;
+    const maxAttempts = 30;
+
+    while (selectedWinners.length === 0 && attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 2000));
+      attempts++;
+
+      try {
+        const updatedContest = await contestManager.getContest(contestId);
+        const updatedStatus = updatedContest[2];
+        selectedWinners = updatedContest[8];
+
+        if (updatedStatus === 2n && selectedWinners.length > 0) {
+          console.log(`   ✅ ${selectedWinners.length} winner(s) selected!`);
+          for (const w of selectedWinners) {
+            console.log(`      - ${w}`);
+          }
+          break;
+        }
+        console.log(`   Attempt ${attempts}/${maxAttempts} - waiting for VRF...`);
+      } catch (e) {
+        console.log(`   Attempt ${attempts} error: ${e.message}`);
+      }
+    }
+
+    // Auto-announce winners if found
+    if (selectedWinners.length > 0) {
+      console.log('\n📢 Auto-announcing winners...');
+      try {
+        const baseUrl = process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000';
+
+        const announceResponse = await fetch(`${baseUrl}/api/announce-winner?contestId=${contestId}&v2=true`);
+        const announceResult = await announceResponse.json();
+
+        if (announceResult.posted) {
+          console.log(`   ✅ Winner announcement posted! Cast: ${announceResult.castHash}`);
+        } else {
+          console.log(`   ⚠️ Announcement created but not posted: ${announceResult.note || 'Unknown reason'}`);
+        }
+
+        return {
+          success: true,
+          contestId,
+          isV2: true,
+          qualifiedCount: qualifiedAddresses.length,
+          txHash: receipt.hash,
+          winners: selectedWinners,
+          announced: announceResult.posted,
+          announceCastHash: announceResult.castHash,
+          message: 'V2 Contest finalized and winners announced!'
+        };
+      } catch (announceError) {
+        console.log(`   ⚠️ Auto-announce failed: ${announceError.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      contestId,
+      isV2: true,
+      qualifiedCount: qualifiedAddresses.length,
+      txHash: receipt.hash,
+      winners: selectedWinners.length > 0 ? selectedWinners : null,
+      message: selectedWinners.length > 0
+        ? 'V2 Contest finalized! Winners selected.'
+        : 'V2 Contest finalized! Chainlink VRF will select winners shortly.'
+    };
+
+  } catch (error) {
+    console.error('   ❌ V2 Finalization failed:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      contestId,
+      isV2: true
+    };
+  }
+}
+
+/**
  * Check all pending contests and finalize any that have ended
- * Checks both ETH and NFT contest escrow contracts
+ * Checks V1 ETH, V1 NFT, and V2 ContestManager contests
  */
 async function checkAllPendingContests() {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
@@ -1017,6 +1349,41 @@ async function checkAllPendingContests() {
     }
   }
 
+  // Check V2 ContestManager contests
+  try {
+    const v2Manager = new ethers.Contract(
+      CONFIG.CONTEST_MANAGER_V2,
+      CONTEST_MANAGER_V2_ABI,
+      provider
+    );
+
+    const v2NextId = await v2Manager.nextContestId();
+    const v2StartId = v2NextId > MAX_CONTESTS_TO_CHECK ? v2NextId - MAX_CONTESTS_TO_CHECK : BigInt(CONFIG.V2_START_CONTEST_ID);
+
+    if (v2NextId > v2StartId) {
+      console.log(`\n🔍 Checking V2 contests ${v2StartId} to ${v2NextId - 1n}...`);
+
+      for (let i = v2StartId; i < v2NextId; i++) {
+        try {
+          const canFinalize = await v2Manager.canFinalize(i);
+
+          if (canFinalize) {
+            console.log(`\n📋 V2 Contest #${i} is ready to finalize`);
+            const result = await checkAndFinalizeV2Contest(Number(i));
+            results.push(result);
+          }
+        } catch (e) {
+          console.log(`   Skipping V2 contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
+          continue;
+        }
+      }
+    } else {
+      console.log(`\n🔍 No V2 contests to check (next ID: ${v2NextId})`);
+    }
+  } catch (e) {
+    console.log(`\n⚠️ Could not check V2 contests:`, e.message?.slice(0, 50));
+  }
+
   return results;
 }
 
@@ -1036,10 +1403,15 @@ module.exports = async (req, res) => {
 
   try {
     // GET: Finalize specific contest
-    // Usage: /api/finalize-contest?contestId=1&nft=true (for NFT contests)
+    // Usage:
+    //   /api/finalize-contest?contestId=1              (V1 ETH contest)
+    //   /api/finalize-contest?contestId=1&nft=true     (V1 NFT contest)
+    //   /api/finalize-contest?contestId=108&v2=true    (V2 contest - explicit)
+    //   /api/finalize-contest?contestId=108            (V2 contest - auto-detected if >= V2_START_CONTEST_ID)
     if (req.method === 'GET') {
       const contestId = parseInt(req.query.contestId);
       const isNftContest = req.query.nft === 'true' || req.query.nft === '1';
+      const isV2Contest = req.query.v2 === 'true' || req.query.v2 === '1';
 
       if (!contestId || isNaN(contestId)) {
         return res.status(400).json({
@@ -1047,7 +1419,15 @@ module.exports = async (req, res) => {
         });
       }
 
-      const result = await checkAndFinalizeContest(contestId, isNftContest);
+      // Auto-detect V2 if contestId >= V2_START_CONTEST_ID and not explicitly V1 (nft flag)
+      const useV2 = isV2Contest || (!isNftContest && contestId >= CONFIG.V2_START_CONTEST_ID);
+
+      let result;
+      if (useV2) {
+        result = await checkAndFinalizeV2Contest(contestId);
+      } else {
+        result = await checkAndFinalizeContest(contestId, isNftContest);
+      }
       return res.status(result.success ? 200 : 400).json(result);
     }
 
