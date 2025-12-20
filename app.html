@@ -7167,8 +7167,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         }
 
         // Prepare announcement cast text for compose modal
-        // Build announcement cast text
-        const isNftContest = state.prizeType === 'nft';
+        // Build announcement cast text (isNftContest already defined above)
         const hours = parseInt(state.durationHours) || 0;
         const mins = parseInt(state.durationMinutes) || 0;
         const durationText = hours > 0 && mins > 0 ? `${hours}h ${mins}m`
