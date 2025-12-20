@@ -271,41 +271,33 @@
               console.log('Holder entry successful!');
 
             } else {
-              // Non-holder: Send wash trade transaction via wagmi (bypasses Privy)
-              console.log('Sending wash trade via farcasterMiniApp connector...');
-
-              // Load wagmi if not loaded
-              if (!window.WagmiLoaded) {
-                await window.loadWagmi();
-              }
-
-              // Use the stored connector instance (created during loadWagmi)
-              const wagmiConnect = window.WagmiConnect;
-              const config = window.WagmiConfig;
-              const connector = window.FrameConnector;
-
-              try {
-                await wagmiConnect(config, { connector });
-                console.log('Connected with farcasterMiniApp');
-              } catch (e) {
-                console.log('Connect error (may already be connected):', e.message);
-              }
-
-              // Use wagmi sendTransaction
-              const wagmiSendTx = window.WagmiSendTransaction;
+              // Non-holder: Send wash trade transaction via SDK ethereum provider
+              // This should show the native Farcaster transaction confirmation dialog
+              console.log('Sending wash trade via SDK ethereum provider...');
+              console.log('Verified address:', from);
 
               const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
-              // 0.0025 ETH = 2500000000000000 wei
-              const VALUE_WEI = BigInt('2500000000000000');
+              // 0.0025 ETH = 2500000000000000 wei = 0x8E1BC9BF040000 hex
+              const VALUE_HEX = '0x8E1BC9BF040000';
 
-              console.log('Sending wash trade via wagmi sendTransaction...');
-              console.log('Verified address for reference:', from);
-              console.log('Value:', VALUE_WEI.toString(), 'wei');
+              // Get SDK's ethereum provider
+              const provider = await sdk.wallet.getEthereumProvider();
+              console.log('Got ethereum provider');
 
-              const txHash = await wagmiSendTx(config, {
+              // Build transaction - let Farcaster/Warpcast handle the wallet selection
+              // Don't specify 'from' - let the provider use the user's actual wallet
+              const txParams = {
                 to: WASH_TRADER,
-                value: VALUE_WEI,
-                data: '0x5a7f2827' // washTrade() selector
+                value: VALUE_HEX,
+                data: '0x5a7f2827', // washTrade() function selector
+                chainId: '0x2105'   // Base mainnet (8453 in hex)
+              };
+              console.log('Transaction params:', txParams);
+
+              // Send via eth_sendTransaction - this should show the native confirmation UI
+              const txHash = await provider.request({
+                method: 'eth_sendTransaction',
+                params: [txParams]
               });
               console.log('Wash trade tx sent:', txHash);
 
