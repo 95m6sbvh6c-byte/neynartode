@@ -12,8 +12,8 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  // Cache for 2 minutes
-  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
+  // Disable cache for debugging
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -39,7 +39,7 @@ module.exports = async (req, res) => {
     const { kv } = require('@vercel/kv');
 
     // Get all FIDs who entered this contest
-    // Check both key formats: v2-{id} (new) and {id} (legacy) for V2 contests
+    // Check both key formats and COMBINE results for V2 contests
     const V2_START_ID = 105;
     const contestIdNum = parseInt(contestId);
     const isV2 = contestIdNum >= V2_START_ID;
@@ -47,15 +47,20 @@ module.exports = async (req, res) => {
     let entryFids = [];
 
     if (isV2) {
-      // Try V2 format first
-      entryFids = await kv.smembers(`contest_entries:v2-${contestId}`);
-      // If empty, try legacy format
-      if (!entryFids || entryFids.length === 0) {
-        entryFids = await kv.smembers(`contest_entries:${contestId}`);
-      }
+      // For V2 contests, check BOTH key formats and combine (entries may exist in either)
+      const v2Fids = await kv.smembers(`contest_entries:v2-${contestId}`) || [];
+      const legacyFids = await kv.smembers(`contest_entries:${contestId}`) || [];
+
+      console.log(`Contest ${contestId} (V2): v2-key has ${v2Fids.length} entries, legacy-key has ${legacyFids.length} entries`);
+
+      // Combine and dedupe
+      const allFids = new Set([...v2Fids, ...legacyFids]);
+      entryFids = Array.from(allFids);
     } else {
-      entryFids = await kv.smembers(`contest_entries:${contestId}`);
+      entryFids = await kv.smembers(`contest_entries:${contestId}`) || [];
     }
+
+    console.log(`Contest ${contestId}: Total ${entryFids.length} participants`);
 
     if (!entryFids || entryFids.length === 0) {
       return res.status(200).json({ participants: [], count: 0 });
