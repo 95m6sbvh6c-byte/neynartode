@@ -638,10 +638,23 @@ module.exports = async (req, res) => {
     if (process.env.KV_REST_API_URL && limitedContests.length > 0) {
       try {
         const { kv } = require('@vercel/kv');
+        const V2_START_ID = 105;
+
         const participantPromises = limitedContests.map(async (contest) => {
-          // Use plain contestId for lookup - enter-contest stores without v2- prefix
-          const contestKey = contest.contestId.toString();
-          const count = await kv.scard(`contest_entries:${contestKey}`).catch(() => 0);
+          const contestId = contest.contestId.toString();
+          const isV2Contest = contest.contestId >= V2_START_ID;
+
+          let count = 0;
+
+          if (isV2Contest) {
+            // For V2 contests, check both key formats and sum them
+            const v2Count = await kv.scard(`contest_entries:v2-${contestId}`).catch(() => 0);
+            const legacyCount = await kv.scard(`contest_entries:${contestId}`).catch(() => 0);
+            count = (v2Count || 0) + (legacyCount || 0);
+          } else {
+            count = await kv.scard(`contest_entries:${contestId}`).catch(() => 0);
+          }
+
           return { contestId: contest.contestId, isV2: contest.isV2, count };
         });
         const participantCounts = await Promise.all(participantPromises);
