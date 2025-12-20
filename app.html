@@ -3357,11 +3357,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // Store the provider for later use
         window.activeEthProvider = ethProvider;
-        state.walletStatus = 'Connected! Checking access...';
-        render();
 
         if (!accounts || accounts.length === 0) {
           state.isCheckingWhitelist = false;
+          state.walletStatus = null;
           render();
           showToast('No accounts found. Please unlock your wallet and try again.', 'error');
           return false;
@@ -3373,6 +3372,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         // Check network (use the active provider)
         const chainId = await ethProvider.request({ method: 'eth_chainId' });
         if (chainId !== '0x2105') { // Base mainnet
+          state.walletStatus = 'Switching to Base...';
+          render();
           try {
             await ethProvider.request({
               method: 'wallet_switchEthereumChain',
@@ -3396,132 +3397,94 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
         }
 
-        // Uses shared rpcProvider for read operations
-        // Whitelist removed - app is now open to everyone!
+        // App is open to everyone - no whitelist/token gate!
         state.isWhitelisted = true;
-
-        console.log('Checking token balance...');
-
-        // Check token balance with timeout (uses shared rpcProvider)
-        const neynartodeContract = new ethers.Contract(
-          CONFIG.CONTRACTS.neynartodes,
-          ['function balanceOf(address) external view returns (uint256)'],
-          rpcProvider
-        );
-
-        // Fetch user's token balance for display (no gate - all users welcome)
-        try {
-          const balance = await withTimeout(neynartodeContract.balanceOf(address), 10000);
-          state.userBalance = ethers.utils.formatEther(balance);
-        } catch (e) {
-          console.error('Balance check failed:', e);
-          state.userBalance = '0'; // Default to 0 if check fails
-        }
-
         state.hasTokens = true;
-
-        // Fetch user FID from Neynar API if not already set from Farcaster context
-        if (!state.userFid) {
-          console.log('No FID from Farcaster context, trying Neynar API lookup for address:', address);
-          try {
-            const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by-verification?address=${address}`, {
-              headers: {
-                'accept': 'application/json',
-                'api_key': CONFIG.NEYNAR_API_KEY
-              }
-            });
-            console.log('Neynar user lookup response:', response.status);
-            if (response.ok) {
-              const data = await response.json();
-              console.log('Neynar user lookup data:', data);
-              if (data && data.users && data.users.length > 0) {
-                const user = data.users[0];
-                state.userFid = user.fid;
-                state.userProfile = {
-                  fid: user.fid,
-                  username: user.username,
-                  displayName: user.display_name,
-                  pfpUrl: user.pfp_url
-                };
-                console.log('Got FID from Neynar API:', state.userFid);
-              } else {
-                console.log('No Farcaster user found for this wallet address');
-              }
-            }
-          } catch (e) {
-            console.error('Neynar API error:', e);
-          }
-        } else {
-          console.log('Already have FID from Farcaster context:', state.userFid);
-        }
-
         state.isLoggedIn = true;
         state.isCheckingWhitelist = false;
         state.walletStatus = null;
 
-        // Check/create signer for Enter Raffle functionality
-        // This triggers authorization on first app entry rather than when entering a raffle
-        if (state.userFid) {
-          console.log('Checking signer status for FID:', state.userFid);
+        // Immediately show logged-in state - run everything else in background
+        render();
+        console.log('User logged in, loading data in background...');
+
+        // === BACKGROUND TASKS (non-blocking) ===
+        // These run in parallel without blocking the UI
+
+        // 1. Fetch token balance (for display only)
+        (async () => {
           try {
-            const signerResult = await checkSignerStatus();
-            if (!signerResult || !signerResult.approved) {
-              console.log('No approved signer, initiating authorization...');
-
-              // If there's a pending signer with approval_url, show QR modal
-              if (signerResult && signerResult.approval_url && !signerResult.approved) {
-                state.signerApprovalUrl = signerResult.approval_url;
-                state.showSignerModal = true;
-                renderSignerModal();
-
-                // Start polling for approval
-                pollSignerApproval(60).then(approved => {
-                  if (approved) {
-                    state.showSignerModal = false;
-                    renderSignerModal();
-                    showToast('Authorization approved! You can now enter contests.', 'success');
-                  }
-                });
-                return true;
-              }
-
-              // Create new signer - this will show QR code modal for approval
-              const createResult = await createSigner();
-              if (createResult && createResult.pending) {
-                console.log('Signer pending approval, QR code shown');
-                // User sees QR modal, app polls for approval
-                return true;
-              }
-            } else {
-              console.log('Signer already approved:', signerResult.signer_uuid);
-              state.signerStatus = signerResult;
-            }
-          } catch (signerError) {
-            console.error('Signer check/creation error:', signerError);
-            // Don't block app access if signer setup fails, they can try again when entering raffle
+            const neynartodeContract = new ethers.Contract(
+              CONFIG.CONTRACTS.neynartodes,
+              ['function balanceOf(address) external view returns (uint256)'],
+              rpcProvider
+            );
+            const balance = await withTimeout(neynartodeContract.balanceOf(address), 10000);
+            state.userBalance = ethers.utils.formatEther(balance);
+            render(); // Update UI with balance
+          } catch (e) {
+            console.error('Balance check failed:', e);
+            state.userBalance = '0';
           }
+        })();
+
+        // 2. Fetch FID from Neynar if not already set from Farcaster context
+        if (!state.userFid) {
+          (async () => {
+            console.log('No FID from Farcaster context, trying Neynar API lookup for address:', address);
+            try {
+              const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by-verification?address=${address}`, {
+                headers: {
+                  'accept': 'application/json',
+                  'api_key': CONFIG.NEYNAR_API_KEY
+                }
+              });
+              if (response.ok) {
+                const data = await response.json();
+                if (data && data.users && data.users.length > 0) {
+                  const user = data.users[0];
+                  state.userFid = user.fid;
+                  state.userProfile = {
+                    fid: user.fid,
+                    username: user.username,
+                    displayName: user.display_name,
+                    pfpUrl: user.pfp_url
+                  };
+                  console.log('Got FID from Neynar API:', state.userFid);
+                  render();
+                }
+              }
+            } catch (e) {
+              console.error('Neynar API error:', e);
+            }
+          })();
         }
 
-        // Fetch remaining votes from VotingManager contract
-        try {
-          const votingManagerRead = new ethers.Contract(
-            CONFIG.CONTRACTS.votingManager,
-            ['function getRemainingVotes(address user) external view returns (uint256)'],
-            rpcProvider
-          );
-          const remainingVotes = await withTimeout(votingManagerRead.getRemainingVotes(address), 5000);
-          state.votesRemaining = Number(remainingVotes);
-          state.votesUsedToday = 10 - state.votesRemaining;
-          console.log(`Remaining votes from contract: ${state.votesRemaining}`);
-        } catch (e) {
-          console.error('Failed to fetch remaining votes:', e);
-          // Default to 10 if contract call fails
-          state.votesRemaining = 10;
-          state.votesUsedToday = 0;
-        }
+        // 3. Fetch remaining votes (non-blocking)
+        (async () => {
+          try {
+            const votingManagerRead = new ethers.Contract(
+              CONFIG.CONTRACTS.votingManager,
+              ['function getRemainingVotes(address user) external view returns (uint256)'],
+              rpcProvider
+            );
+            const remainingVotes = await withTimeout(votingManagerRead.getRemainingVotes(address), 5000);
+            state.votesRemaining = Number(remainingVotes);
+            state.votesUsedToday = 10 - state.votesRemaining;
+            console.log(`Remaining votes from contract: ${state.votesRemaining}`);
+            render();
+          } catch (e) {
+            console.error('Failed to fetch remaining votes:', e);
+            state.votesRemaining = 10;
+            state.votesUsedToday = 0;
+          }
+        })();
 
-        // Load leaderboard data
-        await loadLeaderboard();
+        // 4. Load leaderboard (non-blocking)
+        loadLeaderboard().catch(e => console.error('Leaderboard load failed:', e));
+
+        // NOTE: Signer check is now lazy - handled when user tries to enter a raffle
+        // This prevents blocking the app entry and unnecessary signer creation prompts
 
         // Track wallet connection
         if (window.analytics?.track) {
