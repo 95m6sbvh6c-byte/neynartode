@@ -4577,7 +4577,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       `;
     }
 
-    // Generate floating avatars (PFPs) or stickers that fill from top-right corner
+    // Generate floating avatars (PFPs) in synchronized rows at top-right
+    // Rows fill from right to left, new rows start below when full
     function generateEntryStickers(participantCount, contestId) {
       const count = participantCount || 0;
       if (count === 0) return '';
@@ -4586,65 +4587,81 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const participants = state.contestParticipants[contestId] || [];
       const hasPfps = participants.length > 0;
 
-      // Use contestId as seed for consistent random positions
+      // Use contestId as seed for consistent animation timing
       const seededRandom = (seed, i) => {
         const x = Math.sin(seed * 9999 + i * 7777) * 10000;
         return x - Math.floor(x);
       };
 
-      let elements = '';
-      // Show up to 30 avatars/stickers (more entries = more filling up)
-      const displayCount = Math.min(count, 30);
+      // Layout settings
+      const pfpSize = 26;
+      const overlap = 8; // Horizontal overlap
+      const rowGap = 4; // Vertical gap between rows
+      const maxPerRow = 6; // Max PFPs per row before wrapping
+      const maxRows = 3; // Max number of rows
+      const maxDisplay = maxPerRow * maxRows; // Total max display
 
-      for (let i = 0; i < displayCount; i++) {
-        const seed = contestId * 100 + i;
+      const displayCount = Math.min(count, maxDisplay);
 
-        // Stack from top-right, spreading left and down as more entries come in
-        const rowSize = 5; // items per row
-        const row = Math.floor(i / rowSize);
-        const col = i % rowSize;
-
-        // Start from right (low %), go left (higher %) as col increases
-        // Start from top (low %), go down (higher %) as row increases
-        const baseRight = 2 + col * 16 + (seededRandom(seed, 1) * 10 - 5);
-        const baseTop = 8 + row * 20 + (seededRandom(seed, 2) * 10 - 5);
-
-        const size = 26 + seededRandom(seed, 3) * 8; // 26-34px for PFPs
-        const rotation = hasPfps ? 0 : (-25 + seededRandom(seed, 4) * 50); // No rotation for PFPs
-        const opacity = hasPfps ? (0.7 + seededRandom(seed, 5) * 0.3) : (0.35 + seededRandom(seed, 5) * 0.25);
-        const duration = 3 + seededRandom(seed, 6) * 4;
-        const delay = seededRandom(seed, 7) * 2;
-
-        // Use PFP if available, otherwise fallback to sticker
-        const participant = participants[i];
-        const imgSrc = participant?.pfpUrl || '/neynartode-sticker.png';
-        const borderRadius = hasPfps && participant?.pfpUrl ? 'border-radius: 50%;' : '';
-        const border = hasPfps && participant?.pfpUrl ? 'border: 2px solid rgba(139, 92, 246, 0.5); box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);' : '';
-        const title = participant?.username ? `title="@${participant.username}"` : '';
-
-        elements += `<img
-          src="${imgSrc}"
-          alt=""
-          ${title}
-          class="absolute pointer-events-none sticker-float"
-          style="
-            right: ${baseRight}%;
-            top: ${baseTop}%;
-            width: ${size}px;
-            height: ${size}px;
-            ${borderRadius}
-            ${border}
-            --rot: ${rotation}deg;
-            --duration: ${duration}s;
-            animation-delay: ${delay}s;
-            opacity: ${opacity};
-            z-index: ${i};
-            object-fit: cover;
-          "
-          onerror="this.src='/neynartode-sticker.png'; this.style.borderRadius='0'; this.style.border='none';"
-        />`;
+      // Group PFPs into rows
+      const rows = [];
+      for (let i = 0; i < displayCount; i += maxPerRow) {
+        rows.push(participants.slice(i, Math.min(i + maxPerRow, displayCount)));
       }
-      return elements;
+
+      // Build rows HTML
+      let rowsHtml = '';
+      rows.forEach((rowParticipants, rowIndex) => {
+        let rowPfps = '';
+        rowParticipants.forEach((participant, colIndex) => {
+          const imgSrc = participant?.pfpUrl || '/neynartode-sticker.png';
+          const isPfp = hasPfps && participant?.pfpUrl;
+          const title = participant?.username ? `title="@${participant.username}"` : '';
+
+          rowPfps += `<img
+            src="${imgSrc}"
+            alt=""
+            ${title}
+            class="pointer-events-none"
+            style="
+              width: ${pfpSize}px;
+              height: ${pfpSize}px;
+              ${isPfp ? 'border-radius: 50%;' : ''}
+              ${isPfp ? 'border: 2px solid rgba(139, 92, 246, 0.6);' : ''}
+              ${isPfp ? 'box-shadow: 0 0 6px rgba(139, 92, 246, 0.4);' : ''}
+              margin-left: ${colIndex === 0 ? '0' : `-${overlap}px`};
+              z-index: ${rowParticipants.length - colIndex};
+              object-fit: cover;
+              flex-shrink: 0;
+            "
+            onerror="this.src='/neynartode-sticker.png'; this.style.borderRadius='0'; this.style.border='none';"
+          />`;
+        });
+
+        rowsHtml += `<div class="flex items-center justify-end" style="margin-top: ${rowIndex === 0 ? '0' : rowGap + 'px'};">${rowPfps}</div>`;
+      });
+
+      // Add "+X more" indicator if there are more participants
+      const remaining = count - displayCount;
+      if (remaining > 0) {
+        rowsHtml += `<div class="text-xs text-[var(--text-muted)] text-right mt-1">+${remaining} more</div>`;
+      }
+
+      // Animation duration based on contestId for variety
+      const duration = 4 + seededRandom(contestId, 1) * 3; // 4-7 seconds
+
+      // Wrap all rows in a container that floats as one unit
+      return `<div
+        class="absolute flex flex-col items-end sticker-float"
+        style="
+          top: 6px;
+          right: 6px;
+          --rot: 0deg;
+          --duration: ${duration}s;
+          opacity: 0.95;
+          z-index: 10;
+        "
+      >${rowsHtml}</div>`;
     }
 
     function renderActiveContests() {
