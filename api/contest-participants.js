@@ -39,7 +39,23 @@ module.exports = async (req, res) => {
     const { kv } = require('@vercel/kv');
 
     // Get all FIDs who entered this contest
-    const entryFids = await kv.smembers(`contest_entries:${contestId}`);
+    // Check both key formats: v2-{id} (new) and {id} (legacy) for V2 contests
+    const V2_START_ID = 105;
+    const contestIdNum = parseInt(contestId);
+    const isV2 = contestIdNum >= V2_START_ID;
+
+    let entryFids = [];
+
+    if (isV2) {
+      // Try V2 format first
+      entryFids = await kv.smembers(`contest_entries:v2-${contestId}`);
+      // If empty, try legacy format
+      if (!entryFids || entryFids.length === 0) {
+        entryFids = await kv.smembers(`contest_entries:${contestId}`);
+      }
+    } else {
+      entryFids = await kv.smembers(`contest_entries:${contestId}`);
+    }
 
     if (!entryFids || entryFids.length === 0) {
       return res.status(200).json({ participants: [], count: 0 });
