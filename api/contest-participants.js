@@ -141,9 +141,9 @@ module.exports = async (req, res) => {
       const actualCastHash = castId && castId.includes('|') ? castId.split('|')[0] : castId;
 
       if (actualCastHash && actualCastHash.length > 0) {
-        // Fetch replies from Neynar
+        // Fetch replies from Neynar (max 50 per request)
         const repliesResponse = await fetch(
-          `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${actualCastHash}&type=hash&reply_depth=1&limit=100`,
+          `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${actualCastHash}&type=hash&reply_depth=1&limit=50`,
           {
             headers: { 'api_key': NEYNAR_API_KEY }
           }
@@ -159,6 +159,9 @@ module.exports = async (req, res) => {
               hasRepliedSet.add(reply.author.fid);
             }
           }
+          console.log(`Contest ${contestId}: Found ${replies.length} replies, hasRepliedSet size: ${hasRepliedSet.size}`);
+        } else {
+          console.error(`Contest ${contestId}: Replies API error:`, await repliesResponse.text());
         }
       }
     } catch (replyError) {
