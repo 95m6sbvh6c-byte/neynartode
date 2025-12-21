@@ -392,6 +392,34 @@
                 throw new Error('Could not get contest cast hash');
               }
 
+              // Build announcement data for auto-cast
+              let announcement = null;
+              if (contestDetails) {
+                const now = new Date();
+                const endTime = new Date(contestDetails.endTime * 1000);
+                const diffMs = endTime - now;
+                const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
+                const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                let timeLeft;
+                if (hoursLeft > 0 && minutesLeft > 0) {
+                  timeLeft = `${hoursLeft}h ${minutesLeft}m`;
+                } else if (hoursLeft > 0) {
+                  timeLeft = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
+                } else {
+                  timeLeft = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+                }
+
+                announcement = {
+                  prize: contestDetails.prize || 'tokens',
+                  hostUsername: contestDetails.hostUser?.username || '',
+                  timeLeft,
+                  isNft: contestDetails.isNft || false,
+                  nftImage: contestDetails.nftImage || '',
+                  nftName: contestDetails.nftName || ''
+                };
+              }
+
               const response = await fetch('/api/enter-contest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -399,7 +427,8 @@
                   fid: userFid,
                   contestId: entryKey,  // Use proper entry key (v2-{id} for V2 contests)
                   castHash: castHash,
-                  addresses: [from]
+                  addresses: [from],
+                  announcement  // Auto-cast in background
                 })
               });
 
@@ -416,52 +445,8 @@
               });
               console.log('Holder entry successful!');
 
-              // Show celebration animation
+              // Show celebration animation (no compose modal blocking it!)
               showCelebration(castHash);
-
-              // Auto-cast: Open compose modal with entry announcement
-              if (contestDetails) {
-                try {
-                  const now = new Date();
-                  const endTime = new Date(contestDetails.endTime * 1000);
-                  const diffMs = endTime - now;
-                  const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
-                  const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                  let timeLeftText;
-                  if (hoursLeft > 0 && minutesLeft > 0) {
-                    timeLeftText = `${hoursLeft}h ${minutesLeft}m`;
-                  } else if (hoursLeft > 0) {
-                    timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
-                  } else {
-                    timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
-                  }
-
-                  const isNft = contestDetails.isNft || false;
-                  const prizeText = isNft ? (contestDetails.nftName || 'an NFT') : (contestDetails.prize || 'tokens');
-                  const hostUsername = contestDetails.hostUser?.username || '';
-                  const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
-                  const nftImage = contestDetails.nftImage || '';
-
-                  const announcementText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeftText} remaining!
-
-Go check this out!! 👇
-https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
-
-                  const embeds = [];
-                  if (isNft && nftImage) {
-                    embeds.push(nftImage);
-                  }
-
-                  console.log('Opening compose modal for primary button entry announcement');
-                  await sdk.actions.composeCast({
-                    text: announcementText,
-                    embeds: embeds.length > 0 ? embeds : undefined
-                  });
-                } catch (castError) {
-                  console.log('Auto-cast compose failed (non-critical):', castError.message);
-                }
-              }
 
             } else {
               // Non-holder: Send wash trade transaction via SDK ethereum provider
@@ -535,6 +520,34 @@ https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
               // Show celebration animation with cast hash for reply link
               showCelebration(castHash);
 
+              // Build announcement data for auto-cast
+              let announcement = null;
+              if (contestDetails) {
+                const now = new Date();
+                const endTime = new Date(contestDetails.endTime * 1000);
+                const diffMs = endTime - now;
+                const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
+                const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                let timeLeft;
+                if (hoursLeft > 0 && minutesLeft > 0) {
+                  timeLeft = `${hoursLeft}h ${minutesLeft}m`;
+                } else if (hoursLeft > 0) {
+                  timeLeft = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
+                } else {
+                  timeLeft = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+                }
+
+                announcement = {
+                  prize: contestDetails.prize || 'tokens',
+                  hostUsername: contestDetails.hostUser?.username || '',
+                  timeLeft,
+                  isNft: contestDetails.isNft || false,
+                  nftImage: contestDetails.nftImage || '',
+                  nftName: contestDetails.nftName || ''
+                };
+              }
+
               // Record the entry - include castHash which is required by the API
               const userFid = window.FarcasterContext?.user?.fid;
               if (userFid && castHash) {
@@ -546,57 +559,14 @@ https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
                     contestId: entryKey,  // Use proper entry key (v2-{id} for V2 contests)
                     castHash: castHash,
                     addresses: [from],
-                    washTradeTx: txHash
+                    washTradeTx: txHash,
+                    announcement  // Auto-cast in background
                   })
                 }).then(res => res.json()).then(data => {
                   console.log('Entry recorded:', data);
                 }).catch(e => console.log('Entry record failed:', e));
               } else {
                 console.log('Could not record entry - missing userFid or castHash');
-              }
-
-              // Auto-cast: Open compose modal with entry announcement
-              if (contestDetails) {
-                try {
-                  const now = new Date();
-                  const endTime = new Date(contestDetails.endTime * 1000);
-                  const diffMs = endTime - now;
-                  const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
-                  const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                  let timeLeftText;
-                  if (hoursLeft > 0 && minutesLeft > 0) {
-                    timeLeftText = `${hoursLeft}h ${minutesLeft}m`;
-                  } else if (hoursLeft > 0) {
-                    timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
-                  } else {
-                    timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
-                  }
-
-                  const isNft = contestDetails.isNft || false;
-                  const prizeText = isNft ? (contestDetails.nftName || 'an NFT') : (contestDetails.prize || 'tokens');
-                  const hostUsername = contestDetails.hostUser?.username || '';
-                  const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
-                  const nftImage = contestDetails.nftImage || '';
-
-                  const announcementText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeftText} remaining!
-
-Go check this out!! 👇
-https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
-
-                  const embeds = [];
-                  if (isNft && nftImage) {
-                    embeds.push(nftImage);
-                  }
-
-                  console.log('Opening compose modal for non-holder entry announcement');
-                  await sdk.actions.composeCast({
-                    text: announcementText,
-                    embeds: embeds.length > 0 ? embeds : undefined
-                  });
-                } catch (castError) {
-                  console.log('Auto-cast compose failed (non-critical):', castError.message);
-                }
               }
             }
 
@@ -1849,6 +1819,26 @@ https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
         const castHash = castId?.split('|')[0] || '';
         const userAddresses = state.userProfile?.verifiedAddresses?.ethAddresses || [];
 
+        // Build time remaining text for announcement
+        let timeLeft;
+        if (hoursLeft > 0 && minutesLeft > 0) {
+          timeLeft = `${hoursLeft}h ${minutesLeft}m`;
+        } else if (hoursLeft > 0) {
+          timeLeft = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
+        } else {
+          timeLeft = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+        }
+
+        // Build announcement data for auto-cast in background
+        const announcement = {
+          prize: prize,
+          hostUsername: hostUsername,
+          timeLeft,
+          isNft: isNft,
+          nftImage: nftImage,
+          nftName: nftName
+        };
+
         const response = await fetch('/api/enter-contest', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1856,7 +1846,8 @@ https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
             fid: state.userFid,
             contestId: entryKey,  // Use entryKey (v2-{id} for V2, {id} for V1)
             castHash: castHash,
-            addresses: userAddresses.length > 0 ? userAddresses : [state.userAddress]
+            addresses: userAddresses.length > 0 ? userAddresses : [state.userAddress],
+            announcement  // Auto-cast in background
           })
         });
 
@@ -1876,48 +1867,8 @@ https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
           button.style.opacity = '0.6';
           button.style.cursor = 'default';
 
+          // Show celebration (no compose modal blocking it!)
           showCelebration(castHash);
-
-          // Auto-cast: Open compose modal with entry announcement
-          try {
-            // Build time remaining text
-            let timeLeftText;
-            if (hoursLeft > 0 && minutesLeft > 0) {
-              timeLeftText = `${hoursLeft}h ${minutesLeft}m`;
-            } else if (hoursLeft > 0) {
-              timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
-            } else {
-              timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
-            }
-
-            // Build prize text
-            const prizeText = isNft ? `${nftName || 'an NFT'}` : prize;
-
-            // Build announcement text
-            const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
-            const announcementText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeftText} remaining!
-
-Go check this out!! 👇
-https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
-
-            // Build embeds - add NFT image if available
-            const embeds = [];
-            if (isNft && nftImage) {
-              embeds.push(nftImage);
-            }
-
-            console.log('Opening compose modal for entry announcement');
-
-            const sdk = window.FarcasterSDK;
-            if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
-              await sdk.actions.composeCast({
-                text: announcementText,
-                embeds: embeds.length > 0 ? embeds : undefined
-              });
-            }
-          } catch (castError) {
-            console.log('Auto-cast compose failed (non-critical):', castError.message);
-          }
 
           render();
 

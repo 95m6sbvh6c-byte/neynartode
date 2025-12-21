@@ -5,6 +5,7 @@
  * 1. Posts like to contest cast via Neynar
  * 2. Posts recast to contest cast via Neynar
  * 3. Records entry in KV storage
+ * 4. Posts announcement cast (auto-cast in background)
  *
  * Called AFTER wallet transaction succeeds (for non-holders)
  * or directly (for holders who don't need wash trade).
@@ -14,7 +15,16 @@
  *   fid: 12345,
  *   contestId: "30",
  *   castHash: "0xabc123...",
- *   addresses: ["0x..."]  // User's verified addresses for the entry
+ *   addresses: ["0x..."],
+ *   // Optional fields for announcement cast:
+ *   announcement: {
+ *     prize: "1000 NEYNARTODES",
+ *     hostUsername: "username",
+ *     timeLeft: "2h 30m",
+ *     isNft: false,
+ *     nftImage: "https://...",
+ *     nftName: "Cool NFT"
+ *   }
  * }
  *
  * Returns: { success: true, entry: { ... } }
@@ -34,7 +44,7 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { fid, contestId, castHash, addresses } = req.body;
+  const { fid, contestId, castHash, addresses, announcement } = req.body;
 
   if (!fid) {
     return res.status(400).json({ error: 'Missing fid' });
@@ -150,6 +160,53 @@ module.exports = async (req, res) => {
     await kv.sadd(`contest_entries:${contestId}`, fid.toString());
 
     console.log(`Entry recorded for FID ${fid} in contest ${contestId}`);
+
+    // Post announcement cast in background (don't block the response)
+    if (announcement) {
+      (async () => {
+        try {
+          const { prize, hostUsername, timeLeft, isNft, nftImage, nftName } = announcement;
+
+          // Build announcement text
+          const prizeText = isNft ? (nftName || 'an NFT') : (prize || 'tokens');
+          const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
+
+          const castText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeft} remaining!
+
+Go check this out!! 👇
+https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
+
+          // Build embeds array
+          const embeds = [];
+          if (isNft && nftImage) {
+            embeds.push({ url: nftImage });
+          }
+
+          // Post cast via Neynar API
+          const castResponse = await fetch('https://api.neynar.com/v2/farcaster/cast', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': NEYNAR_API_KEY
+            },
+            body: JSON.stringify({
+              signer_uuid,
+              text: castText,
+              embeds: embeds.length > 0 ? embeds : undefined
+            })
+          });
+
+          if (castResponse.ok) {
+            console.log(`Announcement cast posted for FID ${fid}`);
+          } else {
+            const errorData = await castResponse.json().catch(() => ({}));
+            console.error('Announcement cast failed:', errorData);
+          }
+        } catch (castError) {
+          console.error('Announcement cast error:', castError.message);
+        }
+      })();
+    }
 
     return res.status(200).json({
       success: true,
