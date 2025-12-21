@@ -73,6 +73,21 @@ module.exports = async (req, res) => {
     // Limit to 30 participants (for display purposes)
     const limitedFids = entryFids.slice(0, 30);
 
+    // Fetch entry details (including hasReplied) for each participant
+    const entryPromises = limitedFids.map(async (fid) => {
+      // Try both key formats for V2 contests
+      let entry = await kv.get(`entry:v2-${contestId}:${fid}`);
+      if (!entry) {
+        entry = await kv.get(`entry:${contestId}:${fid}`);
+      }
+      return { fid, hasReplied: entry?.hasReplied || false };
+    });
+    const entryDetails = await Promise.all(entryPromises);
+    const hasRepliedMap = {};
+    entryDetails.forEach(({ fid, hasReplied }) => {
+      hasRepliedMap[fid] = hasReplied;
+    });
+
     // Fetch user profiles from Neynar in bulk
     const fidsParam = limitedFids.join(',');
     const neynarResponse = await fetch(
@@ -90,11 +105,12 @@ module.exports = async (req, res) => {
     const neynarData = await neynarResponse.json();
     const users = neynarData.users || [];
 
-    // Map to simple participant objects
+    // Map to participant objects with hasReplied status
     const participants = users.map(user => ({
       fid: user.fid,
       pfpUrl: user.pfp_url || null,
-      username: user.username
+      username: user.username,
+      hasReplied: hasRepliedMap[user.fid] || false
     })).filter(p => p.pfpUrl); // Only include users with PFPs
 
     return res.status(200).json({

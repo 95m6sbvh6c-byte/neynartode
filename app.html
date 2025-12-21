@@ -4858,12 +4858,23 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // Generate floating avatars (PFPs) in synchronized rows at top-right
     // Rows fill from right to left, new rows start below when full
+    // Users who replied show 2 stacked PFPs (one for entry, one for reply)
     function generateEntryStickers(participantCount, contestId) {
       const count = participantCount || 0;
       if (count === 0) return '';
 
       // Get participant PFPs if available
-      const participants = state.contestParticipants[contestId] || [];
+      const rawParticipants = state.contestParticipants[contestId] || [];
+
+      // Expand participants: show 2 PFPs for users who replied (stacked next to each other)
+      const participants = [];
+      rawParticipants.forEach(p => {
+        participants.push({ ...p, isReplyPfp: false }); // Entry PFP
+        if (p.hasReplied) {
+          participants.push({ ...p, isReplyPfp: true }); // Reply PFP (stacked)
+        }
+      });
+
       const hasPfps = participants.length > 0;
 
       // Use contestId as seed for consistent animation timing
@@ -4880,7 +4891,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const maxRows = 3; // Max number of rows
       const maxDisplay = maxPerRow * maxRows; // Total max display
 
-      const displayCount = Math.min(count, maxDisplay);
+      const displayCount = Math.min(participants.length, maxDisplay);
 
       // Group PFPs into rows
       const rows = [];
@@ -4895,7 +4906,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         rowParticipants.forEach((participant, colIndex) => {
           const imgSrc = participant?.pfpUrl || '/neynartode-sticker.png';
           const isPfp = hasPfps && participant?.pfpUrl;
-          const title = participant?.username ? `title="@${participant.username}"` : '';
+          // Show different tooltip for entry vs reply PFP
+          const actionText = participant?.isReplyPfp ? 'replied' : 'entered';
+          const title = participant?.username ? `title="@${participant.username} ${actionText}"` : '';
+          // Reply PFPs get a slightly different border color (green tint)
+          const borderColor = participant?.isReplyPfp ? 'rgba(34, 197, 94, 0.7)' : 'rgba(139, 92, 246, 0.6)';
+          const shadowColor = participant?.isReplyPfp ? 'rgba(34, 197, 94, 0.4)' : 'rgba(139, 92, 246, 0.4)';
 
           rowPfps += `<img
             src="${imgSrc}"
@@ -4906,8 +4922,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               width: ${pfpSize}px;
               height: ${pfpSize}px;
               ${isPfp ? 'border-radius: 50%;' : ''}
-              ${isPfp ? 'border: 2px solid rgba(139, 92, 246, 0.6);' : ''}
-              ${isPfp ? 'box-shadow: 0 0 6px rgba(139, 92, 246, 0.4);' : ''}
+              ${isPfp ? `border: 2px solid ${borderColor};` : ''}
+              ${isPfp ? `box-shadow: 0 0 6px ${shadowColor};` : ''}
               margin-left: ${colIndex === 0 ? '0' : `-${overlap}px`};
               z-index: ${rowParticipants.length - colIndex};
               object-fit: cover;
@@ -4923,8 +4939,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         rowsHtml += `<div class="flex items-center justify-end ${driftClass}" style="margin-top: ${rowIndex === 0 ? '0' : rowGap + 'px'}; --drift-duration: ${3 + rowIndex * 0.5}s;">${rowPfps}</div>`;
       });
 
-      // Add "+X more" indicator if there are more participants
-      const remaining = count - displayCount;
+      // Add "+X more" indicator if there are more participants (use expanded count)
+      const remaining = participants.length - displayCount;
       if (remaining > 0) {
         rowsHtml += `<div class="text-xs text-[var(--text-muted)] text-right mt-1">+${remaining} more</div>`;
       }
