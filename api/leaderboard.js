@@ -21,6 +21,8 @@ const { ethers } = require('ethers');
 
 const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+  CONTEST_MANAGER_V2: '0xa63c93dc3a44243c5e27650e3dc11eac96d89d75',
+  V2_START_ID: 105, // V2 contests start at ID 105
   PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
   VOTING_MANAGER: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
@@ -43,6 +45,11 @@ const EXCLUDED_ADDRESSES = [
 
 const CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function nextContestId() external view returns (uint256)',
+];
+
+const CONTEST_MANAGER_V2_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
   'function nextContestId() external view returns (uint256)',
 ];
 
@@ -183,6 +190,7 @@ module.exports = async (req, res) => {
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
     const contestContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
+    const contestManagerV2 = new ethers.Contract(CONFIG.CONTEST_MANAGER_V2, CONTEST_MANAGER_V2_ABI, provider);
     const prizeNFTContract = new ethers.Contract(CONFIG.PRIZE_NFT, PRIZE_NFT_ABI, provider);
     const votingContract = new ethers.Contract(CONFIG.VOTING_MANAGER, VOTING_MANAGER_ABI, provider);
     const tokenContract = new ethers.Contract(CONFIG.NEYNARTODES_TOKEN, ERC20_ABI, provider);
@@ -212,9 +220,18 @@ module.exports = async (req, res) => {
       console.error(`Error fetching season ${seasonId}:`, e.message);
     }
 
-    // Get total contest count
+    // Get total contest count from BOTH contracts
     const nextContestId = await contestContract.nextContestId();
-    const totalContests = Number(nextContestId) - 1;
+    const totalLegacyContests = Number(nextContestId) - 1;
+
+    let nextV2ContestId = CONFIG.V2_START_ID;
+    try {
+      nextV2ContestId = Number(await contestManagerV2.nextContestId());
+    } catch (e) {
+      console.log('Could not fetch V2 contest count:', e.message);
+    }
+    const totalV2Contests = nextV2ContestId - CONFIG.V2_START_ID;
+    const totalContests = totalLegacyContests + totalV2Contests;
 
     if (totalContests <= 0) {
       return res.status(200).json({
@@ -230,10 +247,12 @@ module.exports = async (req, res) => {
 
     // OPTIMIZED: Fetch all contests in parallel batches
     const BATCH_SIZE = 20;
-    const contestIds = Array.from({ length: totalContests }, (_, i) => i + 1);
 
-    for (let i = 0; i < contestIds.length; i += BATCH_SIZE) {
-      const batch = contestIds.slice(i, i + BATCH_SIZE);
+    // Process LEGACY contests (IDs 1 to totalLegacyContests)
+    const legacyContestIds = Array.from({ length: totalLegacyContests }, (_, i) => i + 1);
+
+    for (let i = 0; i < legacyContestIds.length; i += BATCH_SIZE) {
+      const batch = legacyContestIds.slice(i, i + BATCH_SIZE);
       const contestPromises = batch.map(id =>
         contestContract.getContest(id).catch(() => null)
       );
@@ -288,6 +307,67 @@ module.exports = async (req, res) => {
           // Add volume (stored in wei, convert to regular number)
           const volume = Number(volumeRequirement) / 1e18;
           hostStats[hostLower].totalVolume += volume;
+        }
+      }
+    }
+
+    // Process V2 contests (IDs V2_START_ID to nextV2ContestId - 1)
+    const v2ContestIds = Array.from({ length: totalV2Contests }, (_, i) => CONFIG.V2_START_ID + i);
+
+    for (let i = 0; i < v2ContestIds.length; i += BATCH_SIZE) {
+      const batch = v2ContestIds.slice(i, i + BATCH_SIZE);
+      const contestPromises = batch.map(id =>
+        contestManagerV2.getContest(id).catch(() => null)
+      );
+
+      const contestResults = await Promise.all(contestPromises);
+
+      for (let j = 0; j < batch.length; j++) {
+        const contestData = contestResults[j];
+        if (!contestData) continue;
+
+        // V2 format: host, contestType, status, castId, endTime, prizeToken, prizeAmount, winnerCount, winners
+        const [host, , status, castId, endTime] = contestData;
+        const contestEndTime = Number(endTime);
+
+        // Filter by season time range - contest must END within season window
+        if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
+          continue; // Skip contests outside this season
+        }
+
+        seasonContestCount++;
+        const hostLower = host.toLowerCase();
+
+        // Skip excluded addresses (devs/admins who shouldn't compete)
+        if (EXCLUDED_ADDRESSES.includes(hostLower)) {
+          continue;
+        }
+
+        if (!hostStats[hostLower]) {
+          hostStats[hostLower] = {
+            address: host,
+            contests: 0,
+            completedContests: 0,
+            totalLikes: 0,
+            totalRecasts: 0,
+            totalReplies: 0,
+            totalVolume: 0,
+            castHashes: [],
+          };
+        }
+
+        hostStats[hostLower].contests++;
+
+        // Only count completed contests for scoring (V2 status: 2 = Completed)
+        if (Number(status) === 2) {
+          hostStats[hostLower].completedContests++;
+
+          // Extract actual cast hash
+          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+          if (actualCastHash && actualCastHash !== '') {
+            hostStats[hostLower].castHashes.push(actualCastHash);
+          }
+          // V2 contests don't have volumeRequirement in the same way
         }
       }
     }

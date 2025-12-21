@@ -1078,15 +1078,25 @@ async function checkAndFinalizeV2Contest(contestId) {
   // ═══════════════════════════════════════════════════════════════════
   // CRITICAL: Only consider users who actually clicked the Enter button
   // Entry is recorded in KV when user clicks Enter in the app
+  // Check BOTH key formats for V2 contests (v2-{id} and {id})
   // ═══════════════════════════════════════════════════════════════════
   let enteredFids = new Set();
   try {
     if (process.env.KV_REST_API_URL) {
       const { kv } = require('@vercel/kv');
-      // Get all FIDs who clicked Enter for this contest
-      const entryFids = await kv.smembers(`contest_entries:${contestId}`);
-      enteredFids = new Set(entryFids.map(f => parseInt(f)));
-      console.log(`   Users who clicked Enter: ${enteredFids.size}`);
+      // Check both key formats for V2 contests and combine results
+      const v2Key = `contest_entries:v2-${contestId}`;
+      const legacyKey = `contest_entries:${contestId}`;
+
+      let v2Fids = await kv.smembers(v2Key);
+      let legacyFids = await kv.smembers(legacyKey);
+
+      v2Fids = Array.isArray(v2Fids) ? v2Fids : [];
+      legacyFids = Array.isArray(legacyFids) ? legacyFids : [];
+
+      const allFids = [...v2Fids, ...legacyFids];
+      enteredFids = new Set(allFids.map(f => parseInt(f)));
+      console.log(`   Users who clicked Enter: ${enteredFids.size} (v2: ${v2Fids.length}, legacy: ${legacyFids.length})`);
     }
   } catch (e) {
     console.log(`   ⚠️ Could not fetch entries from KV: ${e.message}`);
