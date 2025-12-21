@@ -167,14 +167,18 @@ module.exports = async (req, res) => {
         try {
           const { prize, hostUsername, timeLeft, isNft, nftImage, nftName } = announcement;
 
-          // Build announcement text
+          // Extract numeric contest ID (remove v2- prefix if present)
+          const numericContestId = contestId.toString().replace('v2-', '');
+
+          // Build announcement text with contest-specific link (opens Primary Button)
           const prizeText = isNft ? (nftName || 'an NFT') : (prize || 'tokens');
           const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
+          const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${numericContestId}`;
 
           const castText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeft} remaining!
 
 Go check this out!! 👇
-https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
+${miniAppUrl}`;
 
           // Build embeds array
           const embeds = [];
