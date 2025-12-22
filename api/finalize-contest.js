@@ -29,7 +29,10 @@ const { ethers } = require('ethers');
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
-  // V1 Contract addresses (legacy)
+  // Feature flags
+  FINALIZE_V1_CONTESTS: false, // Set to true to re-enable V1 finalization (legacy ETH/NFT escrow contracts)
+
+  // V1 Contract addresses (legacy - no longer creating new contests)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
 
@@ -1392,65 +1395,70 @@ async function checkAllPendingContests() {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
   const results = [];
 
-  // Check ETH contests
-  const ethEscrow = new ethers.Contract(
-    CONFIG.CONTEST_ESCROW,
-    CONTEST_ESCROW_ABI,
-    provider
-  );
+  // V1 ETH and NFT contest finalization (disabled by default - legacy contracts)
+  if (CONFIG.FINALIZE_V1_CONTESTS) {
+    // Check ETH contests
+    const ethEscrow = new ethers.Contract(
+      CONFIG.CONTEST_ESCROW,
+      CONTEST_ESCROW_ABI,
+      provider
+    );
 
-  const ethNextId = await ethEscrow.nextContestId();
-  const MAX_CONTESTS_TO_CHECK = 15n;
-  const ethStartId = ethNextId > MAX_CONTESTS_TO_CHECK ? ethNextId - MAX_CONTESTS_TO_CHECK : 1n;
+    const ethNextId = await ethEscrow.nextContestId();
+    const MAX_CONTESTS_TO_CHECK = 15n;
+    const ethStartId = ethNextId > MAX_CONTESTS_TO_CHECK ? ethNextId - MAX_CONTESTS_TO_CHECK : 1n;
 
-  console.log(`\n🔍 Checking ETH contests ${ethStartId} to ${ethNextId - 1n}...`);
+    console.log(`\n🔍 Checking V1 ETH contests ${ethStartId} to ${ethNextId - 1n}...`);
 
-  for (let i = ethStartId; i < ethNextId; i++) {
-    try {
-      const canFinalize = await ethEscrow.canFinalize(i);
+    for (let i = ethStartId; i < ethNextId; i++) {
+      try {
+        const canFinalize = await ethEscrow.canFinalize(i);
 
-      if (canFinalize) {
-        console.log(`\n📋 ETH Contest #${i} is ready to finalize`);
-        const result = await checkAndFinalizeContest(Number(i), false);
-        results.push(result);
+        if (canFinalize) {
+          console.log(`\n📋 ETH Contest #${i} is ready to finalize`);
+          const result = await checkAndFinalizeContest(Number(i), false);
+          results.push(result);
+        }
+      } catch (e) {
+        console.log(`   Skipping ETH contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
+        continue;
       }
-    } catch (e) {
-      console.log(`   Skipping ETH contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
-      continue;
     }
-  }
 
-  // Check NFT contests
-  const nftEscrow = new ethers.Contract(
-    CONFIG.NFT_CONTEST_ESCROW,
-    NFT_CONTEST_ESCROW_ABI,
-    provider
-  );
+    // Check NFT contests
+    const nftEscrow = new ethers.Contract(
+      CONFIG.NFT_CONTEST_ESCROW,
+      NFT_CONTEST_ESCROW_ABI,
+      provider
+    );
 
-  const nftNextId = await nftEscrow.nextContestId();
-  const nftStartId = nftNextId > MAX_CONTESTS_TO_CHECK ? nftNextId - MAX_CONTESTS_TO_CHECK : 1n;
+    const nftNextId = await nftEscrow.nextContestId();
+    const nftStartId = nftNextId > MAX_CONTESTS_TO_CHECK ? nftNextId - MAX_CONTESTS_TO_CHECK : 1n;
 
-  console.log(`\n🔍 Checking NFT contests ${nftStartId} to ${nftNextId - 1n}...`);
+    console.log(`\n🔍 Checking V1 NFT contests ${nftStartId} to ${nftNextId - 1n}...`);
 
-  for (let i = nftStartId; i < nftNextId; i++) {
-    try {
-      // NFT contract doesn't have canFinalize, so check status and endTime manually
-      const contest = await nftEscrow.getContest(i);
-      const status = contest[10]; // status is at index 10 for NFT contests
-      const endTime = contest[6]; // endTime is at index 6
+    for (let i = nftStartId; i < nftNextId; i++) {
+      try {
+        // NFT contract doesn't have canFinalize, so check status and endTime manually
+        const contest = await nftEscrow.getContest(i);
+        const status = contest[10]; // status is at index 10 for NFT contests
+        const endTime = contest[6]; // endTime is at index 6
 
-      const now = Math.floor(Date.now() / 1000);
-      const canFinalize = status === 0n && now >= Number(endTime);
+        const now = Math.floor(Date.now() / 1000);
+        const canFinalize = status === 0n && now >= Number(endTime);
 
-      if (canFinalize) {
-        console.log(`\n📋 NFT Contest #${i} is ready to finalize`);
-        const result = await checkAndFinalizeContest(Number(i), true);
-        results.push(result);
+        if (canFinalize) {
+          console.log(`\n📋 NFT Contest #${i} is ready to finalize`);
+          const result = await checkAndFinalizeContest(Number(i), true);
+          results.push(result);
+        }
+      } catch (e) {
+        console.log(`   Skipping NFT contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
+        continue;
       }
-    } catch (e) {
-      console.log(`   Skipping NFT contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
-      continue;
     }
+  } else {
+    console.log('\n⏭️ V1 contest finalization is disabled (FINALIZE_V1_CONTESTS=false)');
   }
 
   // Check V2 ContestManager contests
