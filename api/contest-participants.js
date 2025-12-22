@@ -5,10 +5,21 @@
  * Used to display floating PFPs in the active contests section.
  *
  * GET /api/contest-participants?contestId=112
- * Returns: { participants: [{ fid, pfpUrl, username, hasReplied }] }
+ * Returns: { participants: [{ fid, pfpUrl, username, hasReplied, isHolder, entryCount }] }
+ *
+ * Entry counts:
+ * - Base entry: 1 (everyone who enters)
+ * - Holder bonus: +1 (100M+ NEYNARTODES)
+ * - Reply bonus: +1 (replied with 2+ words)
+ * - Max entries: 3
  */
 
 const { ethers } = require('ethers');
+
+// NEYNARTODES token for holder check
+const NEYNARTODES_TOKEN = '0x8dE1622fE07f56cda2e2273e615A513F1d828B07';
+const HOLDER_THRESHOLD = ethers.parseUnits('100000000', 18); // 100M tokens
+const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
 
 // Contract ABIs for fetching castId
 const CONTEST_ESCROW_ABI = [
@@ -169,13 +180,55 @@ module.exports = async (req, res) => {
       // Continue without reply data - just won't show stacked PFPs
     }
 
-    // Map to participant objects with hasReplied status
-    const participants = users.map(user => ({
-      fid: user.fid,
-      pfpUrl: user.pfp_url || null,
-      username: user.username,
-      hasReplied: hasRepliedSet.has(user.fid)
-    })).filter(p => p.pfpUrl); // Only include users with PFPs
+    // Check holder status for all users in parallel
+    const holderStatusMap = new Map();
+    const token = new ethers.Contract(NEYNARTODES_TOKEN, ERC20_ABI, provider);
+
+    // Get addresses for all users and check balances
+    const holderChecks = await Promise.all(
+      users.map(async (user) => {
+        try {
+          // Get all verified addresses for this user
+          const addresses = user.verified_addresses?.eth_addresses || [];
+          if (user.custody_address) addresses.push(user.custody_address);
+
+          if (addresses.length === 0) return { fid: user.fid, isHolder: false };
+
+          // Check balance across all addresses
+          const balances = await Promise.all(
+            addresses.map(addr => token.balanceOf(addr).catch(() => 0n))
+          );
+          const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
+
+          return { fid: user.fid, isHolder: totalBalance >= HOLDER_THRESHOLD };
+        } catch (e) {
+          return { fid: user.fid, isHolder: false };
+        }
+      })
+    );
+
+    // Build holder status map
+    holderChecks.forEach(check => holderStatusMap.set(check.fid, check.isHolder));
+
+    // Map to participant objects with hasReplied, isHolder, and entryCount
+    const participants = users.map(user => {
+      const hasReplied = hasRepliedSet.has(user.fid);
+      const isHolder = holderStatusMap.get(user.fid) || false;
+
+      // Calculate entry count: base (1) + holder bonus (1) + reply bonus (1)
+      let entryCount = 1; // Base entry
+      if (isHolder) entryCount++;
+      if (hasReplied) entryCount++;
+
+      return {
+        fid: user.fid,
+        pfpUrl: user.pfp_url || null,
+        username: user.username,
+        hasReplied,
+        isHolder,
+        entryCount
+      };
+    }).filter(p => p.pfpUrl); // Only include users with PFPs
 
     return res.status(200).json({
       participants,

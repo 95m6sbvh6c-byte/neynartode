@@ -752,9 +752,11 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
       batch.forEach((user, idx) => {
         const holderCheck = holderChecks[idx];
         if (holderCheck.isHolder) {
+          user.isHolder = true; // Mark for bonus entry at finalization
           holderUsers.push(user);
           console.log(`   💎 @${user.username || user.fid} is a HOLDER (${ethers.formatEther(holderCheck.balance)} tokens)`);
         } else {
+          user.isHolder = false;
           nonHolderUsers.push(user);
         }
       });
@@ -836,8 +838,11 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
   }
 
   // Build final entries: 1 primary address per qualified user (1 entry per FID)
-  // BONUS: Users who replied with 2+ words get a second entry
+  // BONUS 1: Users who replied with 2+ words get a second entry
+  // BONUS 2: Holders (100M+ NEYNARTODES) get a bonus entry
   const qualifiedAddresses = [];
+  let replyBonusCount = 0;
+  let holderBonusCount = 0;
 
   for (const user of finalQualifiedUsers) {
     // First entry for everyone
@@ -848,13 +853,21 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
     if (userData && userData.replied && userData.wordCount >= 2) {
       // Bonus entry for reply!
       qualifiedAddresses.push(user.primaryAddress);
-      console.log(`   🎁 Bonus entry for @${user.username || user.fid} (replied with ${userData.wordCount} words)`);
+      replyBonusCount++;
+      console.log(`   🎁 Reply bonus for @${user.username || user.fid} (${userData.wordCount} words)`);
+    }
+
+    // Bonus entry for holders (100M+ NEYNARTODES at finalization)
+    if (user.isHolder) {
+      qualifiedAddresses.push(user.primaryAddress);
+      holderBonusCount++;
+      console.log(`   💎 Holder bonus for @${user.username || user.fid}`);
     }
   }
 
-  const bonusEntries = qualifiedAddresses.length - finalQualifiedUsers.length;
-  if (bonusEntries > 0) {
-    console.log(`   📝 Added ${bonusEntries} bonus entries for replies`);
+  const totalBonusEntries = replyBonusCount + holderBonusCount;
+  if (totalBonusEntries > 0) {
+    console.log(`   📝 Added ${totalBonusEntries} bonus entries (${replyBonusCount} reply + ${holderBonusCount} holder)`);
   }
 
   // Finalize contest on-chain
@@ -1178,6 +1191,28 @@ async function checkAndFinalizeV2Contest(contestId) {
 
   console.log(`\n✅ Qualified users: ${qualifiedUsers.length} (1 entry per FID)`);
 
+  // Check holder status for all qualified V2 users (for bonus entries)
+  if (qualifiedUsers.length > 0) {
+    console.log('\n💎 Checking holder status for V2 users...');
+    const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
+    const BATCH_SIZE = 10;
+
+    for (let i = 0; i < qualifiedUsers.length; i += BATCH_SIZE) {
+      const batch = qualifiedUsers.slice(i, i + BATCH_SIZE);
+      const holderChecks = await Promise.all(
+        batch.map(user => checkHolderQualification(user.addresses, provider, CONFIG.NEYNARTODES_TOKEN))
+      );
+
+      batch.forEach((user, idx) => {
+        const holderCheck = holderChecks[idx];
+        user.isHolder = holderCheck.isHolder;
+        if (holderCheck.isHolder) {
+          console.log(`   💎 @${user.username || user.fid} is a HOLDER (${ethers.formatEther(holderCheck.balance)} tokens)`);
+        }
+      });
+    }
+  }
+
   if (qualifiedUsers.length === 0) {
     // No qualified participants - auto-cancel and refund host
     console.log('\n❌ No qualified participants - cancelling V2 contest and refunding host...');
@@ -1206,8 +1241,11 @@ async function checkAndFinalizeV2Contest(contestId) {
   }
 
   // Build final entries: 1 primary address per qualified user
-  // Bonus: Users who replied with 2+ words get a second entry
+  // BONUS 1: Users who replied with 2+ words get a second entry
+  // BONUS 2: Holders (100M+ NEYNARTODES) get a bonus entry
   const qualifiedAddresses = [];
+  let replyBonusCount = 0;
+  let holderBonusCount = 0;
 
   for (const user of qualifiedUsers) {
     qualifiedAddresses.push(user.primaryAddress);
@@ -1215,13 +1253,21 @@ async function checkAndFinalizeV2Contest(contestId) {
     const userData = engagement.usersByFid?.get(user.fid);
     if (userData && userData.replied && userData.wordCount >= 2) {
       qualifiedAddresses.push(user.primaryAddress);
-      console.log(`   🎁 Bonus entry for @${user.username || user.fid} (replied with ${userData.wordCount} words)`);
+      replyBonusCount++;
+      console.log(`   🎁 Reply bonus for @${user.username || user.fid} (${userData.wordCount} words)`);
+    }
+
+    // Bonus entry for holders (100M+ NEYNARTODES at finalization)
+    if (user.isHolder) {
+      qualifiedAddresses.push(user.primaryAddress);
+      holderBonusCount++;
+      console.log(`   💎 Holder bonus for @${user.username || user.fid}`);
     }
   }
 
-  const bonusEntries = qualifiedAddresses.length - qualifiedUsers.length;
-  if (bonusEntries > 0) {
-    console.log(`   📝 Added ${bonusEntries} bonus entries for replies`);
+  const totalBonusEntries = replyBonusCount + holderBonusCount;
+  if (totalBonusEntries > 0) {
+    console.log(`   📝 Added ${totalBonusEntries} bonus entries (${replyBonusCount} reply + ${holderBonusCount} holder)`);
   }
 
   // Limit entries to avoid gas limit errors
