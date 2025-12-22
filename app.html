@@ -4859,7 +4859,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // Generate floating avatars (PFPs) in synchronized rows at top-right
     // Rows fill from right to left, new rows start below when full
-    // Users who replied show 2 stacked PFPs (one for entry, one for reply)
+    // Users show stacked PFPs based on entryCount (1=base, 2=holder bonus, 3=reply bonus)
     function generateEntryStickers(participantCount, contestId) {
       const count = participantCount || 0;
       if (count === 0) return '';
@@ -4867,12 +4867,20 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       // Get participant PFPs if available
       const rawParticipants = state.contestParticipants[contestId] || [];
 
-      // Expand participants: show 2 PFPs for users who replied (stacked next to each other)
+      // Expand participants: show N PFPs based on entryCount (1-3)
+      // 1 = base entry (purple), 2 = +holder bonus (gold), 3 = +reply bonus (green)
       const participants = [];
       rawParticipants.forEach(p => {
-        participants.push({ ...p, isReplyPfp: false }); // Entry PFP
-        if (p.hasReplied) {
-          participants.push({ ...p, isReplyPfp: true }); // Reply PFP (stacked)
+        const entryCount = p.entryCount || 1;
+        // First PFP = base entry (purple)
+        participants.push({ ...p, pfpType: 'entry' });
+        // Second PFP = holder bonus (gold)
+        if (entryCount >= 2) {
+          participants.push({ ...p, pfpType: 'holder' });
+        }
+        // Third PFP = reply bonus (green)
+        if (entryCount >= 3) {
+          participants.push({ ...p, pfpType: 'reply' });
         }
       });
 
@@ -4907,12 +4915,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         rowParticipants.forEach((participant, colIndex) => {
           const imgSrc = participant?.pfpUrl || '/neynartode-sticker.png';
           const isPfp = hasPfps && participant?.pfpUrl;
-          // Show different tooltip for entry vs reply PFP
-          const actionText = participant?.isReplyPfp ? 'replied' : 'entered';
+          // Show different tooltip based on PFP type
+          const pfpType = participant?.pfpType || 'entry';
+          const actionText = pfpType === 'reply' ? 'replied' : pfpType === 'holder' ? 'holder bonus' : 'entered';
           const title = participant?.username ? `title="@${participant.username} ${actionText}"` : '';
-          // Reply PFPs get a slightly different border color (green tint)
-          const borderColor = participant?.isReplyPfp ? 'rgba(34, 197, 94, 0.7)' : 'rgba(139, 92, 246, 0.6)';
-          const shadowColor = participant?.isReplyPfp ? 'rgba(34, 197, 94, 0.4)' : 'rgba(139, 92, 246, 0.4)';
+          // Different border colors: entry=purple, holder=gold, reply=green
+          const borderColor = pfpType === 'reply' ? 'rgba(34, 197, 94, 0.7)' : pfpType === 'holder' ? 'rgba(234, 179, 8, 0.7)' : 'rgba(139, 92, 246, 0.6)';
+          const shadowColor = pfpType === 'reply' ? 'rgba(34, 197, 94, 0.4)' : pfpType === 'holder' ? 'rgba(234, 179, 8, 0.4)' : 'rgba(139, 92, 246, 0.4)';
 
           rowPfps += `<img
             src="${imgSrc}"
