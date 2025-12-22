@@ -5018,9 +5018,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       <div class="text-sm font-semibold text-[var(--text-primary)]">${hoursLeft}h ${minutesLeft}m</div>
                     </div>
                   </div>
-                  <div class="flex items-center gap-2 mb-3">
-                    <span class="text-xs text-[var(--text-muted)]">Participants:</span>
-                    <span class="text-sm font-semibold text-[var(--accent)]">${contest.participantCount || 0}</span>
+                  <div class="flex items-center gap-4 mb-3">
+                    <div class="flex items-center gap-1">
+                      <span class="text-xs text-[var(--text-muted)]">Entries:</span>
+                      <span class="text-sm font-semibold text-[var(--accent)]">${contest.participantCount || 0}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <span class="text-xs text-[var(--text-muted)]">Winners:</span>
+                      <span class="text-sm font-semibold ${(contest.winnerCount || 1) > 1 ? 'text-yellow-400' : 'text-[var(--text-primary)]'}">${contest.winnerCount || 1}</span>
+                    </div>
                   </div>
                   <div class="flex gap-2 flex-wrap">
                     <button
