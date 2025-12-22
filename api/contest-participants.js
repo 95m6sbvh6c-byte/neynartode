@@ -15,6 +15,7 @@
  */
 
 const { ethers } = require('ethers');
+const { getUsersByFids, getCastConversation } = require('./lib/utils');
 
 // NEYNARTODES token for holder check
 const NEYNARTODES_TOKEN = '0x8dE1622fE07f56cda2e2273e615A513F1d828B07';
@@ -61,8 +62,6 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'Missing contestId parameter' });
   }
 
-  const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D';
-
   if (!process.env.KV_REST_API_URL) {
     return res.status(200).json({ participants: [], error: 'KV not configured' });
   }
@@ -104,22 +103,12 @@ module.exports = async (req, res) => {
     // Limit to 30 participants (for display purposes)
     const limitedFids = entryFids.slice(0, 30);
 
-    // Fetch user profiles from Neynar in bulk
-    const fidsParam = limitedFids.join(',');
-    const neynarResponse = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fidsParam}`,
-      {
-        headers: { 'api_key': NEYNAR_API_KEY }
-      }
-    );
+    // Fetch user profiles from Neynar in bulk (cached)
+    const users = await getUsersByFids(limitedFids.map(f => parseInt(f)));
 
-    if (!neynarResponse.ok) {
-      console.error('Neynar API error:', await neynarResponse.text());
+    if (!users || users.length === 0) {
       return res.status(200).json({ participants: [], count: entryFids.length });
     }
-
-    const neynarData = await neynarResponse.json();
-    const users = neynarData.users || [];
 
     // Now fetch actual replies from the contest cast to determine who has replied
     const hasRepliedSet = new Set();
@@ -153,28 +142,14 @@ module.exports = async (req, res) => {
       const actualCastHash = castId && castId.includes('|') ? castId.split('|')[0] : castId;
 
       if (actualCastHash && actualCastHash.length > 0) {
-        // Fetch replies from Neynar (max 50 per request)
-        const repliesResponse = await fetch(
-          `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${actualCastHash}&type=hash&reply_depth=1&limit=50`,
-          {
-            headers: { 'api_key': NEYNAR_API_KEY }
-          }
-        );
+        // Fetch replies from Neynar (cached)
+        const conversation = await getCastConversation(actualCastHash);
 
-        if (repliesResponse.ok) {
-          const repliesData = await repliesResponse.json();
-          const replies = repliesData.conversation?.cast?.direct_replies || [];
-
-          // Build set of FIDs who replied
-          for (const reply of replies) {
-            if (reply.author?.fid) {
-              hasRepliedSet.add(reply.author.fid);
-            }
-          }
-          console.log(`Contest ${contestId}: Found ${replies.length} replies, hasRepliedSet size: ${hasRepliedSet.size}`);
-        } else {
-          console.error(`Contest ${contestId}: Replies API error:`, await repliesResponse.text());
+        // Copy replier FIDs to our set
+        for (const fid of conversation.replierFids) {
+          hasRepliedSet.add(fid);
         }
+        console.log(`Contest ${contestId}: Found ${conversation.replies.length} replies, hasRepliedSet size: ${hasRepliedSet.size}`);
       }
     } catch (replyError) {
       console.error('Error fetching replies:', replyError.message);

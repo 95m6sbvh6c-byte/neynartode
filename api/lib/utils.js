@@ -142,6 +142,184 @@ async function getFidFromAddress(address) {
   return user?.fid || null;
 }
 
+/**
+ * Get user by FID (cached)
+ * @param {number} fid - Farcaster ID
+ * @returns {Object|null} User object or null
+ */
+async function getUserByFid(fid) {
+  if (!fid) return null;
+
+  const cacheKey = `user:fid:${fid}`;
+  const cached = getCached(cacheKey, 300000); // 5 min cache
+  if (cached !== null) return cached;
+
+  try {
+    const response = await fetch(
+      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fid}`,
+      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+    );
+
+    if (!response.ok) {
+      setCache(cacheKey, null, 60000);
+      return null;
+    }
+
+    const data = await response.json();
+    const user = data.users?.[0] || null;
+
+    setCache(cacheKey, user, 300000);
+    return user;
+  } catch (error) {
+    console.error('Error fetching user by FID:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Get multiple users by FIDs (cached, batched)
+ * @param {number[]} fids - Array of Farcaster IDs
+ * @returns {Object[]} Array of user objects
+ */
+async function getUsersByFids(fids) {
+  if (!fids || fids.length === 0) return [];
+
+  // Check cache for each FID
+  const uncachedFids = [];
+  const results = [];
+
+  for (const fid of fids) {
+    const cacheKey = `user:fid:${fid}`;
+    const cached = getCached(cacheKey, 300000);
+    if (cached !== null) {
+      results.push(cached);
+    } else {
+      uncachedFids.push(fid);
+    }
+  }
+
+  // Fetch uncached FIDs in batches of 100
+  if (uncachedFids.length > 0) {
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < uncachedFids.length; i += BATCH_SIZE) {
+      const batch = uncachedFids.slice(i, i + BATCH_SIZE);
+      try {
+        const response = await fetch(
+          `https://api.neynar.com/v2/farcaster/user/bulk?fids=${batch.join(',')}`,
+          { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          for (const user of (data.users || [])) {
+            setCache(`user:fid:${user.fid}`, user, 300000);
+            results.push(user);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching users by FIDs:', error.message);
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Get cast reactions (likes/recasts) with caching
+ * @param {string} castHash - Cast hash
+ * @param {string} types - Reaction types ('likes', 'recasts', or 'likes,recasts')
+ * @returns {Object} { likes: [], recasts: [], likerFids: Set, recasterFids: Set }
+ */
+async function getCastReactions(castHash, types = 'likes,recasts') {
+  if (!castHash) return { likes: [], recasts: [], likerFids: new Set(), recasterFids: new Set() };
+
+  const cacheKey = `reactions:${castHash}:${types}`;
+  const cached = getCached(cacheKey, 30000); // 30 second cache
+  if (cached) return cached;
+
+  const result = { likes: [], recasts: [], likerFids: new Set(), recasterFids: new Set() };
+
+  try {
+    let cursor = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      const url = `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${castHash}&types=${types}&limit=100${cursor ? `&cursor=${cursor}` : ''}`;
+      const response = await fetch(url, {
+        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+      });
+
+      if (!response.ok) break;
+
+      const data = await response.json();
+      const reactions = data.reactions || [];
+
+      for (const r of reactions) {
+        if (r.reaction_type === 'like') {
+          result.likes.push(r);
+          result.likerFids.add(r.user?.fid);
+        } else if (r.reaction_type === 'recast') {
+          result.recasts.push(r);
+          result.recasterFids.add(r.user?.fid);
+        }
+      }
+
+      cursor = data.next?.cursor;
+      hasMore = !!cursor && reactions.length > 0;
+    }
+
+    setCache(cacheKey, result, 30000);
+    return result;
+  } catch (error) {
+    console.error('Error fetching cast reactions:', error.message);
+    return result;
+  }
+}
+
+/**
+ * Get cast conversation (replies) with caching
+ * @param {string} castHash - Cast hash
+ * @returns {Object} { replies: [], replierFids: Set }
+ */
+async function getCastConversation(castHash) {
+  if (!castHash) return { replies: [], replierFids: new Set() };
+
+  const cacheKey = `conversation:${castHash}`;
+  const cached = getCached(cacheKey, 30000); // 30 second cache
+  if (cached) return cached;
+
+  const result = { replies: [], replierFids: new Set() };
+
+  try {
+    const url = `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=50`;
+    const response = await fetch(url, {
+      headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
+    });
+
+    if (!response.ok) {
+      setCache(cacheKey, result, 30000);
+      return result;
+    }
+
+    const data = await response.json();
+    const replies = data.conversation?.cast?.direct_replies || [];
+
+    for (const reply of replies) {
+      result.replies.push(reply);
+      if (reply.author?.fid) {
+        result.replierFids.add(reply.author.fid);
+      }
+    }
+
+    setCache(cacheKey, result, 30000);
+    return result;
+  } catch (error) {
+    console.error('Error fetching cast conversation:', error.message);
+    return result;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SOCIAL REQUIREMENTS
 // ═══════════════════════════════════════════════════════════════════
@@ -308,8 +486,12 @@ module.exports = {
   // Neynar
   neynarGet,
   getUserByWallet,
+  getUserByFid,
+  getUsersByFids,
   getUserAddresses,
   getFidFromAddress,
+  getCastReactions,
+  getCastConversation,
 
   // Requirements
   parseRequirements,
