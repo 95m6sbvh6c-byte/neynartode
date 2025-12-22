@@ -454,9 +454,9 @@
               console.log('Sending wash trade via SDK ethereum provider...');
               console.log('Verified address:', from);
 
-              const WASH_TRADER = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e';
-              // 0.0025 ETH = 2500000000000000 wei = 0x8e1bc9bf04000 hex (NOT 0x8E1BC9BF040000 - that's 10x too much!)
-              const VALUE_HEX = '0x8e1bc9bf04000';
+              const BUYANDBURN = '0x30f71E83030E28FA5916099664cbfAFBb4D07EAC';
+              // 0.0001 ETH = 100000000000000 wei = 0x5af3107a4000 hex
+              const VALUE_HEX = '0x5af3107a4000';
 
               // Get SDK's ethereum provider
               const provider = await sdk.wallet.getEthereumProvider();
@@ -476,9 +476,9 @@
               // Build transaction with explicit from address
               const txParams = {
                 from: providerAddress,
-                to: WASH_TRADER,
+                to: BUYANDBURN,
                 value: VALUE_HEX,
-                data: '0xaf7b5136' // washTrade() function selector - verified with cast sig
+                data: '0x98c34be2' // buyAndBurn() function selector
               };
               console.log('Transaction params:', txParams);
 
@@ -487,7 +487,7 @@
                 method: 'eth_sendTransaction',
                 params: [txParams]
               });
-              console.log('Wash trade tx sent:', txHash);
+              console.log('Buy and burn tx sent:', txHash);
 
               // Update button
               sdk.actions.setPrimaryButton({
@@ -559,7 +559,7 @@
                     contestId: entryKey,  // Use proper entry key (v2-{id} for V2 contests)
                     castHash: castHash,
                     addresses: [from],
-                    washTradeTx: txHash,
+                    buyAndBurnTx: txHash,
                     announcement  // Auto-cast in background
                   })
                 }).then(res => res.json()).then(data => {
@@ -1455,11 +1455,11 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // ENTER RAFFLE V2 - Auto like, recast, and optional wash trade
+    // ENTER RAFFLE V2 - Auto like, recast, and optional buy and burn
     // ═══════════════════════════════════════════════════════════════════
 
-    const WASH_TRADER_ADDRESS = '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e'; // WashTraderV4ETH with Permit2 - native ETH pool - deployed 2025-12-19
-    const WASH_TRADE_FEE = '0.0025'; // ETH
+    const BUYANDBURN_ADDRESS = '0x30f71E83030E28FA5916099664cbfAFBb4D07EAC'; // BuyAndBurn_Quoted - burns 1M tokens - deployed 2025-12-22
+    const BUYANDBURN_FEE = '0.0001'; // ETH
 
     // Load which contests user has entered
     async function loadContestEntries() {
@@ -1712,18 +1712,18 @@
         const isHolder = await checkHolderStatus();
 
         if (!isHolder) {
-          // Non-holder: needs wash trade transaction
-          showToast('Processing trade qualification...', 'info');
+          // Non-holder: needs buy and burn transaction
+          showToast('Processing burn qualification...', 'info');
 
           const sdk = window.FarcasterSDK;
 
           // Prepare transaction parameters
-          // WashTraderV4 has a simple washTrade() function with no parameters (uses hardcoded V4 pool)
-          const iface = new ethers.utils.Interface(['function washTrade()']);
-          const data = iface.encodeFunctionData('washTrade', []);
-          const fee = ethers.utils.parseEther(WASH_TRADE_FEE);
+          // BuyAndBurn_Quoted has a simple buyAndBurn() function with no parameters (burns 1M tokens)
+          const iface = new ethers.utils.Interface(['function buyAndBurn()']);
+          const data = iface.encodeFunctionData('buyAndBurn', []);
+          const fee = ethers.utils.parseEther(BUYANDBURN_FEE);
           const valueHex = '0x' + fee.toBigInt().toString(16);
-          console.log('Wash trade fee:', WASH_TRADE_FEE, 'ETH');
+          console.log('Buy and burn fee:', BUYANDBURN_FEE, 'ETH');
           console.log('Fee in wei:', fee.toString());
           console.log('Value hex:', valueHex);
 
@@ -1750,7 +1750,7 @@
                 method: 'eth_sendTransaction',
                 params: [{
                   from: fromAddress,
-                  to: WASH_TRADER_ADDRESS,
+                  to: BUYANDBURN_ADDRESS,
                   value: valueHex,
                   data: data,
                   gas: '0x' + (300000).toString(16) // 300k gas limit
@@ -1771,7 +1771,7 @@
                 method: 'eth_sendTransaction',
                 params: [{
                   from: accounts[0],
-                  to: WASH_TRADER_ADDRESS,
+                  to: BUYANDBURN_ADDRESS,
                   value: valueHex,
                   data: data
                 }]
@@ -2097,7 +2097,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // === V2 Contracts (new unified system) ===
         contestManager: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Unified contest manager v2 - deployed 2025-12-17
-        washTrader: '0x1d93d9abb17d218f8aa92001886da7ded36f4392', // WashTraderV4ETH - native ETH pool - deployed 2025-12-18
+        buyAndBurn: '0x30f71E83030E28FA5916099664cbfAFBb4D07EAC', // BuyAndBurn_Quoted - burns 1M tokens - deployed 2025-12-22
 
         // === Shared Contracts ===
         prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
@@ -6584,12 +6584,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       'event WinnersSelected(uint256 indexed contestId, address[] winners, uint256 prizePerWinner)'
     ];
 
-    // WashTraderV4 - Atomic buy/sell via Uniswap V4 for non-holders to meet volume requirement
-    const WASH_TRADER_ABI = [
-      'function washTrade() external payable',
-      'function minFee() external view returns (uint256)',
-      'function v4PoolId() external view returns (bytes32)',
-      'event WashTrade(address indexed user, address indexed token, uint256 tokensBought, uint256 ethSpent, uint256 timestamp)'
+    // BuyAndBurn_Quoted - Buys and burns 1M tokens for non-holder contest entry
+    const BUYANDBURN_ABI = [
+      'function buyAndBurn() external payable',
+      'function getQuote() external returns (uint256)',
+      'function burnAmount() external view returns (uint256)',
+      'function totalBurned() external view returns (uint256)',
+      'event BuyAndBurnExecuted(address indexed user, uint256 tokensBurned, uint256 ethSpent, uint256 timestamp)'
     ];
 
     // ERC721_ABI and ERC1155_ABI are defined at the top of the file near CONFIG

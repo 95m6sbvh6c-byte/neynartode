@@ -3,7 +3,7 @@
  *
  * Handles "Enter Raffle" button click from Farcaster Frame.
  * For holders: directly processes entry (like, recast, record)
- * For non-holders: returns transaction request for wash trade
+ * For non-holders: returns transaction request for buy and burn (1M tokens)
  *
  * POST /api/frame-action?contestId=30
  * Body: Farcaster Frame action payload
@@ -17,8 +17,8 @@ const CONFIG = {
   BASE_RPC_URL: 'https://mainnet.base.org',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56CDA2E2273e615a513f1D828b07',
   HOLDER_THRESHOLD: '100000000', // 100M tokens
-  WASH_TRADER_ADDRESS: '0x2f4132d2b6f915beefccacb64eef115c5bc95a7e', // WashTraderV4ETH with Permit2
-  WASH_TRADE_FEE: '0.0025' // ETH
+  BUYANDBURN_ADDRESS: '0x30f71E83030E28FA5916099664cbfAFBb4D07EAC', // BuyAndBurn_Quoted - burns 1M tokens
+  BUYANDBURN_FEE: '0.0001' // ETH - ~2.5x quote buffer for slippage
 };
 
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
@@ -218,20 +218,20 @@ module.exports = async (req, res) => {
       }
 
     } else {
-      // Non-holder: Return transaction request for wash trade
-      const washTradeValue = ethers.parseEther(CONFIG.WASH_TRADE_FEE);
+      // Non-holder: Return transaction request for buy and burn
+      const buyAndBurnValue = ethers.parseEther(CONFIG.BUYANDBURN_FEE);
 
-      // washTrade() function selector - no parameters needed
-      const washTradeSelector = ethers.id('washTrade()').slice(0, 10);
+      // buyAndBurn() function selector - no parameters needed
+      const buyAndBurnSelector = ethers.id('buyAndBurn()').slice(0, 10);
 
       // Return transaction frame
       return res.status(200).json({
         chainId: 'eip155:8453', // Base mainnet
         method: 'eth_sendTransaction',
         params: {
-          to: CONFIG.WASH_TRADER_ADDRESS,
-          value: washTradeValue.toString(),
-          data: washTradeSelector
+          to: CONFIG.BUYANDBURN_ADDRESS,
+          value: buyAndBurnValue.toString(),
+          data: buyAndBurnSelector
         }
       });
     }
