@@ -4958,7 +4958,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (activeContests.length > 0) {
         contestsHtml = activeContests.map(contest => {
           const now = new Date();
-          const isLive = new Date(contest.startTime) <= now && new Date(contest.endTime) > now;
+          // V2 contests don't have startTime on-chain (it's estimated), so just check endTime and status
+          // V1 contests have accurate startTime
+          const isLive = contest.isV2
+            ? (contest.status === 0 && new Date(contest.endTime) > now)
+            : (new Date(contest.startTime) <= now && new Date(contest.endTime) > now);
           const isPending = contest.status === 1;
           const timeLeft = Math.max(0, Math.floor((new Date(contest.endTime) - now) / 1000));
           const hoursLeft = Math.floor(timeLeft / 3600);

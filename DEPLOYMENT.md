@@ -1,331 +1,341 @@
-# 🚀 NEYNARtodes Farcaster Frame - Deployment Guide
+# NEYNARtodes Farcaster Frame App - Complete Documentation
 
-## 📋 Overview
-
-This Frame allows Farcaster users to check their Season 0 Beta access directly in Warpcast or other Farcaster clients.
-
-**Features:**
-- ✅ Check wallet balance & whitelist status
-- ✅ Display Season 0 contract addresses
-- ✅ Direct link to full web app
-- ✅ Works in all Farcaster clients (Warpcast, etc.)
+**Last Updated:** December 22, 2025
 
 ---
 
-## 🎯 Quick Deployment (Vercel - Recommended)
+## Overview
 
-### Prerequisites
-- [Vercel account](https://vercel.com) (free tier works!)
-- [GitHub account](https://github.com)
-- Node.js installed (optional, for local testing)
+NEYNARtodes is a Farcaster Frame v2 (Mini App) that enables users to host and enter token-gated raffles/contests with prizes in ETH, ERC20 tokens, or NFTs. The app runs on Base mainnet and integrates with Farcaster for social engagement verification.
 
-### Step 1: Push to GitHub
-
-```bash
-cd "/Users/brianwharton/Desktop/Neynartodes /frame"
-
-# Initialize git repo
-git init
-git add .
-git commit -m "Initial NEYNARtodes Frame deployment"
-
-# Create GitHub repo and push
-# (Create repo at github.com/new first, then:)
-git remote add origin https://github.com/YOUR_USERNAME/neynartodes-frame.git
-git branch -M main
-git push -u origin main
-```
-
-### Step 2: Deploy to Vercel
-
-1. Go to [vercel.com](https://vercel.com)
-2. Click **"New Project"**
-3. Import your GitHub repo: `neynartodes-frame`
-4. Vercel will auto-detect settings (no changes needed!)
-5. Click **"Deploy"**
-6. Wait ~2 minutes for deployment ⏳
-
-### Step 3: Get Your Frame URL
-
-After deployment completes:
-- Vercel will give you a URL like: `https://neynartodes-frame.vercel.app`
-- **This is your Frame URL!** 🎉
-
-### Step 4: Update API Routes with Your Domain
-
-Replace `YOUR_DOMAIN` in these files with your actual Vercel URL:
-
-**Files to update:**
-- [index.html](./index.html) - Lines 11, 13, 16, 19
-- [api/check-access.js](./api/check-access.js) - Line 95, 99
-- [api/connect.js](./api/connect.js) - Line 21, 24
-
-**Example:**
-```html
-<!-- Before -->
-<meta property="fc:frame:button:3:target" content="https://YOUR_DOMAIN/app" />
-
-<!-- After -->
-<meta property="fc:frame:button:3:target" content="https://neynartodes-frame.vercel.app/app" />
-```
-
-**Quick find & replace:**
-```bash
-# In frame/ directory
-sed -i '' 's/YOUR_DOMAIN/neynartodes-frame.vercel.app/g' index.html
-sed -i '' 's/YOUR_DOMAIN/neynartodes-frame.vercel.app/g' api/check-access.js
-sed -i '' 's/YOUR_DOMAIN/neynartodes-frame.vercel.app/g' api/connect.js
-
-# Commit and push
-git add .
-git commit -m "Update domain URLs"
-git push
-```
-
-Vercel will auto-redeploy in ~1 minute!
+**Live URL:** https://frame-opal-eight.vercel.app
 
 ---
 
-## 📱 Testing Your Frame
+## Core Features
 
-### Option 1: Warpcast Frame Validator (Easiest)
+### 1. Contest System
 
-1. Go to: https://warpcast.com/~/developers/frames
-2. Enter your Frame URL: `https://neynartodes-frame.vercel.app`
-3. Click **"Validate"**
-4. You'll see a preview with all buttons working! ✅
+Two contest versions are supported:
 
-### Option 2: Post in Warpcast
+| Version | Contest IDs | Features |
+|---------|-------------|----------|
+| **V1 (Legacy)** | 1-104 | Single winner, volume requirements, supports ETH & NFT prizes |
+| **V2 (Current)** | 105+ | Multi-winner support, no volume requirements, unified contract |
 
-1. Create a new cast in Warpcast
-2. Paste your Frame URL: `https://neynartodes-frame.vercel.app`
-3. Warpcast will auto-detect it as a Frame
-4. Post it (or save as draft to test privately)
-5. Click the buttons to test! 🎮
+**Key Difference:** V2 contests only count users who click "Enter Raffle" - passive likes/recasts don't automatically enter users.
 
-### Option 3: Local Testing (Development)
+### 2. Entry System
 
-```bash
-cd "/Users/brianwharton/Desktop/Neynartodes /frame"
+**Base Entry:** Every user gets 1 entry
 
-# Install dependencies
-npm install
+**Bonus Entries (max 3 total):**
+| Bonus | Requirement | Extra Entries |
+|-------|-------------|---------------|
+| Holder Bonus | 100M+ NEYNARTODES | +1 |
+| Reply Bonus | Reply with 2+ words | +1 |
 
-# Install Vercel CLI
-npm install -g vercel
+**Entry Flow:**
+1. **Holders (100M+ tokens):** Click "Enter" → Instant entry (like/recast posted automatically)
+2. **Non-holders:** Click "Enter" → Pay ~0.0001 ETH → Burns 1M NEYNARTODES → Entry recorded
 
-# Run local dev server
-vercel dev
+### 3. Winner Selection
 
-# Open: http://localhost:3000
+- Uses Chainlink VRF for provably fair randomness
+- V2 supports multiple winners (prize split equally)
+- Winners announced automatically via reply to contest cast
+
+### 4. Leaderboard & Voting
+
+**Scoring Formula:**
 ```
+Total Score = Contest Score + Vote Score
+
+Contest Score = (Host Bonus) + (Social × Contests) + (Token Holdings / 50,000)
+- Host Bonus: 100 points per completed contest
+- Social: (Likes×1 + Recasts×2 + Replies×3) × 100
+
+Vote Score = (Upvotes - Downvotes) × 200
+```
+
+**Voting Cost:** 1,000 NEYNARTODES per vote (50% burned, 50% to treasury)
 
 ---
 
-## 🎨 Frame Flow
+## Contract Addresses
 
-### User Journey:
+### Active Contracts (V2 System)
 
-1. **Initial Frame** (`/` - index.html)
-   - Shows Season 0 info image
-   - Buttons: "Connect Wallet", "Check Access", "Launch App"
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| **ContestManager V2** | `0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06` | Unified contest management (ETH, ERC20, NFT) |
+| **NEYNARTODES Token** | `0x8dE1622fE07f56cda2e2273e615A513F1d828B07` | Main token |
+| **BuyAndBurn_Quoted** | `0x30f71E83030E28FA5916099664cbfAFBb4D07EAC` | Entry fee burns 1M tokens |
+| **PrizeNFT_Season0_V2** | `0x54E3972839A79fB4D1b0F70418141723d02E56e1` | Season management, prizes |
+| **VotingManager_Season0_V2** | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` | Host voting |
+| **Treasury_V2** | `0xd4d84f3477eb482783aAB48F00e357C801c48928` | Central treasury |
 
-2. **Click "Connect Wallet"** → `/api/connect`
-   - Shows user's Farcaster ID
-   - Buttons: "Check My Access", "Launch App"
+### V1 Contracts (Legacy - Still Active for Old Contests)
 
-3. **Click "Check Access"** → `/api/check-access`
-   - Fetches user's verified wallet from Farcaster
-   - Checks NEYNARTODES balance on Base
-   - Checks whitelist status
-   - Shows ✅ or 🚫 based on eligibility
-   - Buttons: "Check Again", "Launch App"
+| Contract | Address | Contest IDs |
+|----------|---------|-------------|
+| **ContestEscrow** | `0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A` | 1-65 (ETH prizes) |
+| **NFTContestEscrow** | `0xFD6e84d4396Ecaa144771C65914b2a345305F922` | 66-104 (NFT prizes) |
 
-4. **Click "Launch App"** → `/app`
-   - Opens full interactive web app
-   - User connects MetaMask
-   - Full Season 0 interface
+### Supporting Contracts
 
----
-
-## 🛠️ File Structure
-
-```
-frame/
-├── index.html              # Main Frame entry point
-├── app.html                # Full web app
-├── package.json            # Dependencies
-├── vercel.json             # Vercel config
-├── .gitignore              # Git ignore file
-├── DEPLOYMENT.md           # This file!
-└── api/
-    ├── image.js            # Generates Frame images (SVG)
-    ├── connect.js          # Handles "Connect" button
-    └── check-access.js     # Checks token balance & whitelist
-```
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| **Uniswap V4 State View** | `0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71` | Token pricing |
+| **Chainlink ETH/USD** | `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` | Price oracle |
+| **ClankerFeeCollector_V2** | `0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280` | Fee collection |
+| **Captain Hook** | `0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B` | LP management |
 
 ---
 
-## 🔧 Customization
+## API Endpoints
 
-### Update Contract Addresses
+### Contest Operations
 
-If you deploy new Season 0 contracts, update in:
-- **[app.html](./app.html)** - Lines 35-46 (CONTRACTS object)
-- **[api/check-access.js](./api/check-access.js)** - Lines 5-9 (CONTRACTS object)
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/enter-contest` | POST | Record contest entry |
+| `/api/check-eligibility` | GET | Check holder status & requirements |
+| `/api/check-entries` | GET | Get entry status for user |
+| `/api/contest-participants` | GET | Get participant PFPs & entry counts |
+| `/api/contest-history` | GET | Get completed contests |
+| `/api/finalize-contest` | POST | Trigger contest finalization |
+| `/api/announce-winner` | POST | Post winner announcement |
 
-### Change Token Gate
+### Frame Actions
 
-Current: 20K NEYNARTODES
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/frame-action` | POST | Handle "Enter Raffle" button |
+| `/api/frame-callback` | POST | Handle transaction callbacks |
+| `/api/frame-image` | GET | Generate dynamic contest images |
+| `/api/frame` | GET | Frame metadata |
 
-To change, update in:
-- **[app.html](./app.html)** - Line 114: `const required = ethers.parseEther('20000');`
-- **[api/check-access.js](./api/check-access.js)** - Line 60: `const hasTokens = balanceNum >= 20000;`
+### User & Auth
 
-### Customize Frame Images
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/signer-create` | POST | Create Neynar signer |
+| `/api/signer-status` | GET | Check signer approval |
+| `/api/signer-clear` | DELETE | Remove signer |
+| `/api/check-access` | GET | Check wallet eligibility |
 
-Edit the SVG generation in:
-- **[api/image.js](./api/image.js)** - Initial Frame image
-- **[api/connect.js](./api/connect.js)** - Connect confirmation image
-- **[api/check-access.js](./api/check-access.js)** - Access result image
+### Data & Stats
 
-You can also replace with static PNG files:
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/leaderboard` | GET | Get host leaderboard |
+| `/api/all-time-prizes` | GET | Get total prizes distributed |
+| `/api/get-user-nfts` | GET | Get user's NFT holdings |
+
+### Admin & Maintenance
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/entry-clear` | GET | Clear entry for testing |
+| `/api/admin-clear-announced` | POST | Reset announcement flags |
+| `/api/cron-daily` | GET | Daily maintenance tasks |
+| `/api/cron-notifications` | GET | Process notification queue |
+
+---
+
+## Configuration
+
+### Environment Variables (Vercel)
+
+```
+NEYNAR_API_KEY=           # Neynar API key for Farcaster
+BASE_RPC_URL=             # Base mainnet RPC (default: https://mainnet.base.org)
+KV_REST_API_URL=          # Vercel KV URL
+KV_REST_API_TOKEN=        # Vercel KV token
+ALCHEMY_API_KEY=          # Alchemy key for NFT metadata
+```
+
+### Key Constants (lib/config.js)
+
 ```javascript
-// Instead of generating SVG, return a URL:
-<meta property="fc:frame:image" content="https://your-cdn.com/static-image.png" />
+HOLDER_THRESHOLD: 100000000    // 100M NEYNARTODES for holder status
+CUSTOM_TOKEN_THRESHOLD: 200000000  // 200M for custom token contests
+V2_START_ID: 105               // Contest IDs >= 105 use V2
+MAX_ENTRIES_PER_CONTEST: 1000  // Gas limit safety
+BLOCKED_FIDS: [1188162]        // Cannot win (app owner)
 ```
 
 ---
 
-## 🎯 Sharing Your Frame
+## Contest Flow
 
-### In Warpcast/Farcaster:
-Just paste the URL: `https://neynartodes-frame.vercel.app`
+### Creating a Contest (V2)
 
-### Custom Short Link (Optional):
-1. Go to [bit.ly](https://bit.ly) or similar
-2. Shorten: `https://neynartodes-frame.vercel.app`
-3. Get: `https://bit.ly/neynartodes-s0`
-4. Share the short link!
+1. Host calls `createContest()` on ContestManager V2
+2. Deposits prize (ETH, ERC20, or NFT)
+3. Cast ID stored on-chain (format: `castHash|R1L0P1|imageUrl`)
+4. Contest goes Active
 
-### Add to Your Website:
-```html
-<a href="https://neynartodes-frame.vercel.app">
-  Check Season 0 Access
-</a>
+### Entering a Contest
+
+```
+User clicks "Enter Raffle"
+        ↓
+Check holder status (100M+ NEYNARTODES)
+        ↓
+┌─────────────────────┬─────────────────────┐
+│ Holder (100M+)      │ Non-holder          │
+├─────────────────────┼─────────────────────┤
+│ Direct entry        │ Buy & burn 1M tokens│
+│ Like/recast posted  │ (~0.0001 ETH)       │
+│ Entry recorded      │ Then entry recorded │
+└─────────────────────┴─────────────────────┘
+        ↓
+Entry stored in KV: contest_entries:{id}
+        ↓
+Announcement cast posted (optional)
+```
+
+### Finalizing a Contest
+
+```
+Contest end time reached
+        ↓
+Fetch all engagement (likes, recasts, replies)
+        ↓
+Filter by social requirements (R1L0P1 format)
+        ↓
+V1: Check trading volume for non-holders
+V2: Only count KV-recorded entries
+        ↓
+Build raffle entries with bonuses:
+- 1 base entry per user
+- +1 if holder (100M+)
+- +1 if replied (2+ words)
+        ↓
+Call finalizeContest() on contract
+        ↓
+Chainlink VRF selects winner(s)
+        ↓
+Prize distributed, announcement posted
 ```
 
 ---
 
-## 🔍 Debugging
+## Display Features
 
-### Frame Not Showing?
+### Participant PFPs
 
-1. **Check Vercel deployment logs:**
-   - Go to vercel.com → Your Project → Deployments
-   - Click latest deployment → View Function Logs
+Shows floating profile pictures with color-coded borders:
+- **Purple border:** 1 entry (base only)
+- **Green border:** 2 entries (base + 1 bonus)
+- **Gold border:** 3 entries (base + 2 bonuses)
 
-2. **Validate Frame meta tags:**
-   - Use: https://warpcast.com/~/developers/frames
-   - Check all `fc:frame` meta tags are correct
+### Active Contests Section
 
-3. **Check API routes:**
-   - Test directly: `https://YOUR_DOMAIN/api/image`
-   - Should return an SVG or PNG image
+Displays:
+- Prize amount & token/NFT type
+- Time remaining
+- Entry count
+- Winner count (yellow if multiple)
+- Participant PFPs
 
-### "Check Access" Not Working?
+### History Tab
 
-1. **Verify Neynar API key:**
-   - Test: `curl -H "api_key: YOUR_KEY" https://api.neynar.com/v2/farcaster/user/bulk?fids=1`
-   - Should return user data
-
-2. **Check Base RPC:**
-   - Test contract call manually in browser console
-   - Verify contract addresses are correct
-
-3. **Check user has verified wallet:**
-   - User must verify their wallet in Farcaster settings
-   - Otherwise can't fetch their address
+Shows completed contests with:
+- Host info
+- Prize details
+- Winner(s) with usernames
+- Entry statistics
 
 ---
 
-## 📊 Season 0 Beta Stats
+## Technical Stack
 
-| Metric | Value |
-|--------|-------|
-| **Whitelisted Users** | 74 beta testers |
-| **Token Gate** | 20,000 NEYNARTODES |
-| **Network** | Base Mainnet |
-| **Contracts** | Season 0 (PrizeNFT + VotingManager) |
-
-### Contract Addresses:
-- **PrizeNFT Season 0**: `0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81`
-- **VotingManager Season 0**: `0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99`
-- **Captain Hook V2**: `0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B`
-- **Clanker Collector V2**: `0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280`
+- **Runtime:** Node.js + Vercel Serverless Functions
+- **Blockchain:** Ethers.js v6, Base Mainnet
+- **Storage:** Vercel KV (Redis)
+- **APIs:** Neynar (Farcaster), Alchemy (NFTs), Chainlink (pricing)
+- **Frontend:** HTML/Tailwind with Farcaster Frame v2 format
 
 ---
 
-## 🚀 Going Live
+## Deployment
 
-### Pre-Launch Checklist:
+### Quick Deploy to Vercel
 
-- ✅ All contract addresses updated
-- ✅ Token gate set to 20K
-- ✅ Whitelist has 74 users
-- ✅ Frame tested in Warpcast validator
-- ✅ All buttons work correctly
-- ✅ "Launch App" opens full interface
-- ✅ Domain URLs replaced (no "YOUR_DOMAIN")
+1. Push to GitHub
+2. Import to Vercel
+3. Add environment variables
+4. Deploy
 
-### Launch Steps:
+### Local Development
 
-1. **Test thoroughly** in Warpcast Frame Validator
-2. **Create announcement cast** with Frame URL
-3. **Share in your channels** (Discord, Twitter, etc.)
-4. **Monitor Vercel logs** for any errors
-5. **Gather feedback** from beta testers
-6. **Iterate and improve!** 🎉
+```bash
+cd "/Users/brianwharton/Desktop/Neynartodes /frame"
+npm install
+vercel dev
+# Open http://localhost:3000
+```
 
----
+### Testing Frames
 
-## 💡 Tips & Best Practices
-
-1. **Keep Frame images simple** - Load fast on mobile
-2. **Clear call-to-actions** - Users should know what each button does
-3. **Test on multiple devices** - Desktop, mobile, different browsers
-4. **Monitor API usage** - Neynar has rate limits (check your plan)
-5. **Version your Frame** - Can have `/v1`, `/v2` for testing
+1. Use Warpcast Frame Validator: https://warpcast.com/~/developers/frames
+2. Enter frame URL and test all buttons
+3. Verify transaction flows work correctly
 
 ---
 
-## 🆘 Support
+## Maintenance
 
-**Farcaster Frame Docs:**
-- https://docs.farcaster.xyz/reference/frames/spec
+### Daily Tasks
+- Monitor `/api/cron-daily` for errors
+- Check VRF subscription balance
+- Review finalization queue
 
-**Vercel Docs:**
-- https://vercel.com/docs
+### Regular Tasks
+- Fund prize pools via `fund-host-pool.ts`
+- Claim Clanker fees via `claim-clanker-fees.js`
+- Compound LP via `compound-hook.ts`
 
-**Neynar API Docs:**
-- https://docs.neynar.com/
+### Troubleshooting
 
-**Questions?**
-- Check Vercel deployment logs
-- Test API routes individually
-- Use Warpcast Frame Validator
-- Review Farcaster Frame spec
+**Entry not recording:**
+- Check KV connection
+- Verify signer is approved
+- Check holder balance calculation
+
+**Winner not announced:**
+- Check `announced_contests` KV key
+- Verify Neynar API key
+- Run `announce-winner` manually
+
+**Frame not loading:**
+- Validate meta tags at warpcast.com/~/developers/frames
+- Check API endpoint responses
+- Review Vercel function logs
 
 ---
 
-## 🎉 You're Ready!
+## Season System
 
-Your NEYNARtodes Frame is ready to deploy! Follow the steps above and you'll have a live Farcaster Frame in minutes. 🐸
+The app supports unlimited seasons via PrizeNFT_Season0_V2:
 
-**Next Steps:**
-1. Deploy to Vercel (Step 1-3 above)
-2. Update domain URLs (Step 4)
-3. Test in Warpcast validator
-4. Share with your community!
+- **Season 1:** Beta (30 days, whitelist enabled)
+- **Season 2+:** Public seasons with host/voter prize pools
 
-Good luck with Season 0 Beta! 🚀
+To end beta: Call `endSeason0()` on contract
+
+---
+
+## Links
+
+- **Frame Docs:** https://docs.farcaster.xyz/reference/frames/spec
+- **Neynar API:** https://docs.neynar.com/
+- **Base Block Explorer:** https://basescan.org
+- **Chainlink VRF:** https://vrf.chain.link/
+
+---
+
+**Questions?** Check the CONTRACT-REGISTRY.md in the contracts repo for complete contract details.
