@@ -4864,24 +4864,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const count = participantCount || 0;
       if (count === 0) return '';
 
-      // Get participant PFPs if available
-      const rawParticipants = state.contestParticipants[contestId] || [];
-
-      // Expand participants: show PFPs based on isHolder and hasReplied flags
-      // Purple = base entry, Gold = holder bonus (100M+), Green = reply bonus
-      const participants = [];
-      rawParticipants.forEach(p => {
-        // First PFP = base entry (purple) - everyone gets this
-        participants.push({ ...p, pfpType: 'entry' });
-        // Second PFP = holder bonus (gold) - only if 100M+ holder
-        if (p.isHolder) {
-          participants.push({ ...p, pfpType: 'holder' });
-        }
-        // Third PFP = reply bonus (green) - only if replied
-        if (p.hasReplied) {
-          participants.push({ ...p, pfpType: 'reply' });
-        }
-      });
+      // Get participant PFPs if available (1 PFP per user, color based on entries)
+      // Purple = 1 entry (base), Green = 2 entries, Gold = 3 entries (max)
+      const participants = state.contestParticipants[contestId] || [];
 
       const hasPfps = participants.length > 0;
 
@@ -4914,13 +4899,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         rowParticipants.forEach((participant, colIndex) => {
           const imgSrc = participant?.pfpUrl || '/neynartode-sticker.png';
           const isPfp = hasPfps && participant?.pfpUrl;
-          // Show different tooltip based on PFP type
-          const pfpType = participant?.pfpType || 'entry';
-          const actionText = pfpType === 'reply' ? 'replied' : pfpType === 'holder' ? 'holder bonus' : 'entered';
-          const title = participant?.username ? `title="@${participant.username} ${actionText}"` : '';
-          // Different border colors: entry=purple, holder=gold, reply=green
-          const borderColor = pfpType === 'reply' ? 'rgba(34, 197, 94, 0.7)' : pfpType === 'holder' ? 'rgba(234, 179, 8, 0.7)' : 'rgba(139, 92, 246, 0.6)';
-          const shadowColor = pfpType === 'reply' ? 'rgba(34, 197, 94, 0.4)' : pfpType === 'holder' ? 'rgba(234, 179, 8, 0.4)' : 'rgba(139, 92, 246, 0.4)';
+          // Border color based on entry count: 1=purple, 2=green, 3=gold
+          const entryCount = participant?.entryCount || 1;
+          const entryLabel = entryCount === 3 ? '3 entries' : entryCount === 2 ? '2 entries' : '1 entry';
+          const title = participant?.username ? `title="@${participant.username} - ${entryLabel}"` : '';
+          // Colors: purple (1 entry), green (2 entries), gold (3 entries/max)
+          const borderColor = entryCount >= 3 ? 'rgba(234, 179, 8, 0.8)' : entryCount === 2 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(139, 92, 246, 0.6)';
+          const shadowColor = entryCount >= 3 ? 'rgba(234, 179, 8, 0.5)' : entryCount === 2 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(139, 92, 246, 0.4)';
 
           rowPfps += `<img
             src="${imgSrc}"
