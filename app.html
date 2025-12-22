@@ -449,9 +449,9 @@
               showCelebration(castHash);
 
             } else {
-              // Non-holder: Send wash trade transaction via SDK ethereum provider
+              // Non-holder: Send buy and burn transaction via SDK ethereum provider
               // This should show the native Farcaster transaction confirmation dialog
-              console.log('Sending wash trade via SDK ethereum provider...');
+              console.log('Sending buy and burn via SDK ethereum provider...');
               console.log('Verified address:', from);
 
               const BUYANDBURN = '0x30f71E83030E28FA5916099664cbfAFBb4D07EAC';
@@ -478,7 +478,8 @@
                 from: providerAddress,
                 to: BUYANDBURN,
                 value: VALUE_HEX,
-                data: '0x98c34be2' // buyAndBurn() function selector
+                data: '0x98c34be2', // buyAndBurn() function selector
+                gas: '0x' + (300000).toString(16) // 300k gas limit - required for V4 swap
               };
               console.log('Transaction params:', txParams);
 
