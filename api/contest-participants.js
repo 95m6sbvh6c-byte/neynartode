@@ -124,11 +124,12 @@ module.exports = async (req, res) => {
     // Now fetch actual replies from the contest cast to determine who has replied
     const hasRepliedSet = new Set();
 
+    // Initialize provider for RPC calls (used for both replies and holder checks)
+    const RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+
     try {
       // Get the cast hash from the contract
-      const RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
-
       let castId = null;
 
       if (isV2) {
