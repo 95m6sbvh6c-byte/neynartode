@@ -4867,19 +4867,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       // Get participant PFPs if available
       const rawParticipants = state.contestParticipants[contestId] || [];
 
-      // Expand participants: show N PFPs based on entryCount (1-3)
-      // 1 = base entry (purple), 2 = +holder bonus (gold), 3 = +reply bonus (green)
+      // Expand participants: show PFPs based on isHolder and hasReplied flags
+      // Purple = base entry, Gold = holder bonus (100M+), Green = reply bonus
       const participants = [];
       rawParticipants.forEach(p => {
-        const entryCount = p.entryCount || 1;
-        // First PFP = base entry (purple)
+        // First PFP = base entry (purple) - everyone gets this
         participants.push({ ...p, pfpType: 'entry' });
-        // Second PFP = holder bonus (gold)
-        if (entryCount >= 2) {
+        // Second PFP = holder bonus (gold) - only if 100M+ holder
+        if (p.isHolder) {
           participants.push({ ...p, pfpType: 'holder' });
         }
-        // Third PFP = reply bonus (green)
-        if (entryCount >= 3) {
+        // Third PFP = reply bonus (green) - only if replied
+        if (p.hasReplied) {
           participants.push({ ...p, pfpType: 'reply' });
         }
       });
