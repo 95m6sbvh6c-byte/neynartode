@@ -2,6 +2,7 @@
  * Contest History API
  *
  * Fetches the last N contests from the ContestEscrow contract with full stats.
+ * OPTIMIZED: Uses cached getUserByWallet and HTTP cache headers
  *
  * Usage:
  *   GET /api/contest-history?limit=20
@@ -11,6 +12,7 @@
  */
 
 const { ethers } = require('ethers');
+const { getUserByWallet: getCachedUserByWallet } = require('./lib/utils');
 
 const CONFIG = {
   // V1 Contracts (legacy)
@@ -77,29 +79,19 @@ const STATUS_MAP = {
 };
 
 /**
- * Get Farcaster user info by wallet address
+ * Get Farcaster user info by wallet address (uses cached version from utils)
  */
 async function getUserByWallet(walletAddress) {
   try {
-    const response = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${walletAddress.toLowerCase()}`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
+    const user = await getCachedUserByWallet(walletAddress);
+    if (!user) return null;
 
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const users = data[walletAddress.toLowerCase()];
-
-    if (users && users.length > 0) {
-      return {
-        fid: users[0].fid,
-        username: users[0].username,
-        displayName: users[0].display_name,
-        pfpUrl: users[0].pfp_url,
-      };
-    }
-    return null;
+    return {
+      fid: user.fid,
+      username: user.username,
+      displayName: user.display_name,
+      pfpUrl: user.pfp_url,
+    };
   } catch (e) {
     return null;
   }
@@ -460,6 +452,9 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Add HTTP cache headers (cache for 2 minutes on CDN, 30 sec in browser)
+  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300, max-age=30');
 
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);

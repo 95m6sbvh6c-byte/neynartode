@@ -5,12 +5,15 @@
  * - Volume requirements (trading activity during contest period)
  * - Social requirements (recast, like, reply on the cast)
  *
+ * OPTIMIZED: Uses cached Neynar API calls and HTTP cache headers
+ *
  * Usage:
  *   GET /api/check-eligibility?contestId=30&fid=12345
  *   GET /api/check-eligibility?contestId=30&address=0x...
  */
 
 const { ethers } = require('ethers');
+const { getUserAddresses: getCachedUserAddresses, getUserByWallet: getCachedUserByWallet, getCastReactions, getCastConversation } = require('./lib/utils');
 
 const CONFIG = {
   NEYNARTODES: '0x8dE1622fE07f56cda2e2273e615A513F1d828B07',
@@ -143,36 +146,17 @@ async function getTokenPriceUSD(provider) {
 }
 
 /**
- * Get user addresses from FID
+ * Get user addresses from FID (uses cached version from utils)
  */
 async function getUserAddresses(fid) {
-  try {
-    const response = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fid}`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const user = data.users?.[0];
-    if (!user) return [];
-
-    const addresses = [];
-    if (user.custody_address) addresses.push(user.custody_address.toLowerCase());
-    if (user.verified_addresses?.eth_addresses) {
-      addresses.push(...user.verified_addresses.eth_addresses.map(a => a.toLowerCase()));
-    }
-    return addresses;
-  } catch (e) {
-    return [];
-  }
+  return getCachedUserAddresses(fid);
 }
 
 /**
  * Check social requirements (recast, like, reply)
  *
- * OPTIMIZED: Fetches original post engagement + quote casts in PARALLEL
- * Then checks all quote casts in parallel if needed
+ * OPTIMIZED: Uses cached API calls from lib/utils.js
+ * The cached functions return Sets of FIDs for quick lookup
  */
 async function checkSocialRequirements(castHash, fid, requirements) {
   const result = {
@@ -181,157 +165,21 @@ async function checkSocialRequirements(castHash, fid, requirements) {
     replied: false,
   };
 
-  const maxPages = 10; // Safety limit
-
-  // Helper to check reactions with pagination for a specific cast
-  async function checkReactionsForUser(hash, targetFid) {
-    const found = { liked: false, recasted: false };
-    let cursor = null;
-    let pageCount = 0;
-
-    do {
-      const url = cursor
-        ? `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${hash}&types=likes,recasts&limit=100&cursor=${cursor}`
-        : `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${hash}&types=likes,recasts&limit=100`;
-
-      const response = await fetch(url, {
-        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
-      }).catch(() => null);
-
-      if (!response?.ok) break;
-
-      const data = await response.json();
-      for (const reaction of data.reactions || []) {
-        if (reaction.user?.fid === targetFid) {
-          if (reaction.reaction_type === 'like') found.liked = true;
-          if (reaction.reaction_type === 'recast') found.recasted = true;
-        }
-      }
-
-      // If found both, stop early
-      if (found.liked && found.recasted) break;
-
-      cursor = data.next?.cursor;
-      pageCount++;
-      if (cursor) await new Promise(r => setTimeout(r, 50));
-
-    } while (cursor && pageCount < maxPages);
-
-    return found;
-  }
-
-  // Helper to check replies with pagination for a specific cast
-  async function checkRepliesForUser(hash, targetFid) {
-    let cursor = null;
-    let pageCount = 0;
-
-    do {
-      const url = cursor
-        ? `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${hash}&type=hash&reply_depth=1&limit=50&cursor=${cursor}`
-        : `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${hash}&type=hash&reply_depth=1&limit=50`;
-
-      const response = await fetch(url, {
-        headers: { 'api_key': CONFIG.NEYNAR_API_KEY }
-      }).catch(() => null);
-
-      if (!response?.ok) break;
-
-      const data = await response.json();
-      const replies = data.conversation?.cast?.direct_replies || [];
-
-      for (const reply of replies) {
-        if (reply.author?.fid === targetFid) {
-          const wordCount = (reply.text || '').trim().split(/\s+/).length;
-          if (wordCount >= 1) {
-            return true;
-          }
-        }
-      }
-
-      cursor = data.next?.cursor;
-      pageCount++;
-      if (cursor) await new Promise(r => setTimeout(r, 50));
-
-    } while (cursor && pageCount < maxPages);
-
-    return false;
-  }
-
   try {
-    // ═══════════════════════════════════════════════════════════════════
-    // STEP 1: Check original cast with PAGINATION
-    // ═══════════════════════════════════════════════════════════════════
     console.log(`   Checking cast ${castHash.slice(0, 10)}... for FID ${fid}`);
 
-    // Check reactions and replies in parallel (with pagination)
-    const [origReactions, origReplied, quotesResponse] = await Promise.all([
-      checkReactionsForUser(castHash, fid),
-      checkRepliesForUser(castHash, fid),
-      fetch(
-        `https://api.neynar.com/v2/farcaster/cast/quotes?identifier=${castHash}&type=hash&limit=100`,
-        { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-      ).catch(() => null),
+    // Use cached API calls - they return Sets of FIDs for quick lookup
+    const [reactions, conversation] = await Promise.all([
+      getCastReactions(castHash, 'likes,recasts'),
+      getCastConversation(castHash),
     ]);
 
-    result.liked = origReactions.liked;
-    result.recasted = origReactions.recasted;
-    result.replied = origReplied;
+    // Check if user's FID is in the reaction/reply sets
+    result.liked = reactions.likerFids.has(fid);
+    result.recasted = reactions.recasterFids.has(fid);
+    result.replied = conversation.replierFids.has(fid);
 
-    console.log(`   After original: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
-
-    // If already found all required engagement, return early
-    if (result.recasted && result.liked && result.replied) {
-      return result;
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // STEP 2: Get quote casts
-    // ═══════════════════════════════════════════════════════════════════
-    const quoteCasts = [];
-    if (quotesResponse?.ok) {
-      const quotesData = await quotesResponse.json();
-      for (const quoteCast of quotesData.casts || []) {
-        if (!quoteCasts.includes(quoteCast.hash)) {
-          quoteCasts.push(quoteCast.hash);
-        }
-      }
-    }
-
-    if (quoteCasts.length === 0) {
-      return result;
-    }
-
-    console.log(`   Checking ${quoteCasts.length} quote casts...`);
-
-    // ═══════════════════════════════════════════════════════════════════
-    // STEP 3: Check quote casts (with pagination)
-    // ═══════════════════════════════════════════════════════════════════
-    for (const quoteHash of quoteCasts) {
-      // Check what we still need
-      const needLike = !result.liked;
-      const needRecast = !result.recasted;
-      const needReply = !result.replied;
-
-      // If we have everything, stop
-      if (!needLike && !needRecast && !needReply) break;
-
-      // Check reactions if needed
-      if (needLike || needRecast) {
-        const quoteReactions = await checkReactionsForUser(quoteHash, fid);
-        if (quoteReactions.liked) result.liked = true;
-        if (quoteReactions.recasted) result.recasted = true;
-      }
-
-      // Check replies if needed
-      if (needReply) {
-        const quoteReplied = await checkRepliesForUser(quoteHash, fid);
-        if (quoteReplied) result.replied = true;
-      }
-
-      await new Promise(r => setTimeout(r, 50)); // Rate limit between quote casts
-    }
-
-    console.log(`   Final: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
+    console.log(`   Result: recasted=${result.recasted}, liked=${result.liked}, replied=${result.replied}`);
 
   } catch (e) {
     console.error('Error checking social requirements:', e.message);
@@ -631,6 +479,9 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
+  // Add HTTP cache headers (cache for 30 sec on CDN, 10 sec in browser)
+  res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60, max-age=10');
+
   const { contestId, fid, address, nft } = req.query;
   const isNftContest = nft === 'true' || nft === '1';
 
@@ -653,24 +504,17 @@ module.exports = async (req, res) => {
       addresses = await getUserAddresses(fid);
     } else if (address) {
       addresses = [address.toLowerCase()];
-      // Try to get FID from address
+      // Try to get FID from address (uses cached API call)
       try {
-        const response = await fetch(
-          `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${address.toLowerCase()}`,
-          { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-        );
-        if (response.ok) {
-          const data = await response.json();
-          const users = data[address.toLowerCase()];
-          if (users && users.length > 0) {
-            userFid = users[0].fid;
-            // Also get all their addresses
-            if (users[0].custody_address) addresses.push(users[0].custody_address.toLowerCase());
-            if (users[0].verified_addresses?.eth_addresses) {
-              addresses.push(...users[0].verified_addresses.eth_addresses.map(a => a.toLowerCase()));
-            }
-            addresses = [...new Set(addresses)];
+        const user = await getCachedUserByWallet(address);
+        if (user) {
+          userFid = user.fid;
+          // Also get all their addresses
+          if (user.custody_address) addresses.push(user.custody_address.toLowerCase());
+          if (user.verified_addresses?.eth_addresses) {
+            addresses.push(...user.verified_addresses.eth_addresses.map(a => a.toLowerCase()));
           }
+          addresses = [...new Set(addresses)];
         }
       } catch (e) {}
     }

@@ -4,6 +4,8 @@
  * Fetches all completed contests, aggregates host stats, and calculates scores.
  * Now season-aware - filters contests by season time range.
  *
+ * OPTIMIZED: Uses KV caching + in-memory caching to reduce Neynar API calls
+ *
  * Scoring System:
  *   Total Score = Contest Score + Vote Score
  *   Contest Score = Host Bonus + (Social x Contests) + Token
@@ -18,6 +20,7 @@
  */
 
 const { ethers } = require('ethers');
+const { getUserByWallet: getCachedUserByWallet, getCached, setCache } = require('./lib/utils');
 
 const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
@@ -66,36 +69,26 @@ const ERC20_ABI = [
 ];
 
 /**
- * Get Farcaster user info by wallet address
+ * Get Farcaster user info by wallet address (uses cached version from utils)
  */
 async function getUserByWallet(walletAddress) {
   try {
-    const response = await fetch(
-      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${walletAddress.toLowerCase()}`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
+    const user = await getCachedUserByWallet(walletAddress);
+    if (!user) return null;
 
-    if (!response.ok) return null;
+    // Get all verified addresses for this user
+    const verifiedAddresses = user.verified_addresses?.eth_addresses || [];
+    const custodyAddress = user.custody_address;
+    const allAddresses = [...new Set([...verifiedAddresses, custodyAddress].filter(Boolean))];
 
-    const data = await response.json();
-    const users = data[walletAddress.toLowerCase()];
-
-    if (users && users.length > 0) {
-      // Get all verified addresses for this user
-      const verifiedAddresses = users[0].verified_addresses?.eth_addresses || [];
-      const custodyAddress = users[0].custody_address;
-      const allAddresses = [...new Set([...verifiedAddresses, custodyAddress].filter(Boolean))];
-
-      return {
-        fid: users[0].fid,
-        username: users[0].username,
-        displayName: users[0].display_name,
-        pfpUrl: users[0].pfp_url,
-        neynarScore: users[0].experimental?.neynar_user_score || 0,
-        verifiedAddresses: allAddresses,
-      };
-    }
-    return null;
+    return {
+      fid: user.fid,
+      username: user.username,
+      displayName: user.display_name,
+      pfpUrl: user.pfp_url,
+      neynarScore: user.experimental?.neynar_user_score || 0,
+      verifiedAddresses: allAddresses,
+    };
   } catch (e) {
     return null;
   }
@@ -119,7 +112,7 @@ async function getTokenHoldings(addresses, tokenContract) {
 }
 
 /**
- * Get cast engagement metrics from Neynar
+ * Get cast engagement metrics from Neynar (CACHED)
  * Only counts engagement if the host is the original author of the cast
  *
  * @param {string} castHash - The cast hash to check
@@ -130,21 +123,34 @@ async function getCastEngagement(castHash, hostFid) {
     return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
   }
 
-  try {
-    // Clean the cast hash - remove any prefix
-    const cleanHash = castHash.startsWith('0x') ? castHash : `0x${castHash}`;
+  // Clean the cast hash - remove any prefix
+  const cleanHash = castHash.startsWith('0x') ? castHash : `0x${castHash}`;
 
+  // Check cache first (5 min TTL for cast engagement)
+  const cacheKey = `cast:engagement:${cleanHash}:${hostFid}`;
+  const cached = getCached(cacheKey, 300000);
+  if (cached !== null) return cached;
+
+  try {
     const response = await fetch(
       `https://api.neynar.com/v2/farcaster/cast?identifier=${cleanHash}&type=hash`,
       { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
     );
 
-    if (!response.ok) return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+    if (!response.ok) {
+      const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+      setCache(cacheKey, result, 60000); // Cache failures for 1 min
+      return result;
+    }
 
     const data = await response.json();
     const cast = data.cast;
 
-    if (!cast) return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+    if (!cast) {
+      const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+      setCache(cacheKey, result, 60000);
+      return result;
+    }
 
     // Check if the host is the original author of this cast
     const authorFid = cast.author?.fid;
@@ -153,18 +159,19 @@ async function getCastEngagement(castHash, hostFid) {
     // Only count engagement if host authored the cast
     if (!isAuthor) {
       console.log(`   Cast ${cleanHash.slice(0, 10)}... authored by FID ${authorFid}, not host FID ${hostFid} - skipping engagement`);
-      return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+      const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+      setCache(cacheKey, result, 300000);
+      return result;
     }
 
-    if (cast.reactions) {
-      return {
-        likes: cast.reactions.likes_count || 0,
-        recasts: cast.reactions.recasts_count || 0,
-        replies: cast.replies?.count || 0,
-        isAuthor: true,
-      };
-    }
-    return { likes: 0, recasts: 0, replies: 0, isAuthor: true };
+    const result = {
+      likes: cast.reactions?.likes_count || 0,
+      recasts: cast.reactions?.recasts_count || 0,
+      replies: cast.replies?.count || 0,
+      isAuthor: true,
+    };
+    setCache(cacheKey, result, 300000); // Cache for 5 min
+    return result;
   } catch (e) {
     console.error('Error fetching cast engagement:', e.message);
     return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
@@ -187,6 +194,27 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Add HTTP cache headers (cache for 5 minutes on CDN, 1 minute in browser)
+  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600, max-age=60');
+
+  const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+  const seasonId = parseInt(req.query.season) || CONFIG.CURRENT_SEASON;
+
+  // Check KV cache first (5 min TTL)
+  const kvCacheKey = `leaderboard:s${seasonId}:l${limit}`;
+  if (process.env.KV_REST_API_URL) {
+    try {
+      const { kv } = await import('@vercel/kv');
+      const cached = await kv.get(kvCacheKey);
+      if (cached) {
+        console.log(`Returning cached leaderboard for season ${seasonId}`);
+        return res.status(200).json(cached);
+      }
+    } catch (e) {
+      console.log('KV cache check failed:', e.message);
+    }
+  }
+
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
     const contestContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
@@ -194,9 +222,6 @@ module.exports = async (req, res) => {
     const prizeNFTContract = new ethers.Contract(CONFIG.PRIZE_NFT, PRIZE_NFT_ABI, provider);
     const votingContract = new ethers.Contract(CONFIG.VOTING_MANAGER, VOTING_MANAGER_ABI, provider);
     const tokenContract = new ethers.Contract(CONFIG.NEYNARTODES_TOKEN, ERC20_ABI, provider);
-
-    const limit = Math.min(parseInt(req.query.limit) || 10, 20);
-    const seasonId = parseInt(req.query.season) || CONFIG.CURRENT_SEASON;
 
     // Get season time range for filtering
     let seasonStartTime = 0;
@@ -495,7 +520,7 @@ module.exports = async (req, res) => {
       try {
         const { kv } = await import('@vercel/kv');
         const currentLeader = topHosts[0];
-        const kvKey = `leaderboard_leader_s${requestedSeason}`;
+        const kvKey = `leaderboard_leader_s${seasonId}`;
         const previousLeaderFid = await kv.get(kvKey);
 
         // If leader changed (and not first time), send notification
@@ -508,7 +533,7 @@ module.exports = async (req, res) => {
             username: currentLeader.username,
             fid: currentLeader.fid,
             score: currentLeader.totalScore,
-            season: requestedSeason,
+            season: seasonId,
           });
         }
 
@@ -519,7 +544,8 @@ module.exports = async (req, res) => {
       }
     }
 
-    return res.status(200).json({
+    // Build response
+    const response = {
       hosts: topHosts,
       season: seasonInfo,
       seasonContests: seasonContestCount,
@@ -534,7 +560,20 @@ module.exports = async (req, res) => {
         social: '(Likes x 1 + Recasts x 2 + Replies x 3) x 100',
         token: 'Token Holdings / 50,000',
       },
-    });
+    };
+
+    // Cache response in KV (5 min TTL)
+    if (process.env.KV_REST_API_URL) {
+      try {
+        const { kv } = await import('@vercel/kv');
+        await kv.set(kvCacheKey, response, { ex: 300 });
+        console.log(`Cached leaderboard for season ${seasonId}`);
+      } catch (e) {
+        console.log('KV cache set failed:', e.message);
+      }
+    }
+
+    return res.status(200).json(response);
 
   } catch (error) {
     console.error('Leaderboard API error:', error);
