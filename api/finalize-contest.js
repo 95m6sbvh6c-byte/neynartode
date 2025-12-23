@@ -1717,8 +1717,9 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // GET: Finalize specific contest
+    // GET: Finalize specific contest OR check all (for cron)
     // Usage:
+    //   /api/finalize-contest                          (cron - checks all pending)
     //   /api/finalize-contest?contestId=1              (V1 ETH contest)
     //   /api/finalize-contest?contestId=1&nft=true     (V1 NFT contest)
     //   /api/finalize-contest?contestId=108&v2=true    (V2 contest - explicit)
@@ -1728,9 +1729,28 @@ module.exports = async (req, res) => {
       const isNftContest = req.query.nft === 'true' || req.query.nft === '1';
       const isV2Contest = req.query.v2 === 'true' || req.query.v2 === '1';
 
+      // If no contestId provided, this is likely a cron request - check all pending
+      // Vercel cron sends GET requests with Authorization header
       if (!contestId || isNaN(contestId)) {
-        return res.status(400).json({
-          error: 'Missing or invalid contestId parameter'
+        // Verify cron authorization (Vercel sets CRON_SECRET automatically)
+        const authHeader = req.headers['authorization'];
+        const cronSecret = process.env.CRON_SECRET;
+
+        // Allow if: has valid cron secret, OR no cron secret configured (development)
+        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+          return res.status(400).json({
+            error: 'Missing or invalid contestId parameter',
+            hint: 'Use ?contestId=N to finalize a specific contest'
+          });
+        }
+
+        // This is a cron request - check all pending contests
+        console.log('🕐 Cron triggered - checking all pending contests...');
+        const results = await checkAllPendingContests();
+        return res.status(200).json({
+          cron: true,
+          checked: results.length,
+          results
         });
       }
 
