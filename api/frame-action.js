@@ -17,7 +17,7 @@ const CONFIG = {
   BASE_RPC_URL: 'https://mainnet.base.org',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56CDA2E2273e615a513f1D828b07',
   HOLDER_THRESHOLD: '100000000', // 100M tokens
-  BUYANDBURN_ADDRESS: '0x30f71E83030E28FA5916099664cbfAFBb4D07EAC', // BuyAndBurn_Quoted - burns 1M tokens
+  BUYANDBURN_ADDRESS: '0x8AffD9eB013cfC08143439207E40dd5419b6b78C', // BuyAndBurn_Quoted v2 - burns 1M with sweep refund
   BUYANDBURN_FEE: '0.0001' // ETH - ~2.5x quote buffer for slippage
 };
 
