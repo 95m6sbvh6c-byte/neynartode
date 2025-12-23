@@ -1596,6 +1596,9 @@ async function checkAllPendingContests() {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
   const results = [];
 
+  // Max contests to check per contract type (defined outside if block for V2 access)
+  const MAX_CONTESTS_TO_CHECK = 15n;
+
   // V1 ETH and NFT contest finalization (disabled by default - legacy contracts)
   if (CONFIG.FINALIZE_V1_CONTESTS) {
     // Check ETH contests
@@ -1606,7 +1609,6 @@ async function checkAllPendingContests() {
     );
 
     const ethNextId = await ethEscrow.nextContestId();
-    const MAX_CONTESTS_TO_CHECK = 15n;
     const ethStartId = ethNextId > MAX_CONTESTS_TO_CHECK ? ethNextId - MAX_CONTESTS_TO_CHECK : 1n;
 
     console.log(`\n🔍 Checking V1 ETH contests ${ethStartId} to ${ethNextId - 1n}...`);
