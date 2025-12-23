@@ -7345,23 +7345,25 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               });
               console.log('✅ Prize token value captured:', prizeAmt, state.prizeTokenTicker || 'tokens');
             } else if (state.prizeType === 'nft') {
-              // For NFT contests: store floor price
+              // For NFT contests: store floor price AND metadata for cached access
               const nftContestId = `NFT-${contestId}`;
               const floorPrice = state.prizeNftFloorPrice || null;
 
-              if (floorPrice !== null) {
-                await fetch(`${apiBaseUrl}/api/store?type=nftprice`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contestId: nftContestId,
-                    floorPriceETH: floorPrice
-                  })
-                });
-                console.log('✅ NFT floor price captured:', floorPrice, 'ETH');
-              } else {
-                console.log('⚠️ NFT floor price not available for storage');
-              }
+              await fetch(`${apiBaseUrl}/api/store?type=nftprice`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contestId: nftContestId,
+                  floorPriceETH: floorPrice,
+                  // Store NFT metadata for cached access in history
+                  nftName: state.prizeNftName || null,
+                  nftImage: state.prizeNftImage || null,
+                  nftContract: state.prizeNftContract || null,
+                  nftTokenId: state.prizeNftTokenId || state.prizeNftId || null,
+                  nftCollection: state.prizeNftCollection || null
+                })
+              });
+              console.log('✅ NFT metadata cached:', state.prizeNftName, 'floor:', floorPrice, 'ETH');
             }
           } catch (e) {
             console.log('⚠️ Could not store prize value:', e.message);

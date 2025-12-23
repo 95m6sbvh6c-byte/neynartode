@@ -98,12 +98,33 @@ async function getUserByWallet(walletAddress) {
 }
 
 /**
- * Get NFT metadata (name, image) using Alchemy API
+ * Get NFT metadata (name, image) - checks KV cache first, falls back to Alchemy API
  * This avoids CORS issues with direct metadata fetches (e.g., Basenames)
+ * @param {string} contestId - Optional contest ID to check for cached metadata
  */
-async function getNftMetadata(provider, nftContract, tokenId, nftType) {
+async function getNftMetadata(provider, nftContract, tokenId, nftType, contestId = null) {
   try {
-    // Use Alchemy's getNFTMetadata API - handles all NFT types and caches images
+    // First check KV for cached metadata (stored when contest was created)
+    if (contestId && process.env.KV_REST_API_URL) {
+      try {
+        const { kv } = require('@vercel/kv');
+        const nftKey = `nft_price_NFT-${contestId}`;
+        const cached = await kv.get(nftKey);
+
+        if (cached && cached.nftName) {
+          console.log(`Using cached NFT metadata for contest ${contestId}`);
+          return {
+            name: cached.nftName,
+            image: cached.nftImage || '',
+            collection: cached.nftCollection || 'NFT Collection',
+          };
+        }
+      } catch (kvError) {
+        console.log('KV cache miss, falling back to Alchemy');
+      }
+    }
+
+    // Fall back to Alchemy's getNFTMetadata API - handles all NFT types and caches images
     const url = `${ALCHEMY_NFT_URL}/getNFTMetadata?contractAddress=${nftContract}&tokenId=${tokenId}&refreshCache=false`;
 
     const response = await fetch(url);
@@ -284,8 +305,8 @@ async function getNftContestDetails(provider, contract, contestId) {
         collection: collectionName
       };
     } else {
-      // No cached image, do full metadata fetch
-      nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType));
+      // No cached image, do full metadata fetch (pass contestId for KV cache check)
+      nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType), contestId);
     }
 
     // Get requirement token info

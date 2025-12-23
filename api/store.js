@@ -225,7 +225,7 @@ async function getNftPrice(contestId, res) {
   });
 }
 
-async function storeNftPrice(contestId, floorPriceETH, res) {
+async function storeNftPrice(contestId, floorPriceETH, nftMetadata, res) {
   if (!contestId) {
     return res.status(400).json({ error: 'Missing contestId' });
   }
@@ -243,6 +243,12 @@ async function storeNftPrice(contestId, floorPriceETH, res) {
     floorPriceETH: floorPriceETH || null,
     ethPrice: ethPrice,
     floorPriceUSD: floorPriceUSD ? Math.round(floorPriceUSD * 100) / 100 : null,
+    // NFT metadata (stored for cached access)
+    nftName: nftMetadata?.nftName || null,
+    nftImage: nftMetadata?.nftImage || null,
+    nftContract: nftMetadata?.nftContract || null,
+    nftTokenId: nftMetadata?.nftTokenId || null,
+    nftCollection: nftMetadata?.nftCollection || null,
     timestamp,
     capturedAt: new Date().toISOString()
   };
@@ -312,8 +318,9 @@ module.exports = async (req, res) => {
       if (req.method === 'GET') {
         return getNftPrice(req.query.contestId, res);
       } else if (req.method === 'POST') {
-        const { contestId, floorPriceETH } = req.body;
-        return storeNftPrice(contestId, floorPriceETH, res);
+        const { contestId, floorPriceETH, nftName, nftImage, nftContract, nftTokenId, nftCollection } = req.body;
+        const nftMetadata = { nftName, nftImage, nftContract, nftTokenId, nftCollection };
+        return storeNftPrice(contestId, floorPriceETH, nftMetadata, res);
       }
     }
 
