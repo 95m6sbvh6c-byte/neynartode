@@ -197,7 +197,7 @@ module.exports = async (req, res) => {
   // Add HTTP cache headers (cache for 5 minutes on CDN, 1 minute in browser)
   res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600, max-age=60');
 
-  const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   const seasonId = parseInt(req.query.season) || CONFIG.CURRENT_SEASON;
 
   // Check KV cache first (5 min TTL)
