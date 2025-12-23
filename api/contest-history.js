@@ -131,17 +131,18 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType, contestId
                           nft.contract?.openSeaMetadata?.collectionName ||
                           'NFT Collection';
 
-    // Get the best image URL (Alchemy provides cached versions)
-    let imageUrl = nft.image?.cachedUrl ||
-                   nft.image?.pngUrl ||
-                   nft.image?.thumbnailUrl ||
+    // Get the best image URL - prefer formats with proper extensions for Warpcast compatibility
+    // Note: cachedUrl (nft-cdn.alchemy.com) returns 415 errors on Warpcast, so prefer pngUrl/originalUrl
+    let imageUrl = nft.image?.pngUrl ||
                    nft.image?.originalUrl ||
+                   nft.image?.thumbnailUrl ||
                    nft.raw?.metadata?.image ||
+                   nft.image?.cachedUrl ||
                    '';
 
-    // Handle IPFS URLs (shouldn't happen with Alchemy cached URLs but just in case)
+    // Handle IPFS URLs - use a reliable gateway
     if (imageUrl.startsWith('ipfs://')) {
-      imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+      imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
     }
 
     return {
