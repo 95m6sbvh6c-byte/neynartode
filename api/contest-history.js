@@ -549,8 +549,11 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Create promises for V2 contests (most recent first, limited)
-    const v2StartId = Math.max(1, totalV2Contests - limit + 1);
+    // Create promises for V2 contests (most recent first)
+    // V2 contests start at ID 105 - fetch more to ensure we get completed ones
+    // Since V2 is newer, we fetch all V2 contests (they start at 105) for better history coverage
+    const V2_START_CONTEST_ID = 105;
+    const v2StartId = V2_START_CONTEST_ID; // Fetch all V2 contests for complete history
     for (let i = totalV2Contests; i >= v2StartId; i--) {
       v2ContestPromises.push(
         getV2ContestDetails(provider, v2Contract, i)
