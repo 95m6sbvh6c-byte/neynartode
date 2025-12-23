@@ -93,29 +93,10 @@ async function getUserByWallet(walletAddress) {
  * This avoids CORS issues with direct metadata fetches (e.g., Basenames)
  * @param {string} contestId - Optional contest ID to check for cached metadata
  */
-async function getNftMetadata(provider, nftContract, tokenId, nftType, contestId = null) {
+async function getNftMetadata(provider, nftContract, tokenId, nftType) {
   try {
-    // First check KV for cached metadata (stored when contest was created)
-    if (contestId && process.env.KV_REST_API_URL) {
-      try {
-        const { kv } = require('@vercel/kv');
-        const nftKey = `nft_price_NFT-${contestId}`;
-        const cached = await kv.get(nftKey);
-
-        if (cached && cached.nftName) {
-          console.log(`Using cached NFT metadata for contest ${contestId}`);
-          return {
-            name: cached.nftName,
-            image: cached.nftImage || '',
-            collection: cached.nftCollection || 'NFT Collection',
-          };
-        }
-      } catch (kvError) {
-        console.log('KV cache miss, falling back to Alchemy');
-      }
-    }
-
-    // Fall back to Alchemy's getNFTMetadata API - handles all NFT types and caches images
+    // Always fetch from Alchemy for reliable image URLs (KV cache had stale URLs that don't work with Warpcast)
+    // Alchemy's getNFTMetadata API handles all NFT types and provides proper image URLs
     const url = `${ALCHEMY_NFT_URL}/getNFTMetadata?contractAddress=${nftContract}&tokenId=${tokenId}&refreshCache=false`;
 
     const response = await fetch(url);
@@ -282,7 +263,7 @@ async function getNftContestDetails(provider, contract, contestId) {
     const tokenIdNum = Number(tokenId);
 
     // Always use Alchemy API for NFT metadata (more reliable than cached URLs)
-    const nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType), contestId);
+    const nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType));
 
     // Get requirement token info
     const requirementTokenInfo = tokenRequirement !== '0x0000000000000000000000000000000000000000'
