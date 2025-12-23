@@ -1963,26 +1963,23 @@ ${prizeLine}
 
       console.log('Sharing contest with mini app URL:', { contestId, isNft, winnerCount, participantCount, miniAppUrl });
 
-      // Build embeds - NFT image FIRST so it renders as main embed, then quote cast
-      const embedUrls = [];
-      if (isNft && nftImage) {
-        embedUrls.push(nftImage);
-        console.log('Adding NFT image embed:', nftImage);
-      }
+      // Build embeds - quote cast first, then NFT image
+      const embeds = [];
       if (castId) {
         const cleanCastHash = castId.split('|')[0]; // Strip encoded requirements
-        embedUrls.push(`https://warpcast.com/~/conversations/${cleanCastHash}`);
+        embeds.push(`https://warpcast.com/~/conversations/${cleanCastHash}`);
+      }
+      if (isNft && nftImage) {
+        embeds.push(nftImage);
       }
 
-      // Use SDK composeCast with object format for embeds
+      // Use SDK composeCast - embeds as plain string array
       const sdk = window.FarcasterSDK;
       if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
         try {
-          // SDK expects embeds as array of objects with url property
-          const embedObjects = embedUrls.map(url => ({ url }));
           await sdk.actions.composeCast({
             text: text,
-            embeds: embedObjects.length > 0 ? embedObjects : undefined
+            embeds: embeds.length > 0 ? embeds : undefined
           });
           return;
         } catch (e) {
@@ -1992,7 +1989,7 @@ ${prizeLine}
 
       // Fallback: Build Warpcast compose URL
       let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`;
-      embedUrls.forEach(embed => {
+      embeds.forEach(embed => {
         warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
       });
       window.open(warpcastUrl, '_blank');
