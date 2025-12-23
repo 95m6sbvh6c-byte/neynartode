@@ -30,7 +30,8 @@ const { ethers } = require('ethers');
 
 const CONFIG = {
   // Feature flags
-  FINALIZE_V1_CONTESTS: false, // Set to true to re-enable V1 finalization (legacy ETH/NFT escrow contracts)
+  FINALIZE_V1_CONTESTS: true, // Set to true to re-enable V1 finalization (legacy ETH/NFT escrow contracts)
+  USE_V2_LOGIC_FOR_V1: true, // Set to true to use V2-style finalization (KV entries only) for V1 contests
 
   // V1 Contract addresses (legacy - no longer creating new contests)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
@@ -584,11 +585,225 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
 
   console.log(`\n📋 Processing ${isNftContest ? 'NFT' : 'ETH'} Contest #${contestId}`);
   console.log(`   Cast ID (raw): ${castId}`);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // USE V2 LOGIC FOR V1 CONTESTS - Just use KV entries, no volume/social checks
+  // ═══════════════════════════════════════════════════════════════════
+  if (CONFIG.USE_V2_LOGIC_FOR_V1) {
+    console.log('\n🔄 Using V2-style finalization (KV entries only)...');
+
+    // Get entries from KV
+    let enteredFids = new Set();
+    try {
+      if (process.env.KV_REST_API_URL) {
+        const { kv } = require('@vercel/kv');
+        const nftKey = `contest_entries:nft-${contestId}`;
+        const ethKey = `contest_entries:eth-${contestId}`;
+        const legacyKey = `contest_entries:${contestId}`;
+
+        let nftFids = isNftContest ? await kv.smembers(nftKey) : [];
+        let ethFids = !isNftContest ? await kv.smembers(ethKey) : [];
+        let legacyFids = await kv.smembers(legacyKey);
+
+        nftFids = Array.isArray(nftFids) ? nftFids : [];
+        ethFids = Array.isArray(ethFids) ? ethFids : [];
+        legacyFids = Array.isArray(legacyFids) ? legacyFids : [];
+
+        const allFids = [...nftFids, ...ethFids, ...legacyFids];
+        enteredFids = new Set(allFids.map(f => parseInt(f)));
+        console.log(`   Users who clicked Enter (KV): ${enteredFids.size}`);
+        if (isNftContest) console.log(`   - ${nftKey}: ${nftFids.length}`);
+        if (!isNftContest) console.log(`   - ${ethKey}: ${ethFids.length}`);
+        console.log(`   - ${legacyKey}: ${legacyFids.length}`);
+      }
+    } catch (e) {
+      console.log(`   ⚠️ Could not fetch KV entries: ${e.message}`);
+    }
+
+    if (enteredFids.size === 0) {
+      console.log('\n❌ No users clicked Enter button - cancelling contest...');
+      try {
+        const tx = await contestEscrow.cancelContest(contestId, 'No entries via app');
+        console.log(`   TX submitted: ${tx.hash}`);
+        const receipt = await tx.wait();
+        console.log(`   ✅ Contest cancelled, host refunded in block ${receipt.blockNumber}`);
+        return {
+          success: true,
+          contestId,
+          action: 'cancelled',
+          reason: 'No entries via app (users must click Enter button)',
+          txHash: receipt.hash
+        };
+      } catch (cancelError) {
+        console.error('   ❌ Cancel failed:', cancelError.message);
+        return { success: false, error: `Cancel failed: ${cancelError.message}`, contestId };
+      }
+    }
+
+    // Filter out blocked FIDs
+    const eligibleFids = [...enteredFids].filter(fid => !CONFIG.BLOCKED_FIDS.includes(fid));
+    console.log(`   Eligible FIDs (after filtering blocked): ${eligibleFids.length}`);
+
+    // Fetch user data from Neynar
+    console.log('\n📡 Fetching user data from Neynar...');
+    const qualifiedUsers = [];
+    const BATCH_SIZE = 100;
+
+    for (let i = 0; i < eligibleFids.length; i += BATCH_SIZE) {
+      const batch = eligibleFids.slice(i, i + BATCH_SIZE);
+      try {
+        const response = await fetch(
+          `https://api.neynar.com/v2/farcaster/user/bulk?fids=${batch.join(',')}`,
+          { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          for (const user of (data.users || [])) {
+            const addresses = [];
+            if (user.custody_address) {
+              addresses.push(user.custody_address.toLowerCase());
+            }
+            if (user.verified_addresses?.eth_addresses) {
+              addresses.push(...user.verified_addresses.eth_addresses.map(a => a.toLowerCase()));
+            }
+
+            if (addresses.length > 0) {
+              let primaryAddress = null;
+              if (user.verified_addresses?.primary?.eth_address) {
+                primaryAddress = user.verified_addresses.primary.eth_address.toLowerCase();
+              } else if (user.verified_addresses?.eth_addresses?.length > 0) {
+                primaryAddress = user.verified_addresses.eth_addresses[0].toLowerCase();
+              } else if (user.custody_address) {
+                primaryAddress = user.custody_address.toLowerCase();
+              }
+
+              qualifiedUsers.push({
+                fid: user.fid,
+                username: user.username || '',
+                addresses: addresses,
+                primaryAddress: primaryAddress || addresses[0]
+              });
+              console.log(`   ✅ @${user.username || user.fid}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`   ⚠️ Error fetching user batch: ${e.message}`);
+      }
+    }
+
+    console.log(`\n✅ Qualified users: ${qualifiedUsers.length}`);
+
+    if (qualifiedUsers.length === 0) {
+      console.log('\n❌ No valid users found - cancelling contest...');
+      try {
+        const tx = await contestEscrow.cancelContest(contestId, 'No valid participants');
+        const receipt = await tx.wait();
+        return {
+          success: true,
+          contestId,
+          action: 'cancelled',
+          reason: 'No valid participants',
+          txHash: receipt.hash
+        };
+      } catch (cancelError) {
+        return { success: false, error: `Cancel failed: ${cancelError.message}`, contestId };
+      }
+    }
+
+    // Build entries - 1 per user
+    const qualifiedAddresses = qualifiedUsers.map(u => u.primaryAddress);
+
+    // Finalize contest
+    const MAX_ENTRIES = 1000;
+    let finalEntries = qualifiedAddresses;
+    if (qualifiedAddresses.length > MAX_ENTRIES) {
+      console.log(`\n⚠️ Too many entries (${qualifiedAddresses.length}), randomly sampling ${MAX_ENTRIES}...`);
+      const shuffled = [...qualifiedAddresses].sort(() => Math.random() - 0.5);
+      finalEntries = shuffled.slice(0, MAX_ENTRIES);
+    }
+
+    console.log(`\n🎲 Finalizing contest with ${finalEntries.length} entries...`);
+
+    try {
+      const tx = await contestEscrow.finalizeContest(contestId, finalEntries);
+      console.log(`   TX submitted: ${tx.hash}`);
+      const receipt = await tx.wait();
+      console.log(`   ✅ Confirmed in block ${receipt.blockNumber}`);
+
+      // Store TX hash in KV
+      try {
+        if (process.env.KV_REST_API_URL) {
+          const { kv } = require('@vercel/kv');
+          const kvKey = isNftContest ? `finalize_tx_nft_${contestId}` : `finalize_tx_${contestId}`;
+          await kv.set(kvKey, tx.hash);
+        }
+      } catch (e) {}
+
+      // Poll for winner
+      console.log('\n⏳ Waiting for Chainlink VRF...');
+      let winner = '0x0000000000000000000000000000000000000000';
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      while (winner === '0x0000000000000000000000000000000000000000' && attempts < maxAttempts) {
+        await new Promise(r => setTimeout(r, 2000));
+        attempts++;
+        try {
+          const updatedContest = await contestEscrow.getContest(contestId);
+          const winnerIdx = isNftContest ? 11 : 9;
+          winner = updatedContest[winnerIdx];
+          const statusIdx = isNftContest ? 10 : 8;
+          const status = updatedContest[statusIdx];
+          if (status === 2n && winner !== '0x0000000000000000000000000000000000000000') {
+            console.log(`   ✅ Winner selected: ${winner}`);
+            break;
+          }
+          console.log(`   Attempt ${attempts}/${maxAttempts}...`);
+        } catch (e) {}
+      }
+
+      // Auto-announce
+      if (winner !== '0x0000000000000000000000000000000000000000') {
+        console.log('\n📢 Auto-announcing winner...');
+        try {
+          const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+          const announceUrl = isNftContest
+            ? `${baseUrl}/api/announce-winner?contestId=${contestId}&nft=true`
+            : `${baseUrl}/api/announce-winner?contestId=${contestId}`;
+          const announceResponse = await fetch(announceUrl);
+          const announceResult = await announceResponse.json();
+          if (announceResult.posted) {
+            console.log(`   ✅ Announcement posted! Cast: ${announceResult.castHash}`);
+          }
+        } catch (e) {
+          console.log(`   ⚠️ Auto-announce failed: ${e.message}`);
+        }
+      }
+
+      return {
+        success: true,
+        contestId,
+        qualifiedCount: qualifiedAddresses.length,
+        txHash: receipt.hash,
+        winner: winner !== '0x0000000000000000000000000000000000000000' ? winner : null,
+        message: 'Contest finalized!'
+      };
+
+    } catch (error) {
+      console.error('   ❌ Finalization failed:', error.message);
+      return { success: false, error: error.message, contestId };
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // LEGACY V1 LOGIC (when USE_V2_LOGIC_FOR_V1 is false)
+  // ═══════════════════════════════════════════════════════════════════
   console.log(`   Token Requirement: ${tokenRequirement}`);
   console.log(`   Volume Requirement: ${ethers.formatEther(volumeRequirement)} tokens`);
 
   // Extract actual cast hash (strip requirements if encoded)
-  // Format: "0xcasthash|R1L0P1" -> "0xcasthash"
   const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
   console.log(`   Actual Cast Hash: ${actualCastHash}`);
 
@@ -598,12 +813,7 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
 
   if (engagement.error) {
     console.log(`   ⚠️ Could not fetch cast: ${engagement.error}`);
-    // If cast not found, we can't determine participants
-    return {
-      success: false,
-      error: `Cast not found: ${castId}`,
-      contestId
-    };
+    return { success: false, error: `Cast not found: ${castId}`, contestId };
   }
 
   // Count unique users (by FID)
@@ -617,78 +827,50 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
   console.log(`   Repliers (2+ words): ${replierCount} users`);
   console.log(`   Likers: ${likerCount} users (${engagement.likers.length} addresses)`);
 
-  // ═══════════════════════════════════════════════════════════════════
-  // SOCIAL REQUIREMENTS - Parse from castId
-  // Format: "castHash|R1L0P1" where R=recast, L=like, P=reply (1=required, 0=not)
-  // If no pipe delimiter, use defaults (recast + reply required)
-  // ═══════════════════════════════════════════════════════════════════
+  // Parse social requirements from castId
   let socialRequirements = {
-    requireRecast: true,    // Default: must recast
-    requireReply: true,     // Default: must reply (2-word minimum)
-    requireLike: false,     // Default: like not required
+    requireRecast: true,
+    requireReply: true,
+    requireLike: false,
   };
 
-  // Parse requirements from castId if encoded
   if (castId.includes('|')) {
     const [, reqCode] = castId.split('|');
     if (reqCode) {
-      // Parse R1L0P1 format
       const recastMatch = reqCode.match(/R(\d)/);
       const likeMatch = reqCode.match(/L(\d)/);
       const replyMatch = reqCode.match(/P(\d)/);
-
       if (recastMatch) socialRequirements.requireRecast = recastMatch[1] !== '0';
       if (likeMatch) socialRequirements.requireLike = likeMatch[1] !== '0';
       if (replyMatch) socialRequirements.requireReply = replyMatch[1] !== '0';
-
-      console.log(`   Parsed requirements from castId: R=${socialRequirements.requireRecast ? 1 : 0} L=${socialRequirements.requireLike ? 1 : 0} P=${socialRequirements.requireReply ? 1 : 0}`);
     }
   }
 
   console.log(`   Requirements: Recast=${socialRequirements.requireRecast}, Like=${socialRequirements.requireLike}, Reply=${socialRequirements.requireReply}`);
 
-  // ═══════════════════════════════════════════════════════════════════
-  // FILTER QUALIFIED USERS BY FID (1 entry per user)
-  // Each user gets 1 raffle entry, but we check ALL their addresses for volume
-  // ═══════════════════════════════════════════════════════════════════
-  const qualifiedUsers = []; // Array of { fid, addresses, primaryAddress }
+  // Filter qualified users by FID
+  const qualifiedUsers = [];
 
   for (const [fid, userData] of engagement.usersByFid || new Map()) {
-    // Skip the contest host
     if (fid === engagement.castAuthorFid) continue;
+    if (CONFIG.BLOCKED_FIDS.includes(fid)) continue;
 
-    // Skip blocked FIDs (e.g., app owner)
-    if (CONFIG.BLOCKED_FIDS.includes(fid)) {
-      console.log(`   Skipping blocked FID: ${fid} (@${userData.username})`);
-      continue;
-    }
-
-    // Check if user meets social requirements
     let meetsRequirements = true;
+    if (socialRequirements.requireRecast && !userData.recasted) meetsRequirements = false;
+    if (socialRequirements.requireLike && !userData.liked) meetsRequirements = false;
+    if (socialRequirements.requireReply && !userData.replied) meetsRequirements = false;
 
-    if (socialRequirements.requireRecast && !userData.recasted) {
-      meetsRequirements = false;
-    }
-    if (socialRequirements.requireLike && !userData.liked) {
-      meetsRequirements = false;
-    }
-    if (socialRequirements.requireReply && !userData.replied) {
-      meetsRequirements = false;
-    }
-
-    // If no requirements set, any engagement qualifies
     if (!socialRequirements.requireRecast && !socialRequirements.requireLike && !socialRequirements.requireReply) {
       meetsRequirements = userData.liked || userData.recasted || userData.replied;
     }
 
     if (meetsRequirements && userData.addresses.length > 0) {
-      // Use primaryAddress (verified wallet) for raffle entry, fallback to first address
       const prizeAddress = userData.primaryAddress || userData.addresses[0];
       qualifiedUsers.push({
         fid: userData.fid,
         username: userData.username,
-        addresses: userData.addresses, // All addresses for volume check
-        primaryAddress: prizeAddress // Verified address for raffle entry (prize delivery)
+        addresses: userData.addresses,
+        primaryAddress: prizeAddress
       });
     }
   }
@@ -734,7 +916,26 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
   // ═══════════════════════════════════════════════════════════════════
   let finalQualifiedUsers = [...qualifiedUsers]; // Users who pass all requirements
 
-  if (volumeRequirement > 0n) {
+  // SKIP VOLUME CHECK if flag is enabled - all socially-qualified users pass
+  if (CONFIG.SKIP_V1_VOLUME_CHECK && volumeRequirement > 0n) {
+    console.log(`\n⚠️ SKIP_V1_VOLUME_CHECK enabled - bypassing volume requirement for all ${qualifiedUsers.length} socially-qualified users`);
+    // Still check holder status for bonus entries
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < qualifiedUsers.length; i += BATCH_SIZE) {
+      const batch = qualifiedUsers.slice(i, i + BATCH_SIZE);
+      const holderChecks = await Promise.all(
+        batch.map(user => checkHolderQualification(user.addresses, provider, tokenRequirement))
+      );
+      batch.forEach((user, idx) => {
+        const holderCheck = holderChecks[idx];
+        user.isHolder = holderCheck.isHolder;
+        if (holderCheck.isHolder) {
+          console.log(`   💎 @${user.username || user.fid} is a HOLDER (${ethers.formatEther(holderCheck.balance)} tokens)`);
+        }
+      });
+    }
+    finalQualifiedUsers = qualifiedUsers;
+  } else if (volumeRequirement > 0n) {
     const thresholdFormatted = tokenRequirement.toLowerCase() === CONFIG.NEYNARTODES_TOKEN.toLowerCase()
       ? '100M' : '200M';
 
