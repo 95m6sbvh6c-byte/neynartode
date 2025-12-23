@@ -4952,7 +4952,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     function renderActiveContests() {
-      const activeContests = state.upcomingContests.filter(c => new Date(c.endTime) > new Date()).slice(0, 20);
+      const activeContests = state.upcomingContests.filter(c => new Date(c.endTime) > new Date()).slice(0, 50);
 
       let contestsHtml = '';
       if (activeContests.length > 0) {
@@ -5081,8 +5081,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         }).join('');
       }
 
-      const moreText = state.upcomingContests.length > 20
-        ? `<div class="mt-4 text-center text-sm text-[var(--text-muted)]">+ ${state.upcomingContests.length - 20} more contests</div>`
+      const moreText = state.upcomingContests.length > 50
+        ? `<div class="mt-4 text-center text-sm text-[var(--text-muted)]">+ ${state.upcomingContests.length - 50} more contests</div>`
         : '';
 
       // Loading skeleton for contests
