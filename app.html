@@ -3695,7 +3695,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       state.contestsLoading = !cachedContests;
       try {
         const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
-        const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=20&includeUsers=true&status=active`);
+        const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=50&includeUsers=true&status=active`);
         if (historyResponse.ok) {
           const historyData = await historyResponse.json();
           // API already filters to active/pending contests when status=active
@@ -3870,7 +3870,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
       try {
         const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
-        const response = await fetch(`${baseUrl}/api/contest-history?limit=20&includeUsers=true`);
+        const response = await fetch(`${baseUrl}/api/contest-history?limit=50&includeUsers=true`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch history: ${response.status}`);

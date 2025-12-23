@@ -57,15 +57,6 @@ const ERC20_ABI = [
   'function name() view returns (string)',
 ];
 
-const ERC721_ABI = [
-  'function tokenURI(uint256 tokenId) view returns (string)',
-  'function name() view returns (string)',
-];
-
-const ERC1155_ABI = [
-  'function uri(uint256 tokenId) view returns (string)',
-];
-
 // Alchemy API for NFT metadata (avoids CORS issues)
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
 const ALCHEMY_NFT_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
@@ -281,33 +272,16 @@ async function getNftContestDetails(provider, contract, contestId) {
     // V3 order: nftType comes before nftContract
     const [host, nftType, nftContract, tokenId, amount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner] = contestData;
 
-    // Extract actual cast hash, parse requirements, and cached image URL FIRST
-    // Format: castHash|R1L0P1|imageUrl (image URL is optional)
+    // Extract actual cast hash and parse requirements
+    // Format: castHash|R1L0P1|imageUrl (image URL is optional but we prefer Alchemy)
     const castParts = castId.split('|');
     const actualCastHash = castParts[0];
-    const cachedImageUrl = castParts[2] || ''; // Third part is cached image URL
 
     // Convert tokenId to number for display
     const tokenIdNum = Number(tokenId);
 
-    // Only fetch NFT metadata if we don't have a cached image (saves IPFS calls)
-    let nftMetadata;
-    if (cachedImageUrl) {
-      // Use cached image, get collection name from contract
-      let collectionName = 'NFT Collection';
-      try {
-        const nft = new ethers.Contract(nftContract, ERC721_ABI, provider);
-        collectionName = await nft.name().catch(() => 'NFT Collection');
-      } catch (e) { /* ignore */ }
-      nftMetadata = {
-        name: `${collectionName} #${tokenIdNum}`,
-        image: cachedImageUrl,
-        collection: collectionName
-      };
-    } else {
-      // No cached image, do full metadata fetch (pass contestId for KV cache check)
-      nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType), contestId);
-    }
+    // Always use Alchemy API for NFT metadata (more reliable than cached URLs)
+    const nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType), contestId);
 
     // Get requirement token info
     const requirementTokenInfo = tokenRequirement !== '0x0000000000000000000000000000000000000000'
@@ -333,8 +307,8 @@ async function getNftContestDetails(provider, contract, contestId) {
       if (replyMatch) requireReply = replyMatch[1] !== '0';
     }
 
-    // Use cached image URL if available, otherwise fetch from contract
-    const finalNftImage = cachedImageUrl || nftMetadata.image;
+    // Use Alchemy image (always fetched now)
+    const finalNftImage = nftMetadata.image;
 
     return {
       contestId: Number(contestId),
