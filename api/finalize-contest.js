@@ -1597,7 +1597,8 @@ async function checkAllPendingContests() {
   const results = [];
 
   // Max contests to check per contract type (defined outside if block for V2 access)
-  const MAX_CONTESTS_TO_CHECK = 15n;
+  // Increased to 100 to ensure all active V2 contests are checked (was 15, causing older contests to be skipped)
+  const MAX_CONTESTS_TO_CHECK = 100n;
 
   // V1 ETH and NFT contest finalization (disabled by default - legacy contracts)
   if (CONFIG.FINALIZE_V1_CONTESTS) {
