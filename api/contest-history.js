@@ -645,13 +645,14 @@ module.exports = async (req, res) => {
 
     // Create LAZY fetch functions (not promises) to control execution timing
     // This prevents all requests from firing at once when promises are created
+    // With KV caching, we fetch ALL contests - cached ones return instantly
     const tokenFetchers = [];
     const nftFetchers = [];
     const v2Fetchers = [];
 
-    // Create fetcher functions for V1 token contests (most recent first, limited)
-    const tokenStartId = Math.max(1, totalTokenContests - limit + 1);
-    for (let i = totalTokenContests; i >= tokenStartId; i--) {
+    // Create fetcher functions for ALL V1 token contests (most recent first)
+    // Caching makes this efficient - completed contests are cached for 7 days
+    for (let i = totalTokenContests; i >= 1; i--) {
       const contestId = i; // Capture in closure
       tokenFetchers.push(() =>
         getContestDetails(provider, tokenContract, contestId)
@@ -666,9 +667,8 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Create fetcher functions for V1 NFT contests (most recent first, limited)
-    const nftStartId = Math.max(1, totalNftContests - limit + 1);
-    for (let i = totalNftContests; i >= nftStartId; i--) {
+    // Create fetcher functions for ALL V1 NFT contests (most recent first)
+    for (let i = totalNftContests; i >= 1; i--) {
       const contestId = i;
       nftFetchers.push(() =>
         getNftContestDetails(provider, nftContract, contestId)
@@ -684,12 +684,9 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Create fetcher functions for V2 contests (most recent first)
-    // V2 contests start at ID 105 - limit fetch to avoid rate limiting
-    const v2FetchLimit = Math.min(limit * 2, 30); // Reduced to 30 to avoid rate limiting
-    const v2StartId = Math.max(V2_START_CONTEST_ID, v2HighestId - v2FetchLimit + 1);
-    console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${v2HighestId - v2StartId + 1} contests)`);
-    for (let i = v2HighestId; i >= v2StartId; i--) {
+    // Create fetcher functions for ALL V2 contests (most recent first)
+    console.log(`V2 fetch: from ${v2HighestId} down to ${V2_START_CONTEST_ID} (${totalV2Contests} contests)`);
+    for (let i = v2HighestId; i >= V2_START_CONTEST_ID; i--) {
       const contestId = i;
       v2Fetchers.push(() =>
         getV2ContestDetails(provider, v2Contract, contestId)
