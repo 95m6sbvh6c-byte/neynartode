@@ -270,8 +270,9 @@ module.exports = async (req, res) => {
     const hostStats = {};
     let seasonContestCount = 0;
 
-    // OPTIMIZED: Fetch all contests in parallel batches
-    const BATCH_SIZE = 20;
+    // OPTIMIZED: Fetch all contests in parallel batches with rate limiting
+    const BATCH_SIZE = 15; // 15 requests per batch for QuickNode 50/sec limit
+    const BATCH_DELAY = 350; // 350ms delay between batches
 
     // Process LEGACY contests (IDs 1 to totalLegacyContests)
     const legacyContestIds = Array.from({ length: totalLegacyContests }, (_, i) => i + 1);
@@ -283,6 +284,11 @@ module.exports = async (req, res) => {
       );
 
       const contestResults = await Promise.all(contestPromises);
+
+      // Rate limit delay between batches
+      if (i + BATCH_SIZE < legacyContestIds.length) {
+        await new Promise(r => setTimeout(r, BATCH_DELAY));
+      }
 
       for (let j = 0; j < batch.length; j++) {
         const contestData = contestResults[j];
@@ -346,6 +352,11 @@ module.exports = async (req, res) => {
       );
 
       const contestResults = await Promise.all(contestPromises);
+
+      // Rate limit delay between batches
+      if (i + BATCH_SIZE < v2ContestIds.length) {
+        await new Promise(r => setTimeout(r, BATCH_DELAY));
+      }
 
       for (let j = 0; j < batch.length; j++) {
         const contestData = contestResults[j];
