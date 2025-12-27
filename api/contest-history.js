@@ -283,7 +283,7 @@ async function getContestDetails(provider, contract, contestId) {
     };
   } catch (e) {
     console.error(`Error fetching contest ${contestId}:`, e.message);
-    return { error: e.message, contestId: Number(contestId), type: 'token' };
+    return null;
   }
 }
 
@@ -494,12 +494,27 @@ module.exports = async (req, res) => {
     // Status filter: 'active' = only active/pending, 'history' = only completed/cancelled (default), 'all' = everything
     const statusFilter = req.query.status || 'history';
 
-    // Get total contest counts from all contracts
-    const [tokenNextId, nftNextId, v2NextId] = await Promise.all([
-      tokenContract.nextContestId(),
-      nftContract.nextContestId().catch(() => 1), // Default to 1 if no NFT contests yet
-      v2Contract.nextContestId().catch(() => 1), // Default to 1 if no V2 contests yet
-    ]);
+    // Get total contest counts from all contracts (with retry on rate limit)
+    const fetchWithRetry = async (fn, maxRetries = 3) => {
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          return await fn();
+        } catch (e) {
+          if (i < maxRetries - 1) {
+            await new Promise(r => setTimeout(r, 500 * (i + 1)));
+          } else {
+            throw e;
+          }
+        }
+      }
+    };
+
+    // Fetch contest counts sequentially to avoid rate limit
+    const tokenNextId = await fetchWithRetry(() => tokenContract.nextContestId());
+    await new Promise(r => setTimeout(r, 100));
+    const nftNextId = await fetchWithRetry(() => nftContract.nextContestId()).catch(() => 1);
+    await new Promise(r => setTimeout(r, 100));
+    const v2NextId = await fetchWithRetry(() => v2Contract.nextContestId()).catch(() => 1);
     const totalTokenContests = Number(tokenNextId) - 1;
     const totalNftContests = Number(nftNextId) - 1;
     const totalV2Contests = Number(v2NextId) - 1;
@@ -599,11 +614,11 @@ module.exports = async (req, res) => {
 
     console.log(`Fetched: ${tokenResults.filter(c => c !== null).length} token, ${nftResults.filter(c => c !== null).length} NFT, ${v2Results.filter(c => c !== null).length} V2`);
 
-    // Filter out nulls and errors, combine all contests
+    // Filter out nulls, combine all contests
     const allContests = [
-      ...tokenResults.filter(c => c !== null && !c.error),
-      ...nftResults.filter(c => c !== null && !c.error),
-      ...v2Results.filter(c => c !== null && !c.error),
+      ...tokenResults.filter(c => c !== null),
+      ...nftResults.filter(c => c !== null),
+      ...v2Results.filter(c => c !== null),
     ];
 
     // Sort by endTime descending (newest first)
@@ -728,8 +743,6 @@ module.exports = async (req, res) => {
         v2ResultsCount: v2Results.filter(c => c !== null).length,
         allContestsCount: allContests.length,
         filteredCount: filteredContests.length,
-        rpcUrl: CONFIG.BASE_RPC.substring(0, 50) + '...',
-        errors: tokenResults.filter(c => c && c.error).slice(0, 3),
       }
     });
 
