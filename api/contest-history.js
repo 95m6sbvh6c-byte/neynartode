@@ -552,9 +552,9 @@ module.exports = async (req, res) => {
     }
 
     // Create promises for V2 contests (most recent first)
-    // V2 contests start at ID 105 - limit fetch to avoid timeout
+    // V2 contests start at ID 105 - limit fetch to avoid rate limiting
     const V2_START_CONTEST_ID = 105;
-    const v2FetchLimit = Math.min(limit * 2, 60); // Fetch at most 60 V2 contests to avoid timeout
+    const v2FetchLimit = Math.min(limit * 2, 30); // Reduced to 30 to avoid rate limiting
     const v2StartId = Math.max(V2_START_CONTEST_ID, totalV2Contests - v2FetchLimit + 1);
     for (let i = totalV2Contests; i >= v2StartId; i--) {
       v2ContestPromises.push(
@@ -571,11 +571,27 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Execute all contest fetches in parallel
+    // Execute contest fetches in batches to avoid rate limiting
+    // Process in batches of 10 with small delays between batches
+    const batchSize = 10;
+    const processBatch = async (promises) => {
+      const results = [];
+      for (let i = 0; i < promises.length; i += batchSize) {
+        const batch = promises.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch);
+        results.push(...batchResults);
+        // Small delay between batches to avoid rate limiting
+        if (i + batchSize < promises.length) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+      return results;
+    };
+
     const [tokenResults, nftResults, v2Results] = await Promise.all([
-      Promise.all(tokenContestPromises),
-      Promise.all(nftContestPromises),
-      Promise.all(v2ContestPromises),
+      processBatch(tokenContestPromises),
+      processBatch(nftContestPromises),
+      processBatch(v2ContestPromises),
     ]);
 
     // Filter out nulls and combine all contests
