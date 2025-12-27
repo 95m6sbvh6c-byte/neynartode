@@ -571,14 +571,31 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Execute all contest fetches in parallel (QuickNode has no rate limits)
+    // Execute contest fetches in small batches to respect QuickNode 15/sec rate limit
+    const batchSize = 5; // 5 requests per batch
+    const delayMs = 400; // 400ms between batches = ~12.5 req/sec max
+
+    const processBatch = async (promises) => {
+      const results = [];
+      for (let i = 0; i < promises.length; i += batchSize) {
+        const batch = promises.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch);
+        results.push(...batchResults);
+        if (i + batchSize < promises.length) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+      return results;
+    };
+
     console.log(`Fetching ${tokenContestPromises.length} token, ${nftContestPromises.length} NFT, ${v2ContestPromises.length} V2 contests...`);
 
-    const [tokenResults, nftResults, v2Results] = await Promise.all([
-      Promise.all(tokenContestPromises),
-      Promise.all(nftContestPromises),
-      Promise.all(v2ContestPromises),
-    ]);
+    // Process each contract type sequentially to avoid rate limits
+    const tokenResults = await processBatch(tokenContestPromises);
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    const nftResults = await processBatch(nftContestPromises);
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    const v2Results = await processBatch(v2ContestPromises);
 
     console.log(`Fetched: ${tokenResults.filter(c => c !== null).length} token, ${nftResults.filter(c => c !== null).length} NFT, ${v2Results.filter(c => c !== null).length} V2`);
 
