@@ -183,13 +183,31 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType) {
   }
 }
 
+// Token info cache to avoid repeated RPC calls
+const tokenInfoCache = new Map();
+
+// Well-known tokens on Base
+const KNOWN_TOKENS = {
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+  '0x4200000000000000000000000000000000000006': { symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+  '0x8de1622fe07f56cda2e2273e615a513f1d828b07': { symbol: 'NEYNARTODES', decimals: 18, name: 'Neynartodes' },
+  '0x0000000000000000000000000000000000000000': { symbol: 'ETH', decimals: 18, name: 'Ethereum' },
+};
+
 /**
- * Get token info (symbol, decimals, name)
+ * Get token info (symbol, decimals, name) - with caching
  */
 async function getTokenInfo(provider, tokenAddress) {
-  // Handle native ETH
-  if (tokenAddress === '0x0000000000000000000000000000000000000000') {
-    return { symbol: 'ETH', decimals: 18, name: 'Ethereum' };
+  const addrLower = tokenAddress.toLowerCase();
+
+  // Check known tokens first
+  if (KNOWN_TOKENS[addrLower]) {
+    return KNOWN_TOKENS[addrLower];
+  }
+
+  // Check cache
+  if (tokenInfoCache.has(addrLower)) {
+    return tokenInfoCache.get(addrLower);
   }
 
   try {
@@ -199,9 +217,13 @@ async function getTokenInfo(provider, tokenAddress) {
       token.decimals().catch(() => 18),
       token.name().catch(() => 'Unknown Token'),
     ]);
-    return { symbol, decimals: Number(decimals), name };
+    const info = { symbol, decimals: Number(decimals), name };
+    tokenInfoCache.set(addrLower, info);
+    return info;
   } catch (e) {
-    return { symbol: 'UNKNOWN', decimals: 18, name: 'Unknown Token' };
+    const info = { symbol: 'UNKNOWN', decimals: 18, name: 'Unknown Token' };
+    tokenInfoCache.set(addrLower, info);
+    return info;
   }
 }
 

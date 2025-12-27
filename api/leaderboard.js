@@ -24,6 +24,7 @@ const { getUserByWallet: getCachedUserByWallet, getCached, setCache } = require(
 
 const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+  NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
   CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Deployed 2025-12-17
   V2_START_ID: 105, // V2 contests start at ID 105
   PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
@@ -48,6 +49,11 @@ const EXCLUDED_ADDRESSES = [
 
 const CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function nextContestId() external view returns (uint256)',
+];
+
+const NFT_CONTEST_ESCROW_ABI = [
+  'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
   'function nextContestId() external view returns (uint256)',
 ];
 
@@ -218,6 +224,7 @@ module.exports = async (req, res) => {
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
     const contestContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
+    const nftContestContract = new ethers.Contract(CONFIG.NFT_CONTEST_ESCROW, NFT_CONTEST_ESCROW_ABI, provider);
     const contestManagerV2 = new ethers.Contract(CONFIG.CONTEST_MANAGER_V2, CONTEST_MANAGER_V2_ABI, provider);
     const prizeNFTContract = new ethers.Contract(CONFIG.PRIZE_NFT, PRIZE_NFT_ABI, provider);
     const votingContract = new ethers.Contract(CONFIG.VOTING_MANAGER, VOTING_MANAGER_ABI, provider);
@@ -245,9 +252,19 @@ module.exports = async (req, res) => {
       console.error(`Error fetching season ${seasonId}:`, e.message);
     }
 
-    // Get total contest count from BOTH contracts
+    // Get total contest count from ALL THREE contracts
     const nextContestId = await contestContract.nextContestId();
-    const totalLegacyContests = Number(nextContestId) - 1;
+    const totalLegacyTokenContests = Number(nextContestId) - 1;
+
+    // Get NFT contest count
+    let totalNftContests = 0;
+    try {
+      const nextNftContestId = await nftContestContract.nextContestId();
+      totalNftContests = Number(nextNftContestId) - 1;
+      console.log(`NFT contests: ${totalNftContests}`);
+    } catch (e) {
+      console.log('Could not fetch NFT contest count:', e.message);
+    }
 
     let nextV2ContestId = CONFIG.V2_START_ID;
     try {
@@ -256,7 +273,8 @@ module.exports = async (req, res) => {
       console.log('Could not fetch V2 contest count:', e.message);
     }
     const totalV2Contests = nextV2ContestId - CONFIG.V2_START_ID;
-    const totalContests = totalLegacyContests + totalV2Contests;
+    const totalContests = totalLegacyTokenContests + totalNftContests + totalV2Contests;
+    console.log(`Total contests: ${totalContests} (Token: ${totalLegacyTokenContests}, NFT: ${totalNftContests}, V2: ${totalV2Contests})`);
 
     if (totalContests <= 0) {
       return res.status(200).json({
@@ -274,8 +292,8 @@ module.exports = async (req, res) => {
     const BATCH_SIZE = 15; // 15 requests per batch for QuickNode 50/sec limit
     const BATCH_DELAY = 350; // 350ms delay between batches
 
-    // Process LEGACY contests (IDs 1 to totalLegacyContests)
-    const legacyContestIds = Array.from({ length: totalLegacyContests }, (_, i) => i + 1);
+    // Process LEGACY TOKEN contests (IDs 1 to totalLegacyTokenContests)
+    const legacyContestIds = Array.from({ length: totalLegacyTokenContests }, (_, i) => i + 1);
 
     for (let i = 0; i < legacyContestIds.length; i += BATCH_SIZE) {
       const batch = legacyContestIds.slice(i, i + BATCH_SIZE);
@@ -326,6 +344,75 @@ module.exports = async (req, res) => {
         hostStats[hostLower].contests++;
 
         // Only count completed contests for scoring
+        if (Number(status) === 2) {
+          hostStats[hostLower].completedContests++;
+
+          // Extract actual cast hash
+          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+          if (actualCastHash && actualCastHash !== '') {
+            hostStats[hostLower].castHashes.push(actualCastHash);
+          }
+
+          // Add volume (stored in wei, convert to regular number)
+          const volume = Number(volumeRequirement) / 1e18;
+          hostStats[hostLower].totalVolume += volume;
+        }
+      }
+    }
+
+    // Process NFT CONTESTS (IDs 1 to totalNftContests)
+    const nftContestIds = Array.from({ length: totalNftContests }, (_, i) => i + 1);
+
+    for (let i = 0; i < nftContestIds.length; i += BATCH_SIZE) {
+      const batch = nftContestIds.slice(i, i + BATCH_SIZE);
+      const contestPromises = batch.map(id =>
+        nftContestContract.getContest(id).catch(() => null)
+      );
+
+      const contestResults = await Promise.all(contestPromises);
+
+      // Rate limit delay between batches
+      if (i + BATCH_SIZE < nftContestIds.length) {
+        await new Promise(r => setTimeout(r, BATCH_DELAY));
+      }
+
+      for (let j = 0; j < batch.length; j++) {
+        const contestData = contestResults[j];
+        if (!contestData) continue;
+
+        // NFT format: host, nftType, nftContract, tokenId, amount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner
+        const [host, , , , , , endTime, castId, , volumeRequirement, status] = contestData;
+        const contestEndTime = Number(endTime);
+
+        // Filter by season time range - contest must END within season window
+        if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
+          continue; // Skip contests outside this season
+        }
+
+        seasonContestCount++;
+        const hostLower = host.toLowerCase();
+
+        // Skip excluded addresses (devs/admins who shouldn't compete)
+        if (EXCLUDED_ADDRESSES.includes(hostLower)) {
+          continue;
+        }
+
+        if (!hostStats[hostLower]) {
+          hostStats[hostLower] = {
+            address: host,
+            contests: 0,
+            completedContests: 0,
+            totalLikes: 0,
+            totalRecasts: 0,
+            totalReplies: 0,
+            totalVolume: 0,
+            castHashes: [],
+          };
+        }
+
+        hostStats[hostLower].contests++;
+
+        // Only count completed contests for scoring (status 2 = Completed)
         if (Number(status) === 2) {
           hostStats[hostLower].completedContests++;
 
