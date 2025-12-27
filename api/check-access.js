@@ -8,7 +8,7 @@ const CONTRACTS = {
   prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
 };
 
-const BASE_RPC = process.env.BASE_RPC_URL || 'https://rpc.ankr.com/base';
+const BASE_RPC = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
 
 export default async function handler(req, res) {
   // Only accept POST requests

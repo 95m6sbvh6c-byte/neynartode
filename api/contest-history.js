@@ -20,7 +20,7 @@ const CONFIG = {
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922', // V3 deployed 2025-12-05 (supports restricted NFTs)
   // V2 Contract (new unified system)
   CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Deployed 2025-12-17
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://rpc.ankr.com/base',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
 

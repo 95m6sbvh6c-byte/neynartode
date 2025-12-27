@@ -339,7 +339,7 @@
             // Use Base RPC directly since embedded wallet doesn't support eth_call
             const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
             const HOLDER_THRESHOLD = '100000000000000000000000000'; // 100M with 18 decimals
-            const BASE_RPC = 'https://rpc.ankr.com/base';
+            const BASE_RPC = 'https://mainnet.base.org';
 
             let isHolder = false;
             try {
@@ -2089,7 +2089,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     // ===== CONFIGURATION =====
     const CONFIG = {
       NEYNAR_API_KEY: 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
-      BASE_RPC_URL: 'https://rpc.ankr.com/base',
+      BASE_RPC_URL: 'https://mainnet.base.org',
       CHAIN_ID: 8453, // Base chain ID
       CONTRACTS: {
         // === V1 Contracts (legacy - for existing contests) ===
@@ -3355,7 +3355,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   chainId: '0x2105',
                   chainName: 'Base',
                   nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
-                  rpcUrls: ['https://rpc.ankr.com/base'],
+                  rpcUrls: ['https://mainnet.base.org'],
                   blockExplorerUrls: ['https://basescan.org']
                 }]
               });
