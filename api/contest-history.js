@@ -705,6 +705,14 @@ module.exports = async (req, res) => {
       totalV2: totalV2Contests,
       fetched: limitedContests.length,
       limit,
+      debug: {
+        tokenResultsCount: tokenResults.filter(c => c !== null).length,
+        nftResultsCount: nftResults.filter(c => c !== null).length,
+        v2ResultsCount: v2Results.filter(c => c !== null).length,
+        allContestsCount: allContests.length,
+        filteredCount: filteredContests.length,
+        rpcUrl: CONFIG.BASE_RPC.substring(0, 50) + '...',
+      }
     });
 
   } catch (error) {
