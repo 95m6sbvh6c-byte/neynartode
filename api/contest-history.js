@@ -571,28 +571,16 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Execute contest fetches in batches to avoid rate limiting
-    // Process in batches of 10 with small delays between batches
-    const batchSize = 10;
-    const processBatch = async (promises) => {
-      const results = [];
-      for (let i = 0; i < promises.length; i += batchSize) {
-        const batch = promises.slice(i, i + batchSize);
-        const batchResults = await Promise.all(batch);
-        results.push(...batchResults);
-        // Small delay between batches to avoid rate limiting
-        if (i + batchSize < promises.length) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-      }
-      return results;
-    };
+    // Execute all contest fetches in parallel (QuickNode has no rate limits)
+    console.log(`Fetching ${tokenContestPromises.length} token, ${nftContestPromises.length} NFT, ${v2ContestPromises.length} V2 contests...`);
 
     const [tokenResults, nftResults, v2Results] = await Promise.all([
-      processBatch(tokenContestPromises),
-      processBatch(nftContestPromises),
-      processBatch(v2ContestPromises),
+      Promise.all(tokenContestPromises),
+      Promise.all(nftContestPromises),
+      Promise.all(v2ContestPromises),
     ]);
+
+    console.log(`Fetched: ${tokenResults.filter(c => c !== null).length} token, ${nftResults.filter(c => c !== null).length} NFT, ${v2Results.filter(c => c !== null).length} V2`);
 
     // Filter out nulls and combine all contests
     const allContests = [
