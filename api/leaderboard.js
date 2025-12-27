@@ -546,7 +546,8 @@ module.exports = async (req, res) => {
       console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount}/${stats.castHashes.length} casts authored by host`);
 
       // Fetch votes and token holdings in PARALLEL
-      const holdingsAddresses = userInfo?.verifiedAddresses || [stats.address];
+      // Always include the host address, plus any verified addresses from Farcaster
+      const holdingsAddresses = [...new Set([stats.address, ...(userInfo?.verifiedAddresses || [])])];
       const [votesResult, tokenHoldings] = await Promise.all([
         votingContract.getHostVotes(stats.address).catch(() => [0n, 0n]),
         getTokenHoldings(holdingsAddresses, tokenContract)
