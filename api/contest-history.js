@@ -5,7 +5,7 @@
  * OPTIMIZED: Uses KV caching for contests, cached getUserByWallet, and HTTP cache headers
  *
  * Cache Strategy:
- *   - Completed/Cancelled contests: 1 hour TTL (final state, won't change)
+ *   - Completed/Cancelled contests: 7 days TTL (final state, won't change)
  *   - Active/Pending contests: 2 minute TTL (may change)
  *   - Falls back to in-memory cache when KV unavailable
  *
@@ -228,7 +228,7 @@ async function setCachedContest(cacheKey, contest) {
 
   // Determine TTL based on status (2=Completed, 3=Cancelled are final)
   const isFinal = contest.status === 2 || contest.status === 3;
-  const ttlSeconds = isFinal ? 3600 : 120; // 1 hour for final, 2 min for active
+  const ttlSeconds = isFinal ? 604800 : 120; // 7 days for final, 2 min for active
 
   // Save to KV
   if (process.env.KV_REST_API_URL) {
