@@ -23,7 +23,7 @@ const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
   PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
 };
 
 const CONTEST_ESCROW_ABI = [

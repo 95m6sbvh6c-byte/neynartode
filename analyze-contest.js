@@ -4,7 +4,7 @@ require('dotenv').config({ path: '.env.local' });
 
 const CONFIG = {
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY,
-  BASE_RPC: 'https://mainnet.base.org',
+  BASE_RPC: 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922'
 };
 

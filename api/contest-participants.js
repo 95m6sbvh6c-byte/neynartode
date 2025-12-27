@@ -114,7 +114,7 @@ module.exports = async (req, res) => {
     const hasRepliedSet = new Set();
 
     // Initialize provider for RPC calls (used for both replies and holder checks)
-    const RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+    const RPC_URL = process.env.BASE_RPC_URL || 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/';
     const provider = new ethers.JsonRpcProvider(RPC_URL);
 
     try {

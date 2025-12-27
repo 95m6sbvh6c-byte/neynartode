@@ -19,7 +19,7 @@ const { ethers } = require('ethers');
 try { require('dotenv').config({ path: '.env.local' }); } catch (e) {}
 
 // Base RPC for reliable queries
-const BASE_RPC_URL = 'https://mainnet.base.org';
+const BASE_RPC_URL = 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/';
 
 const CONFIG = {
   BASE_RPC: BASE_RPC_URL,

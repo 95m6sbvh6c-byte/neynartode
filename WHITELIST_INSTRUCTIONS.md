@@ -17,7 +17,7 @@ Enter your **contract owner's private key** when prompted.
 cast send 0x54E3972839A79fB4D1b0F70418141723d02E56e1 \
   "addToWhitelist(address)" \
   0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
-  --rpc-url https://mainnet.base.org \
+  --rpc-url https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/ \
   --private-key YOUR_OWNER_PRIVATE_KEY
 ```
 
@@ -31,7 +31,7 @@ export PRIVATE_KEY="your_owner_private_key_here"
 cast send 0x54E3972839A79fB4D1b0F70418141723d02E56e1 \
   "addToWhitelist(address)" \
   0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
-  --rpc-url https://mainnet.base.org \
+  --rpc-url https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/ \
   --private-key $PRIVATE_KEY
 ```
 
@@ -57,7 +57,7 @@ After the transaction confirms, you can verify with:
 cast call 0x54E3972839A79fB4D1b0F70418141723d02E56e1 \
   "whitelisted(address)(bool)" \
   0x78EeAA6F014667A339fCF8b4eCd74743366603fb \
-  --rpc-url https://mainnet.base.org
+  --rpc-url https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/
 ```
 
 Should return `true` (or `0x0000000000000000000000000000000000000000000000000000000000000001`)

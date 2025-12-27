@@ -150,7 +150,7 @@ Vote Score = (Upvotes - Downvotes) × 200
 
 ```
 NEYNAR_API_KEY=           # Neynar API key for Farcaster
-BASE_RPC_URL=             # Base mainnet RPC (default: https://mainnet.base.org)
+BASE_RPC_URL=             # Base mainnet RPC (default: https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/)
 KV_REST_API_URL=          # Vercel KV URL
 KV_REST_API_TOKEN=        # Vercel KV token
 ALCHEMY_API_KEY=          # Alchemy key for NFT metadata

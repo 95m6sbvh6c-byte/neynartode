@@ -13,7 +13,7 @@
 const { ethers } = require('ethers');
 
 const CONFIG = {
-  BASE_RPC_URL: 'https://mainnet.base.org',
+  BASE_RPC_URL: 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
   CONTEST_ESCROW: '0xEDE1Af4abfD069FFB14b5D3C0BBFf681Ec56BDF5'
 };
 
