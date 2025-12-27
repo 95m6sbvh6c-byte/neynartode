@@ -102,16 +102,26 @@ async function getUserByWallet(walletAddress) {
 
 /**
  * Get total NEYNARTODES token holdings across all addresses
- * OPTIMIZED: Fetches all balances in parallel
+ * Uses retry logic to handle rate limiting
  */
 async function getTokenHoldings(addresses, tokenContract) {
-  // Fetch all balances in PARALLEL
-  const balancePromises = addresses.map(addr =>
-    tokenContract.balanceOf(addr).catch(() => 0n)
-  );
+  let totalBalance = 0n;
 
-  const balances = await Promise.all(balancePromises);
-  const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
+  for (const addr of addresses) {
+    // Retry up to 3 times with increasing delays
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const balance = await tokenContract.balanceOf(addr);
+        totalBalance += BigInt(balance);
+        break; // Success, exit retry loop
+      } catch (e) {
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 100 * (attempt + 1)));
+        }
+        // On final failure, just continue with 0 for this address
+      }
+    }
+  }
 
   // Convert from wei (18 decimals) to whole tokens
   return Number(totalBalance / 10n**18n);
