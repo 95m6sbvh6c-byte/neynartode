@@ -514,11 +514,16 @@ module.exports = async (req, res) => {
     await new Promise(r => setTimeout(r, 100));
     const nftNextId = await fetchWithRetry(() => nftContract.nextContestId()).catch(() => 1);
     await new Promise(r => setTimeout(r, 100));
-    const v2NextId = await fetchWithRetry(() => v2Contract.nextContestId()).catch(() => 1);
+    const v2NextId = await fetchWithRetry(() => v2Contract.nextContestId()).catch(() => 105);
     const totalTokenContests = Number(tokenNextId) - 1;
     const totalNftContests = Number(nftNextId) - 1;
-    const totalV2Contests = Number(v2NextId) - 1;
+    // V2 contests start at ID 105, so highest ID is v2NextId - 1
+    const v2HighestId = Number(v2NextId) - 1;
+    const V2_START_CONTEST_ID = 105;
+    const totalV2Contests = v2HighestId >= V2_START_CONTEST_ID ? v2HighestId - V2_START_CONTEST_ID + 1 : 0;
     const totalContests = totalTokenContests + totalNftContests + totalV2Contests;
+
+    console.log(`Contest counts: token=${totalTokenContests}, nft=${totalNftContests}, v2=${totalV2Contests} (IDs ${V2_START_CONTEST_ID}-${v2HighestId})`);
 
     if (totalContests <= 0) {
       return res.status(200).json({
@@ -568,10 +573,10 @@ module.exports = async (req, res) => {
 
     // Create promises for V2 contests (most recent first)
     // V2 contests start at ID 105 - limit fetch to avoid rate limiting
-    const V2_START_CONTEST_ID = 105;
     const v2FetchLimit = Math.min(limit * 2, 30); // Reduced to 30 to avoid rate limiting
-    const v2StartId = Math.max(V2_START_CONTEST_ID, totalV2Contests - v2FetchLimit + 1);
-    for (let i = totalV2Contests; i >= v2StartId; i--) {
+    const v2StartId = Math.max(V2_START_CONTEST_ID, v2HighestId - v2FetchLimit + 1);
+    console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${v2HighestId - v2StartId + 1} contests)`);
+    for (let i = v2HighestId; i >= v2StartId; i--) {
       v2ContestPromises.push(
         getV2ContestDetails(provider, v2Contract, i)
           .then(contest => {
