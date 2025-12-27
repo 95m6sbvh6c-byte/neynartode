@@ -849,6 +849,55 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Fetch social data (likes, recasts, replies) from KV cache for completed contests
+    if (process.env.KV_REST_API_URL && limitedContests.length > 0) {
+      try {
+        const { kv } = require('@vercel/kv');
+
+        const socialPromises = limitedContests.map(async (contest) => {
+          // Only fetch social data for completed contests (status 2)
+          if (contest.status !== 2) {
+            return { contestId: contest.contestId, contractType: contest.contractType, social: null };
+          }
+
+          // Determine the cache key based on contract type
+          const contestType = contest.contractType; // 'token', 'nft', or 'v2'
+          const cacheKey = `contest:social:${contestType}-${contest.contestId}`;
+
+          try {
+            const socialData = await kv.get(cacheKey);
+            return {
+              contestId: contest.contestId,
+              contractType: contestType,
+              social: socialData || null,
+            };
+          } catch (e) {
+            return { contestId: contest.contestId, contractType: contestType, social: null };
+          }
+        });
+
+        const socialResults = await Promise.all(socialPromises);
+
+        // Enrich contests with social data
+        socialResults.forEach(({ contestId, contractType, social }) => {
+          const contest = limitedContests.find(c =>
+            c.contestId === contestId && c.contractType === contractType
+          );
+          if (contest && social) {
+            contest.likes = social.likes || 0;
+            contest.recasts = social.recasts || 0;
+            contest.replies = social.replies || 0;
+            contest.socialCapturedAt = social.capturedAt || null;
+          }
+        });
+
+        console.log(`Enriched ${socialResults.filter(r => r.social).length}/${limitedContests.length} contests with social data`);
+      } catch (kvError) {
+        console.error('KV social data error:', kvError.message);
+        // Continue without social data if KV fails
+      }
+    }
+
     return res.status(200).json({
       contests: limitedContests,
       total: totalContests,
