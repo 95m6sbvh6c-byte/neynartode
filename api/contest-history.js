@@ -283,7 +283,7 @@ async function getContestDetails(provider, contract, contestId) {
     };
   } catch (e) {
     console.error(`Error fetching contest ${contestId}:`, e.message);
-    return null;
+    return { error: e.message, contestId: Number(contestId), type: 'token' };
   }
 }
 
@@ -582,11 +582,11 @@ module.exports = async (req, res) => {
 
     console.log(`Fetched: ${tokenResults.filter(c => c !== null).length} token, ${nftResults.filter(c => c !== null).length} NFT, ${v2Results.filter(c => c !== null).length} V2`);
 
-    // Filter out nulls and combine all contests
+    // Filter out nulls and errors, combine all contests
     const allContests = [
-      ...tokenResults.filter(c => c !== null),
-      ...nftResults.filter(c => c !== null),
-      ...v2Results.filter(c => c !== null),
+      ...tokenResults.filter(c => c !== null && !c.error),
+      ...nftResults.filter(c => c !== null && !c.error),
+      ...v2Results.filter(c => c !== null && !c.error),
     ];
 
     // Sort by endTime descending (newest first)
@@ -712,6 +712,7 @@ module.exports = async (req, res) => {
         allContestsCount: allContests.length,
         filteredCount: filteredContests.length,
         rpcUrl: CONFIG.BASE_RPC.substring(0, 50) + '...',
+        errors: tokenResults.filter(c => c && c.error).slice(0, 3),
       }
     });
 
