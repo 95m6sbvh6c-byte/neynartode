@@ -586,9 +586,9 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Execute contest fetches in small batches to respect QuickNode 15/sec rate limit
-    const batchSize = 5; // 5 requests per batch
-    const delayMs = 400; // 400ms between batches = ~12.5 req/sec max
+    // Execute contest fetches in batches to respect QuickNode 50/sec rate limit
+    const batchSize = 15; // 15 requests per batch
+    const delayMs = 350; // 350ms between batches = ~43 req/sec max
 
     const processBatch = async (promises) => {
       const results = [];
