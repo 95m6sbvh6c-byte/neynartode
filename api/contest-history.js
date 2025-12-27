@@ -533,16 +533,18 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Fetch all contests from all contracts in PARALLEL for speed
-    const tokenContestPromises = [];
-    const nftContestPromises = [];
-    const v2ContestPromises = [];
+    // Create LAZY fetch functions (not promises) to control execution timing
+    // This prevents all requests from firing at once when promises are created
+    const tokenFetchers = [];
+    const nftFetchers = [];
+    const v2Fetchers = [];
 
-    // Create promises for V1 token contests (most recent first, limited)
+    // Create fetcher functions for V1 token contests (most recent first, limited)
     const tokenStartId = Math.max(1, totalTokenContests - limit + 1);
     for (let i = totalTokenContests; i >= tokenStartId; i--) {
-      tokenContestPromises.push(
-        getContestDetails(provider, tokenContract, i)
+      const contestId = i; // Capture in closure
+      tokenFetchers.push(() =>
+        getContestDetails(provider, tokenContract, contestId)
           .then(contest => {
             if (contest) {
               contest.contractType = 'token';
@@ -554,15 +556,16 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Create promises for V1 NFT contests (most recent first, limited)
+    // Create fetcher functions for V1 NFT contests (most recent first, limited)
     const nftStartId = Math.max(1, totalNftContests - limit + 1);
     for (let i = totalNftContests; i >= nftStartId; i--) {
-      nftContestPromises.push(
-        getNftContestDetails(provider, nftContract, i)
+      const contestId = i;
+      nftFetchers.push(() =>
+        getNftContestDetails(provider, nftContract, contestId)
           .then(contest => {
             if (contest) {
               contest.contractType = 'nft';
-              contest.contestIdDisplay = `NFT-${contest.contestId}`;
+              contest.contestIdDisplay = `NFT-${contestId}`;
               return contest;
             }
             return null;
@@ -571,51 +574,56 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Create promises for V2 contests (most recent first)
+    // Create fetcher functions for V2 contests (most recent first)
     // V2 contests start at ID 105 - limit fetch to avoid rate limiting
     const v2FetchLimit = Math.min(limit * 2, 30); // Reduced to 30 to avoid rate limiting
     const v2StartId = Math.max(V2_START_CONTEST_ID, v2HighestId - v2FetchLimit + 1);
     console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${v2HighestId - v2StartId + 1} contests)`);
     for (let i = v2HighestId; i >= v2StartId; i--) {
-      v2ContestPromises.push(
-        getV2ContestDetails(provider, v2Contract, i)
+      const contestId = i;
+      v2Fetchers.push(() =>
+        getV2ContestDetails(provider, v2Contract, contestId)
           .then(contest => {
             if (contest) {
               contest.contractType = 'v2';
-              contest.contestIdDisplay = `V2-${contest.contestId}`;
+              contest.contestIdDisplay = `V2-${contestId}`;
               return contest;
             }
             return null;
           })
-          .catch(() => null)
+          .catch((e) => {
+            console.error(`V2 contest ${contestId} fetch error:`, e.message);
+            return null;
+          })
       );
     }
 
-    // Execute contest fetches in batches to respect QuickNode 50/sec rate limit
-    const batchSize = 15; // 15 requests per batch
-    const delayMs = 350; // 350ms between batches = ~43 req/sec max
+    // Execute fetchers in batches to respect QuickNode 50/sec rate limit
+    const batchSize = 10; // Reduced to 10 requests per batch for safety
+    const delayMs = 250; // 250ms between batches
 
-    const processBatch = async (promises) => {
+    const processBatch = async (fetchers) => {
       const results = [];
-      for (let i = 0; i < promises.length; i += batchSize) {
-        const batch = promises.slice(i, i + batchSize);
-        const batchResults = await Promise.all(batch);
+      for (let i = 0; i < fetchers.length; i += batchSize) {
+        const batch = fetchers.slice(i, i + batchSize);
+        // Execute fetchers NOW (they return promises)
+        const batchResults = await Promise.all(batch.map(fn => fn()));
         results.push(...batchResults);
-        if (i + batchSize < promises.length) {
+        if (i + batchSize < fetchers.length) {
           await new Promise(resolve => setTimeout(resolve, delayMs));
         }
       }
       return results;
     };
 
-    console.log(`Fetching ${tokenContestPromises.length} token, ${nftContestPromises.length} NFT, ${v2ContestPromises.length} V2 contests...`);
+    console.log(`Fetching ${tokenFetchers.length} token, ${nftFetchers.length} NFT, ${v2Fetchers.length} V2 contests...`);
 
     // Process each contract type sequentially to avoid rate limits
-    const tokenResults = await processBatch(tokenContestPromises);
+    const tokenResults = await processBatch(tokenFetchers);
     await new Promise(resolve => setTimeout(resolve, delayMs));
-    const nftResults = await processBatch(nftContestPromises);
+    const nftResults = await processBatch(nftFetchers);
     await new Promise(resolve => setTimeout(resolve, delayMs));
-    const v2Results = await processBatch(v2ContestPromises);
+    const v2Results = await processBatch(v2Fetchers);
 
     console.log(`Fetched: ${tokenResults.filter(c => c !== null).length} token, ${nftResults.filter(c => c !== null).length} NFT, ${v2Results.filter(c => c !== null).length} V2`);
 
