@@ -3612,9 +3612,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       }
     }
 
+    // Global flag to track if heavy API calls are in progress (prevents concurrent rate limit hits)
+    let apiCallInProgress = false;
+
     async function loadLeaderboard() {
+      // Mark API calls as in progress to prevent concurrent heavy calls
+      apiCallInProgress = true;
+
       // Load prize pools from contracts
       await loadPrizePools();
+
+      // RATE LIMIT STAGGER: Wait 500ms after prize pool RPC calls before hitting leaderboard API
+      await new Promise(r => setTimeout(r, 500));
 
       try {
         // Fetch leaderboard data from API
@@ -3670,6 +3679,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           };
         });
 
+        // RATE LIMIT STAGGER: Wait 500ms before fetching on-chain vote scores
+        await new Promise(r => setTimeout(r, 500));
+
         // Fetch on-chain vote scores and merge with leaderboard data
         await fetchOnChainVoteScores();
 
@@ -3677,6 +3689,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         console.error('Error loading leaderboard:', error);
         state.leaderboardData = [];
       }
+
+      // RATE LIMIT STAGGER: Wait 500ms before fetching active contests
+      await new Promise(r => setTimeout(r, 500));
 
       // Fetch active contests from contest-history API
       // Check for cached contests first (for faster initial load)
@@ -3763,6 +3778,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.upcomingContests = [];
         state.contestsLoading = false;
       }
+
+      // Mark API calls as complete
+      apiCallInProgress = false;
 
       // Re-render to show active contests
       render();
@@ -3867,8 +3885,20 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     async function loadHistory() {
+      // RATE LIMIT: Wait if another heavy API call is in progress
+      if (apiCallInProgress) {
+        console.log('Waiting for other API calls to complete before loading history...');
+        // Wait up to 5 seconds for other calls to complete
+        let waitTime = 0;
+        while (apiCallInProgress && waitTime < 5000) {
+          await new Promise(r => setTimeout(r, 200));
+          waitTime += 200;
+        }
+      }
+
       state.historyLoading = true;
       state.historyError = null;
+      apiCallInProgress = true;
       render();
 
       try {
@@ -3883,11 +3913,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.historyData = data.contests || [];
         state.historyTotal = data.total || 0;
         state.historyLoading = false;
+        apiCallInProgress = false;
         render();
       } catch (error) {
         console.error('Error loading history:', error);
         state.historyError = error.message;
         state.historyLoading = false;
+        apiCallInProgress = false;
         render();
       }
     }
