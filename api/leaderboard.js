@@ -191,15 +191,18 @@ async function getCastEngagement(contestInfo, hostFid, kv = null) {
       const kvCached = await kv.get(kvCacheKey);
 
       if (kvCached) {
-        // Verify host authored the cast by checking hostFid
-        const isAuthor = hostFid && kvCached.hostFid && kvCached.hostFid === hostFid;
-
-        if (!isAuthor) {
+        // KV cache data was validated at storage time (finalization/backfill)
+        // The castId stored on-chain is the host's cast, so we trust the cached data
+        // Only verify hostFid if BOTH fids are available and non-zero
+        if (hostFid && kvCached.hostFid && kvCached.hostFid !== hostFid) {
+          // FIDs don't match - this shouldn't happen, log for debugging
+          console.log(`   KV cache hostFid mismatch: cached=${kvCached.hostFid}, lookup=${hostFid}, contest=${type}-${id}`);
           const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
           setCache(memoryCacheKey, result, 300000);
           return result;
         }
 
+        // Use cached data - either FIDs match, or we can't verify (trust cache)
         const result = {
           likes: kvCached.likes || 0,
           recasts: kvCached.recasts || 0,
