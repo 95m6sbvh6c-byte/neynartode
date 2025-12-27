@@ -18,7 +18,7 @@ const { ethers } = require('ethers');
 const RESERVOIR_BASE_URL = 'https://api-base.reservoir.tools';
 
 // RPC for direct contract calls as fallback
-const BASE_RPC = 'https://mainnet.base.org';
+const BASE_RPC = 'https://rpc.ankr.com/base';
 
 // NFT ABI for direct metadata fetching
 const NFT_ABI = [

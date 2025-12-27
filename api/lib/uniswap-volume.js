@@ -72,7 +72,7 @@ async function withRetry(fn, maxRetries = 3, baseDelay = 500) {
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://rpc.ankr.com/base',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   WETH: '0x4200000000000000000000000000000000000006', // Base WETH
 

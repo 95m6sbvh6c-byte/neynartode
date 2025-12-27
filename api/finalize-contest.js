@@ -44,7 +44,7 @@ const CONFIG = {
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
 
   // RPC
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://rpc.ankr.com/base',
 
   // API Keys
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
