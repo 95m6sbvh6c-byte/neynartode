@@ -2,7 +2,12 @@
  * Contest History API
  *
  * Fetches the last N contests from the ContestEscrow contract with full stats.
- * OPTIMIZED: Uses cached getUserByWallet and HTTP cache headers
+ * OPTIMIZED: Uses KV caching for contests, cached getUserByWallet, and HTTP cache headers
+ *
+ * Cache Strategy:
+ *   - Completed/Cancelled contests: 1 hour TTL (final state, won't change)
+ *   - Active/Pending contests: 2 minute TTL (may change)
+ *   - Falls back to in-memory cache when KV unavailable
  *
  * Usage:
  *   GET /api/contest-history?limit=20
@@ -186,6 +191,59 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType) {
 // Token info cache to avoid repeated RPC calls
 const tokenInfoCache = new Map();
 
+// In-memory contest cache (fallback when KV unavailable)
+const contestCache = new Map();
+const CONTEST_CACHE_TTL = 60000; // 1 minute for in-memory cache
+
+/**
+ * Get cached contest from KV or in-memory cache
+ * Completed contests are cached for 1 hour, active contests for 2 minutes
+ */
+async function getCachedContest(cacheKey) {
+  // Try KV first
+  if (process.env.KV_REST_API_URL) {
+    try {
+      const { kv } = await import('@vercel/kv');
+      const cached = await kv.get(cacheKey);
+      if (cached) return cached;
+    } catch (e) {
+      // Fall through to in-memory cache
+    }
+  }
+
+  // Check in-memory cache
+  const memCached = contestCache.get(cacheKey);
+  if (memCached && Date.now() - memCached.timestamp < CONTEST_CACHE_TTL) {
+    return memCached.data;
+  }
+  return null;
+}
+
+/**
+ * Set contest in cache (KV and in-memory)
+ * Completed/cancelled contests get 1 hour TTL, active get 2 minutes
+ */
+async function setCachedContest(cacheKey, contest) {
+  if (!contest) return;
+
+  // Determine TTL based on status (2=Completed, 3=Cancelled are final)
+  const isFinal = contest.status === 2 || contest.status === 3;
+  const ttlSeconds = isFinal ? 3600 : 120; // 1 hour for final, 2 min for active
+
+  // Save to KV
+  if (process.env.KV_REST_API_URL) {
+    try {
+      const { kv } = await import('@vercel/kv');
+      await kv.set(cacheKey, contest, { ex: ttlSeconds });
+    } catch (e) {
+      // Ignore KV errors, use in-memory fallback
+    }
+  }
+
+  // Also save to in-memory cache
+  contestCache.set(cacheKey, { data: contest, timestamp: Date.now() });
+}
+
 // Well-known tokens on Base
 const KNOWN_TOKENS = {
   '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { symbol: 'USDC', decimals: 6, name: 'USD Coin' },
@@ -228,9 +286,15 @@ async function getTokenInfo(provider, tokenAddress) {
 }
 
 /**
- * Fetch full contest details
+ * Fetch full contest details (with caching)
  */
 async function getContestDetails(provider, contract, contestId) {
+  const cacheKey = `contest:token:${contestId}`;
+
+  // Check cache first
+  const cached = await getCachedContest(cacheKey);
+  if (cached) return cached;
+
   try {
     const [contestData, qualifiedEntries] = await Promise.all([
       contract.getContest(contestId),
@@ -275,7 +339,7 @@ async function getContestDetails(provider, contract, contestId) {
       }
     }
 
-    return {
+    const contest = {
       contestId: Number(contestId),
       host: host,
       prizeToken: prizeToken,
@@ -303,6 +367,10 @@ async function getContestDetails(provider, contract, contestId) {
       // Not an NFT contest
       isNft: false,
     };
+
+    // Cache the result
+    await setCachedContest(cacheKey, contest);
+    return contest;
   } catch (e) {
     console.error(`Error fetching contest ${contestId}:`, e.message);
     return null;
@@ -310,9 +378,15 @@ async function getContestDetails(provider, contract, contestId) {
 }
 
 /**
- * Fetch NFT contest details from NFTContestEscrow
+ * Fetch NFT contest details from NFTContestEscrow (with caching)
  */
 async function getNftContestDetails(provider, contract, contestId) {
+  const cacheKey = `contest:nft:${contestId}`;
+
+  // Check cache first
+  const cached = await getCachedContest(cacheKey);
+  if (cached) return cached;
+
   try {
     const [contestData, qualifiedEntries] = await Promise.all([
       contract.getContest(contestId),
@@ -360,7 +434,7 @@ async function getNftContestDetails(provider, contract, contestId) {
     // Use Alchemy image (always fetched now)
     const finalNftImage = nftMetadata.image;
 
-    return {
+    const contest = {
       contestId: Number(contestId),
       host: host,
       // NFT-specific fields
@@ -396,6 +470,10 @@ async function getNftContestDetails(provider, contract, contestId) {
       requireLike,
       requireReply,
     };
+
+    // Cache the result
+    await setCachedContest(cacheKey, contest);
+    return contest;
   } catch (e) {
     console.error(`Error fetching NFT contest ${contestId}:`, e.message);
     return null;
@@ -403,10 +481,16 @@ async function getNftContestDetails(provider, contract, contestId) {
 }
 
 /**
- * Fetch V2 ContestManager contest details
+ * Fetch V2 ContestManager contest details (with caching)
  * V2 contests support multiple winners and unified ETH/ERC20/NFT prizes
  */
 async function getV2ContestDetails(provider, contract, contestId) {
+  const cacheKey = `contest:v2:${contestId}`;
+
+  // Check cache first
+  const cached = await getCachedContest(cacheKey);
+  if (cached) return cached;
+
   try {
     const contestData = await contract.getContest(contestId);
 
@@ -442,7 +526,7 @@ async function getV2ContestDetails(provider, contract, contestId) {
     // Determine if this is an NFT contest (contestType 2)
     const isNft = Number(contestType) === 2;
 
-    return {
+    const contest = {
       contestId: Number(contestId),
       host: host,
       prizeToken: prizeToken,
@@ -476,6 +560,10 @@ async function getV2ContestDetails(provider, contract, contestId) {
       contestType: V2_CONTEST_TYPES[Number(contestType)] || 'Unknown',
       isV2: true, // Flag to identify V2 contests
     };
+
+    // Cache the result
+    await setCachedContest(cacheKey, contest);
+    return contest;
   } catch (e) {
     console.error(`Error fetching V2 contest ${contestId}:`, e.message);
     return null;
