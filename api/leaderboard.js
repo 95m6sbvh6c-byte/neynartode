@@ -102,17 +102,51 @@ async function getUserByWallet(walletAddress) {
 
 /**
  * Get total NEYNARTODES token holdings across all addresses
- * Uses retry logic to handle rate limiting
+ * Uses KV cache (1 hour TTL) + retry logic for chain calls
  */
-async function getTokenHoldings(addresses, tokenContract) {
+async function getTokenHoldings(addresses, tokenContract, kvClient = null) {
   let totalBalance = 0n;
+  let cacheHits = 0;
 
   for (const addr of addresses) {
-    // Retry up to 3 times with increasing delays
+    const addrLower = addr.toLowerCase();
+    const kvCacheKey = `holdings:${addrLower}`;
+
+    // Check KV cache first (1 hour TTL)
+    if (kvClient) {
+      try {
+        const cached = await kvClient.get(kvCacheKey);
+        if (cached && cached.balance !== undefined) {
+          // Check if cache is still valid (1 hour = 3600000ms)
+          if (Date.now() - cached.updatedAt < 3600000) {
+            totalBalance += BigInt(cached.balance);
+            cacheHits++;
+            continue;
+          }
+        }
+      } catch (e) {
+        // Cache miss or error, fetch from chain
+      }
+    }
+
+    // Fetch from chain with retry logic
+    let balance = 0n;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const balance = await tokenContract.balanceOf(addr);
+        balance = await tokenContract.balanceOf(addr);
         totalBalance += BigInt(balance);
+
+        // Cache the result in KV (1 hour TTL)
+        if (kvClient) {
+          try {
+            await kvClient.set(kvCacheKey, {
+              balance: balance.toString(),
+              updatedAt: Date.now(),
+            }, { ex: 3600 }); // 1 hour expiry
+          } catch (e) {
+            // Ignore cache errors
+          }
+        }
         break; // Success, exit retry loop
       } catch (e) {
         if (attempt < 2) {
@@ -128,13 +162,16 @@ async function getTokenHoldings(addresses, tokenContract) {
 }
 
 /**
- * Get cast engagement metrics from Neynar (CACHED)
- * Only counts engagement if the host is the original author of the cast
+ * Get cast engagement metrics (CACHED with KV + in-memory)
+ * Checks KV season cache first, then falls back to Neynar API
  *
- * @param {string} castHash - The cast hash to check
+ * @param {object} contestInfo - { castHash, type, id } - Contest info for cache lookup
  * @param {number} hostFid - The host's Farcaster ID (to verify authorship)
+ * @param {object} kv - Vercel KV instance (optional, for season cache)
  */
-async function getCastEngagement(castHash, hostFid) {
+async function getCastEngagement(contestInfo, hostFid, kv = null) {
+  const { castHash, type, id } = contestInfo;
+
   if (!castHash || castHash === '' || castHash.includes('|')) {
     return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
   }
@@ -142,11 +179,43 @@ async function getCastEngagement(castHash, hostFid) {
   // Clean the cast hash - remove any prefix
   const cleanHash = castHash.startsWith('0x') ? castHash : `0x${castHash}`;
 
-  // Check cache first (5 min TTL for cast engagement)
-  const cacheKey = `cast:engagement:${cleanHash}:${hostFid}`;
-  const cached = getCached(cacheKey, 300000);
+  // Check in-memory cache first (5 min TTL for cast engagement)
+  const memoryCacheKey = `cast:engagement:${cleanHash}:${hostFid}`;
+  const cached = getCached(memoryCacheKey, 300000);
   if (cached !== null) return cached;
 
+  // Check KV season cache if available (permanent cache from finalization)
+  if (kv && type && id) {
+    try {
+      const kvCacheKey = `contest:social:${type}-${id}`;
+      const kvCached = await kv.get(kvCacheKey);
+
+      if (kvCached) {
+        // Verify host authored the cast by checking hostFid
+        const isAuthor = hostFid && kvCached.hostFid && kvCached.hostFid === hostFid;
+
+        if (!isAuthor) {
+          const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
+          setCache(memoryCacheKey, result, 300000);
+          return result;
+        }
+
+        const result = {
+          likes: kvCached.likes || 0,
+          recasts: kvCached.recasts || 0,
+          replies: kvCached.replies || 0,
+          isAuthor: true,
+          fromKVCache: true, // Mark as from KV for debugging
+        };
+        setCache(memoryCacheKey, result, 300000);
+        return result;
+      }
+    } catch (e) {
+      // KV cache miss or error, fall through to Neynar API
+    }
+  }
+
+  // Fall back to Neynar API
   try {
     const response = await fetch(
       `https://api.neynar.com/v2/farcaster/cast?identifier=${cleanHash}&type=hash`,
@@ -155,7 +224,7 @@ async function getCastEngagement(castHash, hostFid) {
 
     if (!response.ok) {
       const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-      setCache(cacheKey, result, 60000); // Cache failures for 1 min
+      setCache(memoryCacheKey, result, 60000); // Cache failures for 1 min
       return result;
     }
 
@@ -164,7 +233,7 @@ async function getCastEngagement(castHash, hostFid) {
 
     if (!cast) {
       const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-      setCache(cacheKey, result, 60000);
+      setCache(memoryCacheKey, result, 60000);
       return result;
     }
 
@@ -176,7 +245,7 @@ async function getCastEngagement(castHash, hostFid) {
     if (!isAuthor) {
       console.log(`   Cast ${cleanHash.slice(0, 10)}... authored by FID ${authorFid}, not host FID ${hostFid} - skipping engagement`);
       const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-      setCache(cacheKey, result, 300000);
+      setCache(memoryCacheKey, result, 300000);
       return result;
     }
 
@@ -186,7 +255,26 @@ async function getCastEngagement(castHash, hostFid) {
       replies: cast.replies?.count || 0,
       isAuthor: true,
     };
-    setCache(cacheKey, result, 300000); // Cache for 5 min
+    setCache(memoryCacheKey, result, 300000); // Cache for 5 min
+
+    // Store in KV cache for future requests (if KV available and we have contest info)
+    if (kv && type && id) {
+      try {
+        const kvCacheKey = `contest:social:${type}-${id}`;
+        await kv.set(kvCacheKey, {
+          likes: result.likes,
+          recasts: result.recasts,
+          replies: result.replies,
+          castHash: cleanHash,
+          hostFid: authorFid,
+          capturedAt: Date.now(),
+          backfilled: true, // Mark as backfilled from leaderboard
+        });
+      } catch (e) {
+        // Ignore KV errors, non-fatal
+      }
+    }
+
     return result;
   } catch (e) {
     console.error('Error fetching cast engagement:', e.message);
@@ -239,6 +327,17 @@ module.exports = async (req, res) => {
     const prizeNFTContract = new ethers.Contract(CONFIG.PRIZE_NFT, PRIZE_NFT_ABI, provider);
     const votingContract = new ethers.Contract(CONFIG.VOTING_MANAGER, VOTING_MANAGER_ABI, provider);
     const tokenContract = new ethers.Contract(CONFIG.NEYNARTODES_TOKEN, ERC20_ABI, provider);
+
+    // Initialize KV for season caching (used by getCastEngagement)
+    let kvClient = null;
+    if (process.env.KV_REST_API_URL) {
+      try {
+        const { kv } = await import('@vercel/kv');
+        kvClient = kv;
+      } catch (e) {
+        console.log('KV init failed:', e.message);
+      }
+    }
 
     // Get season time range for filtering
     let seasonStartTime = 0;
@@ -347,7 +446,7 @@ module.exports = async (req, res) => {
             totalRecasts: 0,
             totalReplies: 0,
             totalVolume: 0,
-            castHashes: [],
+            contestInfos: [], // Changed from castHashes to include contest type/id
           };
         }
 
@@ -360,7 +459,11 @@ module.exports = async (req, res) => {
           // Extract actual cast hash
           const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
           if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].castHashes.push(actualCastHash);
+            hostStats[hostLower].contestInfos.push({
+              castHash: actualCastHash,
+              type: 'token',
+              id: batch[j], // Contest ID from batch
+            });
           }
 
           // Add volume (stored in wei, convert to regular number)
@@ -416,7 +519,7 @@ module.exports = async (req, res) => {
             totalRecasts: 0,
             totalReplies: 0,
             totalVolume: 0,
-            castHashes: [],
+            contestInfos: [],
           };
         }
 
@@ -429,7 +532,11 @@ module.exports = async (req, res) => {
           // Extract actual cast hash
           const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
           if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].castHashes.push(actualCastHash);
+            hostStats[hostLower].contestInfos.push({
+              castHash: actualCastHash,
+              type: 'nft',
+              id: batch[j], // Contest ID from batch
+            });
           }
 
           // Add volume (stored in wei, convert to regular number)
@@ -485,7 +592,7 @@ module.exports = async (req, res) => {
             totalRecasts: 0,
             totalReplies: 0,
             totalVolume: 0,
-            castHashes: [],
+            contestInfos: [],
           };
         }
 
@@ -498,7 +605,11 @@ module.exports = async (req, res) => {
           // Extract actual cast hash
           const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
           if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].castHashes.push(actualCastHash);
+            hostStats[hostLower].contestInfos.push({
+              castHash: actualCastHash,
+              type: 'v2',
+              id: batch[j], // Contest ID from batch
+            });
           }
           // V2 contests don't have volumeRequirement in the same way
         }
@@ -537,30 +648,32 @@ module.exports = async (req, res) => {
         continue;
       }
 
-      // Batch fetch cast engagements for this host
-      const engagementPromises = stats.castHashes.map(castHash =>
-        getCastEngagement(castHash, hostFid)
+      // Batch fetch cast engagements for this host (uses KV cache when available)
+      const engagementPromises = stats.contestInfos.map(contestInfo =>
+        getCastEngagement(contestInfo, hostFid, kvClient)
       );
       const engagements = await Promise.all(engagementPromises);
 
       let ownedCastsCount = 0;
+      let kvCacheHits = 0;
       engagements.forEach(engagement => {
         if (engagement.isAuthor) {
           stats.totalLikes += engagement.likes;
           stats.totalRecasts += engagement.recasts;
           stats.totalReplies += engagement.replies;
           ownedCastsCount++;
+          if (engagement.fromKVCache) kvCacheHits++;
         }
       });
 
-      console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount}/${stats.castHashes.length} casts authored by host`);
+      console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount}/${stats.contestInfos.length} casts authored by host (${kvCacheHits} from KV cache)`);
 
       // Fetch votes and token holdings in PARALLEL
       // Always include the host address, plus any verified addresses from Farcaster
       const holdingsAddresses = [...new Set([stats.address, ...(userInfo?.verifiedAddresses || [])])];
       const [votesResult, tokenHoldings] = await Promise.all([
         votingContract.getHostVotes(stats.address).catch(() => [0n, 0n]),
-        getTokenHoldings(holdingsAddresses, tokenContract)
+        getTokenHoldings(holdingsAddresses, tokenContract, kvClient)
       ]);
 
       const [upvotes, downvotes] = votesResult;

@@ -43,6 +43,10 @@ const CONFIG = {
 
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
 
+  // Season tracking
+  PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
+  CURRENT_SEASON: 2, // Default active season
+
   // RPC
   BASE_RPC: process.env.BASE_RPC_URL || 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
 
@@ -82,6 +86,11 @@ const CONTEST_MANAGER_V2_ABI = [
   'function finalizeContest(uint256 _contestId, address[] calldata _qualifiedAddresses) external returns (uint256 requestId)',
   'function cancelContest(uint256 _contestId, string calldata _reason) external',
   'function nextContestId() external view returns (uint256)',
+];
+
+// PrizeNFT ABI for season tracking
+const PRIZE_NFT_ABI = [
+  'function seasons(uint256) external view returns (string theme, uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)',
 ];
 
 // ═══════════════════════════════════════════════════════════════════
@@ -431,6 +440,116 @@ async function getCastEngagement(castId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SEASON-BASED CACHING - Store social data at finalization time
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Store social engagement data for a contest at finalization time
+ * This caches the data so leaderboard doesn't need to call Neynar API
+ *
+ * @param {string} contestType - 'token', 'nft', or 'v2'
+ * @param {number|string} contestId - Contest ID
+ * @param {object} socialData - { likes, recasts, replies, castHash, hostFid }
+ */
+async function storeSocialData(contestType, contestId, socialData) {
+  if (!process.env.KV_REST_API_URL) {
+    console.log('   ⚠️ KV not configured, skipping social data cache');
+    return false;
+  }
+
+  try {
+    const { kv } = require('@vercel/kv');
+    const cacheKey = `contest:social:${contestType}-${contestId}`;
+
+    const cacheData = {
+      likes: socialData.likes || 0,
+      recasts: socialData.recasts || 0,
+      replies: socialData.replies || 0,
+      castHash: socialData.castHash || null,
+      hostFid: socialData.hostFid || null,
+      capturedAt: Date.now(),
+    };
+
+    // Store without TTL - permanent until season is archived
+    await kv.set(cacheKey, cacheData);
+    console.log(`   📊 Cached social data: ${cacheKey} (L:${cacheData.likes} R:${cacheData.recasts} Re:${cacheData.replies})`);
+    return true;
+  } catch (error) {
+    console.error('Error storing social data:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Add a contest to the season index
+ * This allows the leaderboard to efficiently query all contests in a season
+ *
+ * @param {number} seasonId - Season number (e.g., 2)
+ * @param {string} contestType - 'token', 'nft', or 'v2'
+ * @param {number|string} contestId - Contest ID
+ * @param {number} endTime - Contest end timestamp (for sorting)
+ */
+async function addToSeasonIndex(seasonId, contestType, contestId, endTime) {
+  if (!process.env.KV_REST_API_URL) {
+    console.log('   ⚠️ KV not configured, skipping season index');
+    return false;
+  }
+
+  try {
+    const { kv } = require('@vercel/kv');
+    const indexKey = `season:${seasonId}:contests`;
+    const contestKey = `${contestType}-${contestId}`;
+
+    // Use sorted set with endTime as score for chronological ordering
+    await kv.zadd(indexKey, { score: endTime, member: contestKey });
+    console.log(`   📅 Added to season ${seasonId} index: ${contestKey}`);
+    return true;
+  } catch (error) {
+    console.error('Error adding to season index:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Determine which season a contest belongs to based on end time
+ *
+ * @param {number} endTime - Contest end timestamp
+ * @param {object} provider - Ethers provider
+ * @returns {number|null} Season ID or null if not found
+ */
+async function getSeasonForContest(endTime, provider) {
+  try {
+    const prizeNFTContract = new ethers.Contract(CONFIG.PRIZE_NFT, PRIZE_NFT_ABI, provider);
+
+    // Check seasons 1-10 (should cover all possible seasons)
+    for (let seasonId = 1; seasonId <= 10; seasonId++) {
+      try {
+        const season = await prizeNFTContract.seasons(seasonId);
+        const startTime = Number(season.startTime);
+        const seasonEndTime = Number(season.endTime);
+
+        // If season hasn't started yet (startTime = 0), skip
+        if (startTime === 0) continue;
+
+        // Contest belongs to season if it ended within the season window
+        if (endTime >= startTime && endTime <= seasonEndTime) {
+          return seasonId;
+        }
+      } catch (e) {
+        // Season doesn't exist, stop checking
+        break;
+      }
+    }
+
+    // Default to current season if no match found
+    return CONFIG.CURRENT_SEASON;
+  } catch (error) {
+    console.error('Error determining season:', error.message);
+    return CONFIG.CURRENT_SEASON;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // TRADING VOLUME CHECK - Direct Uniswap V2/V3/V4 Query
 // ═══════════════════════════════════════════════════════════════════
 
@@ -766,6 +885,34 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
 
       // Auto-announce
       if (winner !== '0x0000000000000000000000000000000000000000') {
+        // ═══════════════════════════════════════════════════════════════════
+        // SEASON CACHING: Store social data and add to season index
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          console.log('\n📊 Caching contest data for season leaderboard...');
+
+          // Fetch social engagement for caching (V1 contests don't have engagement data in this path)
+          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+          const engagementForCache = await getCastEngagement(actualCastHash);
+
+          const socialData = {
+            likes: engagementForCache.likers ? engagementForCache.likers.length : 0,
+            recasts: engagementForCache.recasters ? engagementForCache.recasters.length : 0,
+            replies: engagementForCache.repliers ? engagementForCache.repliers.length : 0,
+            castHash: actualCastHash,
+            hostFid: engagementForCache.castAuthorFid || null,
+          };
+
+          const contestType = isNftContest ? 'nft' : 'token';
+          await storeSocialData(contestType, contestId, socialData);
+
+          // Determine season and add to index
+          const seasonId = await getSeasonForContest(Number(endTime), provider);
+          await addToSeasonIndex(seasonId, contestType, contestId, Number(endTime));
+        } catch (cacheError) {
+          console.log(`   ⚠️ Season caching failed (non-fatal): ${cacheError.message}`);
+        }
+
         console.log('\n📢 Auto-announcing winner...');
         try {
           const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
@@ -1135,6 +1282,30 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
 
     // Auto-announce winner if found
     if (winner !== '0x0000000000000000000000000000000000000000') {
+      // ═══════════════════════════════════════════════════════════════════
+      // SEASON CACHING: Store social data and add to season index
+      // ═══════════════════════════════════════════════════════════════════
+      try {
+        console.log('\n📊 Caching contest data for season leaderboard...');
+
+        const socialData = {
+          likes: engagement.likers ? engagement.likers.length : 0,
+          recasts: engagement.recasters ? engagement.recasters.length : 0,
+          replies: engagement.repliers ? engagement.repliers.length : 0,
+          castHash: actualCastHash,
+          hostFid: engagement.castAuthorFid || null,
+        };
+
+        // V1 legacy contests are always token contests (not NFT - NFT uses USE_V2_LOGIC_FOR_V1)
+        await storeSocialData('token', contestId, socialData);
+
+        // Determine season and add to index
+        const seasonId = await getSeasonForContest(Number(endTime), provider);
+        await addToSeasonIndex(seasonId, 'token', contestId, Number(endTime));
+      } catch (cacheError) {
+        console.log(`   ⚠️ Season caching failed (non-fatal): ${cacheError.message}`);
+      }
+
       console.log('\n📢 Auto-announcing winner...');
       try {
         const baseUrl = process.env.VERCEL_URL
@@ -1534,6 +1705,33 @@ async function checkAndFinalizeV2Contest(contestId) {
 
     // Auto-announce winners if found
     if (selectedWinners.length > 0) {
+      // ═══════════════════════════════════════════════════════════════════
+      // SEASON CACHING: Store social data and add to season index
+      // ═══════════════════════════════════════════════════════════════════
+      try {
+        console.log('\n📊 Caching contest data for season leaderboard...');
+
+        // Get host FID from engagement data
+        const hostFid = engagement.castAuthorFid || null;
+
+        // Store social engagement data (counts from arrays)
+        const socialData = {
+          likes: engagement.likers ? engagement.likers.length : 0,
+          recasts: engagement.recasters ? engagement.recasters.length : 0,
+          replies: engagement.repliers ? engagement.repliers.length : 0,
+          castHash: actualCastHash,
+          hostFid: hostFid,
+        };
+
+        await storeSocialData('v2', contestId, socialData);
+
+        // Determine season and add to index
+        const seasonId = await getSeasonForContest(Number(endTime), provider);
+        await addToSeasonIndex(seasonId, 'v2', contestId, Number(endTime));
+      } catch (cacheError) {
+        console.log(`   ⚠️ Season caching failed (non-fatal): ${cacheError.message}`);
+      }
+
       console.log('\n📢 Auto-announcing winners...');
       try {
         const baseUrl = process.env.VERCEL_URL
