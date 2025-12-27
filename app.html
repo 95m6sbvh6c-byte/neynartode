@@ -3448,8 +3448,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
         })();
 
-        // 4. Load leaderboard (non-blocking)
-        loadLeaderboard().catch(e => console.error('Leaderboard load failed:', e));
+        // 4. Load leaderboard (delayed to avoid RPC rate limiting)
+        // Wait 1.5s after wallet connection before loading leaderboard
+        setTimeout(() => {
+          loadLeaderboard().catch(e => console.error('Leaderboard load failed:', e));
+        }, 1500);
 
         // NOTE: Signer check is now lazy - handled when user tries to enter a raffle
         // This prevents blocking the app entry and unnecessary signer creation prompts
@@ -3749,10 +3752,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           } catch (e) {
             console.log('Could not cache contests:', e.message);
           }
-          // Load user's contest entries
-          loadContestEntries();
-          // Load participant PFPs for floating avatars (don't block render)
-          loadContestParticipants();
+          // Load user's contest entries (delayed 1.5s to avoid RPC rate limiting)
+          setTimeout(() => loadContestEntries(), 1500);
+          // Load participant PFPs for floating avatars (delayed 3s to avoid rate limiting)
+          setTimeout(() => loadContestParticipants(), 3000);
         }
         state.contestsLoading = false;
       } catch (e) {
