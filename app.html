@@ -1651,6 +1651,17 @@
       return false;
     }
 
+    // View cast on Warpcast
+    function viewCast(castHash) {
+      if (!castHash) {
+        showToast('Cast not available', 'warning');
+        return;
+      }
+      // Open Warpcast conversation view for the cast
+      const warpcastUrl = `https://warpcast.com/~/conversations/${castHash}`;
+      window.open(warpcastUrl, '_blank');
+    }
+
     // Main Enter Raffle function
     async function enterRaffle(button) {
       const contestId = button.dataset.contestId;
@@ -5087,6 +5098,16 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       ${state.contestEntries?.[contest.isV2 ? `v2-${contest.contestId}` : contest.contestId]?.entered ? 'disabled style="opacity: 0.6; cursor: default;"' : ''}
                     >
                       ${state.contestEntries?.[contest.isV2 ? `v2-${contest.contestId}` : contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
+                    </button>
+                    <button
+                      onclick="viewCast('${(contest.castId || '').split('|')[0]}')"
+                      class="btn-secondary text-sm py-2 px-4"
+                      ${!contest.castId ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}
+                    >
+                      <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                      View Cast
                     </button>
                     <button
                       data-contest-id="${contest.contestId}"
