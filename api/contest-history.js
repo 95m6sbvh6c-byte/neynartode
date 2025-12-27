@@ -20,7 +20,7 @@ const CONFIG = {
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922', // V3 deployed 2025-12-05 (supports restricted NFTs)
   // V2 Contract (new unified system)
   CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Deployed 2025-12-17
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
 
@@ -57,9 +57,12 @@ const ERC20_ABI = [
   'function name() view returns (string)',
 ];
 
-// Alchemy API for NFT metadata (avoids CORS issues)
-const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
-const ALCHEMY_NFT_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
+// NFT ABI for direct metadata fetching
+const NFT_ABI = [
+  'function tokenURI(uint256 tokenId) view returns (string)',  // ERC721
+  'function uri(uint256 id) view returns (string)',            // ERC1155
+  'function name() view returns (string)',                      // Collection name
+];
 
 // Status mapping
 const STATUS_MAP = {
@@ -89,48 +92,91 @@ async function getUserByWallet(walletAddress) {
 }
 
 /**
- * Get NFT metadata (name, image) - checks KV cache first, falls back to Alchemy API
- * This avoids CORS issues with direct metadata fetches (e.g., Basenames)
- * @param {string} contestId - Optional contest ID to check for cached metadata
+ * Get NFT metadata (name, image) - fetches directly from contract tokenURI/uri
+ * Uses direct contract calls instead of third-party APIs
  */
 async function getNftMetadata(provider, nftContract, tokenId, nftType) {
   try {
-    // Always fetch from Alchemy for reliable image URLs (KV cache had stale URLs that don't work with Warpcast)
-    // Alchemy's getNFTMetadata API handles all NFT types and provides proper image URLs
-    const url = `${ALCHEMY_NFT_URL}/getNFTMetadata?contractAddress=${nftContract}&tokenId=${tokenId}&refreshCache=false`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error('Alchemy NFT API error:', response.status);
-      return { name: `NFT #${tokenId}`, image: '', collection: 'NFT' };
-    }
-
-    const nft = await response.json();
+    const nftContractInstance = new ethers.Contract(nftContract, NFT_ABI, provider);
 
     // Get collection name
-    const collectionName = nft.contract?.name ||
-                          nft.contract?.openSeaMetadata?.collectionName ||
-                          'NFT Collection';
-
-    // Get the best image URL - prefer formats with proper extensions for Warpcast compatibility
-    // Note: cachedUrl (nft-cdn.alchemy.com) returns 415 errors on Warpcast, so prefer pngUrl/originalUrl
-    let imageUrl = nft.image?.pngUrl ||
-                   nft.image?.originalUrl ||
-                   nft.image?.thumbnailUrl ||
-                   nft.raw?.metadata?.image ||
-                   nft.image?.cachedUrl ||
-                   '';
-
-    // Handle IPFS URLs - use a reliable gateway
-    if (imageUrl.startsWith('ipfs://')) {
-      imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+    let collectionName = 'NFT Collection';
+    try {
+      collectionName = await nftContractInstance.name();
+    } catch (e) {
+      // Some contracts don't have name()
     }
 
-    return {
-      name: nft.name || nft.raw?.metadata?.name || `${collectionName} #${tokenId}`,
-      image: imageUrl,
-      collection: collectionName,
-    };
+    // Get token URI based on NFT type (0 = ERC721, 1 = ERC1155)
+    let tokenUri = '';
+    try {
+      if (nftType === 1) {
+        // ERC1155 uses uri()
+        tokenUri = await nftContractInstance.uri(tokenId);
+        // ERC1155 URIs often have {id} placeholder
+        tokenUri = tokenUri.replace('{id}', tokenId.toString().padStart(64, '0'));
+      } else {
+        // ERC721 uses tokenURI()
+        tokenUri = await nftContractInstance.tokenURI(tokenId);
+      }
+    } catch (e) {
+      console.error('Error fetching tokenURI:', e.message);
+      return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
+    }
+
+    // Handle different URI schemes
+    let metadataUrl = tokenUri;
+    if (tokenUri.startsWith('ipfs://')) {
+      metadataUrl = tokenUri.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+    } else if (tokenUri.startsWith('ar://')) {
+      metadataUrl = tokenUri.replace('ar://', 'https://arweave.net/');
+    } else if (tokenUri.startsWith('data:application/json')) {
+      // Handle base64 encoded JSON
+      try {
+        const base64Data = tokenUri.split(',')[1];
+        const jsonStr = Buffer.from(base64Data, 'base64').toString('utf8');
+        const metadata = JSON.parse(jsonStr);
+        let imageUrl = metadata.image || '';
+        if (imageUrl.startsWith('ipfs://')) {
+          imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+        }
+        return {
+          name: metadata.name || `${collectionName} #${tokenId}`,
+          image: imageUrl,
+          collection: collectionName,
+        };
+      } catch (e) {
+        return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
+      }
+    }
+
+    // Fetch metadata from URL
+    try {
+      const response = await fetch(metadataUrl, {
+        headers: { 'Accept': 'application/json' },
+        timeout: 5000
+      });
+      if (!response.ok) {
+        return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
+      }
+      const metadata = await response.json();
+
+      let imageUrl = metadata.image || metadata.image_url || '';
+      if (imageUrl.startsWith('ipfs://')) {
+        imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+      } else if (imageUrl.startsWith('ar://')) {
+        imageUrl = imageUrl.replace('ar://', 'https://arweave.net/');
+      }
+
+      return {
+        name: metadata.name || `${collectionName} #${tokenId}`,
+        image: imageUrl,
+        collection: collectionName,
+      };
+    } catch (e) {
+      console.error('Error fetching metadata:', e.message);
+      return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
+    }
   } catch (e) {
     console.error('NFT metadata error:', e.message);
     return { name: `NFT #${tokenId}`, image: '', collection: 'NFT' };

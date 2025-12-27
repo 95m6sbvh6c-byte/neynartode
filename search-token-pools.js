@@ -18,11 +18,11 @@ const { ethers } = require('ethers');
 // Load dotenv if available
 try { require('dotenv').config({ path: '.env.local' }); } catch (e) {}
 
-// Alchemy RPC for reliable queries
-const ALCHEMY_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
+// Base RPC for reliable queries
+const BASE_RPC_URL = 'https://mainnet.base.org';
 
 const CONFIG = {
-  BASE_RPC: ALCHEMY_RPC,
+  BASE_RPC: BASE_RPC_URL,
   WETH: '0x4200000000000000000000000000000000000006',
   USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
 

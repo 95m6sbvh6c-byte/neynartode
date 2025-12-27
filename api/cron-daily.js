@@ -17,7 +17,7 @@ const { ethers } = require('ethers');
 const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
 };
 
 const CONTEST_ESCROW_ABI = [

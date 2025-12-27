@@ -1,6 +1,6 @@
 const { ethers } = require('ethers');
 
-const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC');
+const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL || 'https://mainnet.base.org');
 const CONTRACT = '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A';
 
 // ABI for individual fields

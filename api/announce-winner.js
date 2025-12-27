@@ -34,7 +34,7 @@ const CONFIG = {
   V2_START_CONTEST_ID: 105,
 
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
 
@@ -68,50 +68,85 @@ const ERC721_ABI = [
   'function tokenURI(uint256 tokenId) view returns (string)',
 ];
 
-const ERC1155_ABI = [
-  'function uri(uint256 id) view returns (string)',
+// NFT ABI for direct metadata fetching
+const NFT_ABI = [
+  'function tokenURI(uint256 tokenId) view returns (string)',  // ERC721
+  'function uri(uint256 id) view returns (string)',            // ERC1155
 ];
 
-// Alchemy API for NFT metadata (avoids CORS issues)
-const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
-const ALCHEMY_NFT_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
-
 /**
- * Fetch NFT image URL using Alchemy API
- * This avoids CORS issues with direct metadata fetches (e.g., Basenames)
+ * Fetch NFT image URL directly from contract tokenURI/uri
+ * Uses direct contract calls instead of third-party APIs
  */
-async function fetchNftImage(nftContract, tokenId) {
+async function fetchNftImage(nftContract, tokenId, nftType = 0) {
   try {
     if (!nftContract || tokenId === undefined) return null;
 
-    const url = `${ALCHEMY_NFT_URL}/getNFTMetadata?contractAddress=${nftContract}&tokenId=${tokenId}&refreshCache=false`;
-    console.log(`   Fetching NFT image from Alchemy: ${nftContract} #${tokenId}`);
+    console.log(`   Fetching NFT image from contract: ${nftContract} #${tokenId}`);
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.log(`   Alchemy API error: ${response.status}`);
+    const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
+    const contract = new ethers.Contract(nftContract, NFT_ABI, provider);
+
+    // Get token URI based on NFT type
+    let tokenUri = '';
+    try {
+      if (nftType === 1) {
+        tokenUri = await contract.uri(tokenId);
+        tokenUri = tokenUri.replace('{id}', tokenId.toString().padStart(64, '0'));
+      } else {
+        tokenUri = await contract.tokenURI(tokenId);
+      }
+    } catch (e) {
+      console.log(`   Error fetching tokenURI: ${e.message}`);
       return null;
     }
 
-    const nft = await response.json();
-
-    // Get the best image URL (Alchemy provides cached versions)
-    let imageUrl = nft.image?.cachedUrl ||
-                   nft.image?.pngUrl ||
-                   nft.image?.thumbnailUrl ||
-                   nft.image?.originalUrl ||
-                   nft.raw?.metadata?.image ||
-                   null;
-
-    // Handle IPFS URLs
-    if (imageUrl?.startsWith('ipfs://')) {
-      imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+    // Handle different URI schemes
+    let metadataUrl = tokenUri;
+    if (tokenUri.startsWith('ipfs://')) {
+      metadataUrl = tokenUri.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+    } else if (tokenUri.startsWith('ar://')) {
+      metadataUrl = tokenUri.replace('ar://', 'https://arweave.net/');
+    } else if (tokenUri.startsWith('data:application/json')) {
+      // Handle base64 encoded JSON
+      try {
+        const base64Data = tokenUri.split(',')[1];
+        const jsonStr = Buffer.from(base64Data, 'base64').toString('utf8');
+        const metadata = JSON.parse(jsonStr);
+        let imageUrl = metadata.image || '';
+        if (imageUrl.startsWith('ipfs://')) {
+          imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+        }
+        console.log(`   NFT image URL: ${imageUrl || 'not found'}`);
+        return imageUrl || null;
+      } catch (e) {
+        return null;
+      }
     }
 
-    console.log(`   NFT image URL: ${imageUrl || 'not found'}`);
-    return imageUrl;
+    // Fetch metadata from URL
+    try {
+      const response = await fetch(metadataUrl, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) return null;
+      const metadata = await response.json();
+
+      let imageUrl = metadata.image || metadata.image_url || '';
+      if (imageUrl.startsWith('ipfs://')) {
+        imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+      } else if (imageUrl.startsWith('ar://')) {
+        imageUrl = imageUrl.replace('ar://', 'https://arweave.net/');
+      }
+
+      console.log(`   NFT image URL: ${imageUrl || 'not found'}`);
+      return imageUrl || null;
+    } catch (e) {
+      console.log(`   Error fetching metadata: ${e.message}`);
+      return null;
+    }
   } catch (e) {
-    console.log(`   Error fetching NFT metadata from Alchemy: ${e.message}`);
+    console.log(`   Error fetching NFT metadata: ${e.message}`);
     return null;
   }
 }

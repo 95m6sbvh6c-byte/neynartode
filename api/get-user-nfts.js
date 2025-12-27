@@ -1,151 +1,275 @@
 /**
  * Get User NFTs API
  *
- * Fetches NFTs owned by a wallet address using Alchemy's NFT API.
+ * Fetches NFTs owned by a wallet address using Reservoir API (free for Base).
  * Used to provide a simplified NFT selection experience.
  *
  * Also fetches individual NFT metadata by contract+tokenId.
  *
  * Usage:
  *   GET /api/get-user-nfts?address=0x...
- *   GET /api/get-user-nfts?address=0x...&pageKey=abc123 (for pagination)
+ *   GET /api/get-user-nfts?address=0x...&continuation=abc123 (for pagination)
  *   GET /api/get-user-nfts?contract=0x...&tokenId=123 (get single NFT metadata)
  */
 
-// Alchemy API key - use from env or fallback to hardcoded key
-const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || 'QooWtq9nKQlkeqKF_-rvC';
-const ALCHEMY_BASE_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
+const { ethers } = require('ethers');
+
+// Reservoir API base URL for Base chain (free, no API key needed for basic queries)
+const RESERVOIR_BASE_URL = 'https://api-base.reservoir.tools';
+
+// RPC for direct contract calls as fallback
+const BASE_RPC = 'https://mainnet.base.org';
+
+// NFT ABI for direct metadata fetching
+const NFT_ABI = [
+  'function tokenURI(uint256 tokenId) view returns (string)',
+  'function uri(uint256 id) view returns (string)',
+  'function name() view returns (string)',
+  'function balanceOf(address owner) view returns (uint256)',
+];
 
 /**
- * Fetch single NFT metadata using Alchemy NFT API
- * Includes floor price from OpenSea metadata
+ * Fetch single NFT metadata - tries Reservoir first, falls back to direct contract call
  */
 async function getNftMetadata(contractAddress, tokenId) {
   try {
-    // Fetch NFT metadata and contract metadata in parallel
-    const [nftUrl, contractUrl] = [
-      `${ALCHEMY_BASE_URL}/getNFTMetadata?contractAddress=${contractAddress}&tokenId=${tokenId}&refreshCache=false`,
-      `${ALCHEMY_BASE_URL}/getContractMetadata?contractAddress=${contractAddress}`
-    ];
-
+    // Try Reservoir API first
+    const url = `${RESERVOIR_BASE_URL}/tokens/v7?tokens=${contractAddress}:${tokenId}&includeAttributes=true`;
     console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId}...`);
 
-    const [nftResponse, contractResponse] = await Promise.all([
-      fetch(nftUrl),
-      fetch(contractUrl).catch(() => null) // Don't fail if contract metadata unavailable
-    ]);
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' }
+    });
 
-    if (!nftResponse.ok) {
-      const errorText = await nftResponse.text();
-      console.error('Alchemy API error:', errorText);
-      throw new Error(`Alchemy API error: ${nftResponse.status}`);
+    if (response.ok) {
+      const data = await response.json();
+      const token = data.tokens?.[0]?.token;
+
+      if (token) {
+        let imageUrl = token.image || token.imageSmall || '';
+        if (imageUrl.startsWith('ipfs://')) {
+          imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+        }
+
+        return {
+          success: true,
+          contractAddress: token.contract,
+          tokenId: token.tokenId,
+          name: token.name || `#${tokenId}`,
+          collection: token.collection?.name || 'Unknown Collection',
+          image: imageUrl,
+          tokenType: token.kind === 'erc1155' ? 'ERC1155' : 'ERC721',
+          description: token.description || '',
+          attributes: token.attributes || [],
+          floorPrice: data.tokens?.[0]?.market?.floorAsk?.price?.amount?.decimal || null,
+        };
+      }
     }
 
-    const nft = await nftResponse.json();
-
-    // Get floor price from contract metadata (more reliable than NFT metadata)
-    let floorPrice = nft.contract?.openSeaMetadata?.floorPrice || null;
-    if (contractResponse && contractResponse.ok) {
-      const contractData = await contractResponse.json();
-      floorPrice = contractData.openSeaMetadata?.floorPrice || floorPrice;
-    }
-
-    // Get the best image URL
-    let imageUrl = nft.image?.cachedUrl ||
-                   nft.image?.thumbnailUrl ||
-                   nft.image?.pngUrl ||
-                   nft.image?.originalUrl ||
-                   nft.raw?.metadata?.image ||
-                   null;
-
-    // Handle IPFS URLs
-    if (imageUrl && imageUrl.startsWith('ipfs://')) {
-      imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
-    }
-
-    return {
-      success: true,
-      contractAddress: nft.contract?.address,
-      tokenId: nft.tokenId,
-      name: nft.name || nft.raw?.metadata?.name || `#${tokenId}`,
-      collection: nft.contract?.name || nft.contract?.openSeaMetadata?.collectionName || 'Unknown Collection',
-      image: imageUrl,
-      tokenType: nft.contract?.tokenType || 'ERC721',
-      description: nft.description || nft.raw?.metadata?.description || '',
-      attributes: nft.raw?.metadata?.attributes || [],
-      floorPrice: floorPrice, // Floor price in ETH (from OpenSea)
-    };
+    // Fall back to direct contract call
+    console.log('Reservoir API failed, falling back to direct contract call...');
+    return await getNftMetadataFromContract(contractAddress, tokenId);
 
   } catch (error) {
     console.error('Error fetching NFT metadata:', error);
-    throw error;
+    // Try direct contract call as fallback
+    return await getNftMetadataFromContract(contractAddress, tokenId);
   }
 }
 
 /**
- * Fetch NFTs owned by an address using Alchemy NFT API
+ * Fetch NFT metadata directly from contract
  */
-async function getNftsForOwner(ownerAddress, pageKey = null) {
+async function getNftMetadataFromContract(contractAddress, tokenId) {
   try {
-    let url = `${ALCHEMY_BASE_URL}/getNFTsForOwner?owner=${ownerAddress}&withMetadata=true&pageSize=50`;
+    const provider = new ethers.JsonRpcProvider(BASE_RPC);
+    const contract = new ethers.Contract(contractAddress, NFT_ABI, provider);
 
-    // Add pagination key if provided
-    if (pageKey) {
-      url += `&pageKey=${pageKey}`;
+    // Get collection name
+    let collectionName = 'NFT Collection';
+    try {
+      collectionName = await contract.name();
+    } catch (e) {}
+
+    // Try tokenURI (ERC721) first, then uri (ERC1155)
+    let tokenUri = '';
+    let tokenType = 'ERC721';
+    try {
+      tokenUri = await contract.tokenURI(tokenId);
+    } catch (e) {
+      try {
+        tokenUri = await contract.uri(tokenId);
+        tokenType = 'ERC1155';
+        tokenUri = tokenUri.replace('{id}', tokenId.toString().padStart(64, '0'));
+      } catch (e2) {
+        return {
+          success: true,
+          contractAddress,
+          tokenId,
+          name: `${collectionName} #${tokenId}`,
+          collection: collectionName,
+          image: '',
+          tokenType,
+          description: '',
+          attributes: [],
+          floorPrice: null,
+        };
+      }
     }
 
-    // Exclude spam NFTs
-    url += '&excludeFilters[]=SPAM';
+    // Resolve metadata URL
+    let metadataUrl = tokenUri;
+    if (tokenUri.startsWith('ipfs://')) {
+      metadataUrl = tokenUri.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+    } else if (tokenUri.startsWith('ar://')) {
+      metadataUrl = tokenUri.replace('ar://', 'https://arweave.net/');
+    } else if (tokenUri.startsWith('data:application/json')) {
+      // Handle base64 encoded JSON
+      try {
+        const base64Data = tokenUri.split(',')[1];
+        const jsonStr = Buffer.from(base64Data, 'base64').toString('utf8');
+        const metadata = JSON.parse(jsonStr);
+        let imageUrl = metadata.image || '';
+        if (imageUrl.startsWith('ipfs://')) {
+          imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+        }
+        return {
+          success: true,
+          contractAddress,
+          tokenId,
+          name: metadata.name || `${collectionName} #${tokenId}`,
+          collection: collectionName,
+          image: imageUrl,
+          tokenType,
+          description: metadata.description || '',
+          attributes: metadata.attributes || [],
+          floorPrice: null,
+        };
+      } catch (e) {
+        return {
+          success: true,
+          contractAddress,
+          tokenId,
+          name: `${collectionName} #${tokenId}`,
+          collection: collectionName,
+          image: '',
+          tokenType,
+          description: '',
+          attributes: [],
+          floorPrice: null,
+        };
+      }
+    }
+
+    // Fetch metadata from URL
+    const metaResponse = await fetch(metadataUrl, {
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (!metaResponse.ok) {
+      return {
+        success: true,
+        contractAddress,
+        tokenId,
+        name: `${collectionName} #${tokenId}`,
+        collection: collectionName,
+        image: '',
+        tokenType,
+        description: '',
+        attributes: [],
+        floorPrice: null,
+      };
+    }
+
+    const metadata = await metaResponse.json();
+    let imageUrl = metadata.image || metadata.image_url || '';
+    if (imageUrl.startsWith('ipfs://')) {
+      imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+    }
+
+    return {
+      success: true,
+      contractAddress,
+      tokenId,
+      name: metadata.name || `${collectionName} #${tokenId}`,
+      collection: collectionName,
+      image: imageUrl,
+      tokenType,
+      description: metadata.description || '',
+      attributes: metadata.attributes || [],
+      floorPrice: null,
+    };
+
+  } catch (error) {
+    console.error('Error in direct contract call:', error);
+    return {
+      success: true,
+      contractAddress,
+      tokenId,
+      name: `NFT #${tokenId}`,
+      collection: 'Unknown Collection',
+      image: '',
+      tokenType: 'ERC721',
+      description: '',
+      attributes: [],
+      floorPrice: null,
+    };
+  }
+}
+
+/**
+ * Fetch NFTs owned by an address using Reservoir API
+ */
+async function getNftsForOwner(ownerAddress, continuation = null) {
+  try {
+    let url = `${RESERVOIR_BASE_URL}/users/${ownerAddress}/tokens/v10?limit=50&includeAttributes=false&excludeSpam=true`;
+
+    if (continuation) {
+      url += `&continuation=${continuation}`;
+    }
 
     console.log(`Fetching NFTs for ${ownerAddress}...`);
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' }
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Alchemy API error:', errorText);
-      throw new Error(`Alchemy API error: ${response.status}`);
+      console.error('Reservoir API error:', errorText);
+      throw new Error(`Reservoir API error: ${response.status}`);
     }
 
     const data = await response.json();
 
-    // Transform the response to a simpler format
-    const nfts = (data.ownedNfts || []).map(nft => {
-      // Determine NFT type
-      const tokenType = nft.contract?.tokenType || 'ERC721';
-      const isERC1155 = tokenType === 'ERC1155';
+    // Transform the response to match our format
+    const nfts = (data.tokens || []).map(item => {
+      const token = item.token;
+      const isERC1155 = token.kind === 'erc1155';
 
-      // Get the best image URL
-      let imageUrl = nft.image?.cachedUrl ||
-                     nft.image?.thumbnailUrl ||
-                     nft.image?.originalUrl ||
-                     nft.raw?.metadata?.image ||
-                     null;
-
-      // Handle IPFS URLs
-      if (imageUrl && imageUrl.startsWith('ipfs://')) {
-        imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+      let imageUrl = token.image || token.imageSmall || '';
+      if (imageUrl.startsWith('ipfs://')) {
+        imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
       }
 
       return {
-        contractAddress: nft.contract?.address,
-        tokenId: nft.tokenId,
-        name: nft.name || nft.raw?.metadata?.name || `#${nft.tokenId}`,
-        collection: nft.contract?.name || nft.contract?.openSeaMetadata?.collectionName || 'Unknown Collection',
+        contractAddress: token.contract,
+        tokenId: token.tokenId,
+        name: token.name || `#${token.tokenId}`,
+        collection: token.collection?.name || 'Unknown Collection',
         image: imageUrl,
-        tokenType: tokenType,
-        balance: isERC1155 ? parseInt(nft.balance || '1') : 1,
-        // Include contract-level info
-        contractName: nft.contract?.name,
-        symbol: nft.contract?.symbol,
-        floorPrice: nft.contract?.openSeaMetadata?.floorPrice,
+        tokenType: isERC1155 ? 'ERC1155' : 'ERC721',
+        balance: isERC1155 ? parseInt(item.ownership?.tokenCount || '1') : 1,
+        contractName: token.collection?.name,
+        symbol: token.collection?.symbol,
+        floorPrice: item.market?.floorAsk?.price?.amount?.decimal || null,
       };
     });
 
     return {
       nfts,
-      pageKey: data.pageKey || null,
-      totalCount: data.totalCount || nfts.length,
+      pageKey: data.continuation || null,
+      totalCount: nfts.length,
     };
 
   } catch (error) {
@@ -168,7 +292,7 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { address, pageKey, contract, tokenId } = req.query;
+  const { address, pageKey, continuation, contract, tokenId } = req.query;
 
   // Mode 1: Get single NFT metadata by contract + tokenId
   if (contract && tokenId) {
@@ -199,7 +323,8 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const result = await getNftsForOwner(address, pageKey);
+    // Support both pageKey (old) and continuation (new) for backwards compatibility
+    const result = await getNftsForOwner(address, continuation || pageKey);
 
     return res.status(200).json({
       success: true,
