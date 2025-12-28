@@ -400,221 +400,447 @@ module.exports = async (req, res) => {
     const hostStats = {};
     let seasonContestCount = 0;
 
-    // OPTIMIZED: Fetch all contests in parallel batches with rate limiting
-    const BATCH_SIZE = 15; // 15 requests per batch for QuickNode 50/sec limit
-    const BATCH_DELAY = 350; // 350ms delay between batches
+    // ═══════════════════════════════════════════════════════════════════
+    // KV-FIRST APPROACH: Read from season index in KV storage
+    // This ensures we only count contests that were properly indexed
+    // ═══════════════════════════════════════════════════════════════════
 
-    // Process LEGACY TOKEN contests (IDs 1 to totalLegacyTokenContests)
-    const legacyContestIds = Array.from({ length: totalLegacyTokenContests }, (_, i) => i + 1);
+    let useKVIndex = false;
+    let kvContestKeys = [];
 
-    for (let i = 0; i < legacyContestIds.length; i += BATCH_SIZE) {
-      const batch = legacyContestIds.slice(i, i + BATCH_SIZE);
-      const contestPromises = batch.map(id =>
-        contestContract.getContest(id).catch(() => null)
-      );
-
-      const contestResults = await Promise.all(contestPromises);
-
-      // Rate limit delay between batches
-      if (i + BATCH_SIZE < legacyContestIds.length) {
-        await new Promise(r => setTimeout(r, BATCH_DELAY));
-      }
-
-      for (let j = 0; j < batch.length; j++) {
-        const contestData = contestResults[j];
-        if (!contestData) continue;
-
-        const [host, , , , endTime, castId, , volumeRequirement, status] = contestData;
-        const contestEndTime = Number(endTime);
-
-        // Filter by season time range - contest must END within season window
-        if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
-          continue; // Skip contests outside this season
+    if (kvClient) {
+      try {
+        const indexKey = `season:${seasonId}:contests`;
+        kvContestKeys = await kvClient.zrange(indexKey, 0, -1) || [];
+        if (kvContestKeys.length > 0) {
+          useKVIndex = true;
+          console.log(`Using KV season index: ${kvContestKeys.length} contests in season ${seasonId}`);
+        } else {
+          console.log(`KV season index empty, falling back to blockchain scan`);
         }
-
-        seasonContestCount++;
-        const hostLower = host.toLowerCase();
-
-        // Skip excluded addresses (devs/admins who shouldn't compete)
-        if (EXCLUDED_ADDRESSES.includes(hostLower)) {
-          continue;
-        }
-
-        if (!hostStats[hostLower]) {
-          hostStats[hostLower] = {
-            address: host,
-            contests: 0,
-            completedContests: 0,
-            totalLikes: 0,
-            totalRecasts: 0,
-            totalReplies: 0,
-            totalVolume: 0,
-            contestInfos: [], // Changed from castHashes to include contest type/id
-          };
-        }
-
-        hostStats[hostLower].contests++;
-
-        // Only count completed contests for scoring
-        if (Number(status) === 2) {
-          hostStats[hostLower].completedContests++;
-
-          // Extract actual cast hash
-          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-          if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].contestInfos.push({
-              castHash: actualCastHash,
-              type: 'token',
-              id: batch[j], // Contest ID from batch
-            });
-          }
-
-          // Add volume (stored in wei, convert to regular number)
-          const volume = Number(volumeRequirement) / 1e18;
-          hostStats[hostLower].totalVolume += volume;
-        }
+      } catch (e) {
+        console.log(`KV index read failed: ${e.message}, falling back to blockchain scan`);
       }
     }
 
-    // Process NFT CONTESTS (IDs 1 to totalNftContests)
-    const nftContestIds = Array.from({ length: totalNftContests }, (_, i) => i + 1);
+    const BATCH_SIZE = 15;
+    const BATCH_DELAY = 350;
 
-    for (let i = 0; i < nftContestIds.length; i += BATCH_SIZE) {
-      const batch = nftContestIds.slice(i, i + BATCH_SIZE);
-      const contestPromises = batch.map(id =>
-        nftContestContract.getContest(id).catch(() => null)
-      );
+    if (useKVIndex) {
+      // ═══════════════════════════════════════════════════════════════════
+      // KV-BASED PROCESSING: Only fetch contests that are in the season index
+      // ═══════════════════════════════════════════════════════════════════
 
-      const contestResults = await Promise.all(contestPromises);
+      // Group contests by type for efficient batching
+      const tokenContests = [];
+      const nftContests = [];
+      const v2Contests = [];
 
-      // Rate limit delay between batches
-      if (i + BATCH_SIZE < nftContestIds.length) {
-        await new Promise(r => setTimeout(r, BATCH_DELAY));
+      for (const key of kvContestKeys) {
+        const [type, idStr] = key.split('-');
+        const id = parseInt(idStr);
+        if (type === 'token') tokenContests.push(id);
+        else if (type === 'nft') nftContests.push(id);
+        else if (type === 'v2') v2Contests.push(id);
       }
 
-      for (let j = 0; j < batch.length; j++) {
-        const contestData = contestResults[j];
-        if (!contestData) continue;
+      console.log(`Season ${seasonId} breakdown: token=${tokenContests.length}, nft=${nftContests.length}, v2=${v2Contests.length}`);
 
-        // NFT format: host, nftType, nftContract, tokenId, amount, startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winner
-        const [host, , , , , , endTime, castId, , volumeRequirement, status] = contestData;
-        const contestEndTime = Number(endTime);
+      // Process token contests from KV index
+      for (let i = 0; i < tokenContests.length; i += BATCH_SIZE) {
+        const batch = tokenContests.slice(i, i + BATCH_SIZE);
+        const contestPromises = batch.map(id =>
+          contestContract.getContest(id).catch(() => null)
+        );
+        const socialPromises = batch.map(id =>
+          kvClient.get(`contest:social:token-${id}`).catch(() => null)
+        );
 
-        // Filter by season time range - contest must END within season window
-        if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
-          continue; // Skip contests outside this season
+        const [contestResults, socialResults] = await Promise.all([
+          Promise.all(contestPromises),
+          Promise.all(socialPromises)
+        ]);
+
+        if (i + BATCH_SIZE < tokenContests.length) {
+          await new Promise(r => setTimeout(r, BATCH_DELAY));
         }
 
-        seasonContestCount++;
-        const hostLower = host.toLowerCase();
+        for (let j = 0; j < batch.length; j++) {
+          const contestData = contestResults[j];
+          const socialData = socialResults[j];
+          if (!contestData) continue;
 
-        // Skip excluded addresses (devs/admins who shouldn't compete)
-        if (EXCLUDED_ADDRESSES.includes(hostLower)) {
-          continue;
-        }
+          const [host, , , , , castId, , , status] = contestData;
+          seasonContestCount++;
+          const hostLower = host.toLowerCase();
 
-        if (!hostStats[hostLower]) {
-          hostStats[hostLower] = {
-            address: host,
-            contests: 0,
-            completedContests: 0,
-            totalLikes: 0,
-            totalRecasts: 0,
-            totalReplies: 0,
-            totalVolume: 0,
-            contestInfos: [],
-          };
-        }
+          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
 
-        hostStats[hostLower].contests++;
-
-        // Only count completed contests for scoring (status 2 = Completed)
-        if (Number(status) === 2) {
-          hostStats[hostLower].completedContests++;
-
-          // Extract actual cast hash
-          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-          if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].contestInfos.push({
-              castHash: actualCastHash,
-              type: 'nft',
-              id: batch[j], // Contest ID from batch
-            });
+          if (!hostStats[hostLower]) {
+            hostStats[hostLower] = {
+              address: host,
+              contests: 0,
+              completedContests: 0,
+              totalLikes: 0,
+              totalRecasts: 0,
+              totalReplies: 0,
+              totalVolume: 0,
+              contestInfos: [],
+            };
           }
 
-          // Add volume (stored in wei, convert to regular number)
-          const volume = Number(volumeRequirement) / 1e18;
-          hostStats[hostLower].totalVolume += volume;
-        }
-      }
-    }
+          hostStats[hostLower].contests++;
 
-    // Process V2 contests (IDs V2_START_ID to nextV2ContestId - 1)
-    const v2ContestIds = Array.from({ length: totalV2Contests }, (_, i) => CONFIG.V2_START_ID + i);
+          if (Number(status) === 2) {
+            hostStats[hostLower].completedContests++;
 
-    for (let i = 0; i < v2ContestIds.length; i += BATCH_SIZE) {
-      const batch = v2ContestIds.slice(i, i + BATCH_SIZE);
-      const contestPromises = batch.map(id =>
-        contestManagerV2.getContest(id).catch(() => null)
-      );
+            // Use social data from KV cache directly
+            if (socialData) {
+              hostStats[hostLower].totalLikes += socialData.likes || 0;
+              hostStats[hostLower].totalRecasts += socialData.recasts || 0;
+              hostStats[hostLower].totalReplies += socialData.replies || 0;
+            }
 
-      const contestResults = await Promise.all(contestPromises);
-
-      // Rate limit delay between batches
-      if (i + BATCH_SIZE < v2ContestIds.length) {
-        await new Promise(r => setTimeout(r, BATCH_DELAY));
-      }
-
-      for (let j = 0; j < batch.length; j++) {
-        const contestData = contestResults[j];
-        if (!contestData) continue;
-
-        // V2 format: host, contestType, status, castId, endTime, prizeToken, prizeAmount, winnerCount, winners
-        const [host, , status, castId, endTime] = contestData;
-        const contestEndTime = Number(endTime);
-
-        // Filter by season time range - contest must END within season window
-        if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
-          continue; // Skip contests outside this season
-        }
-
-        seasonContestCount++;
-        const hostLower = host.toLowerCase();
-
-        // Skip excluded addresses (devs/admins who shouldn't compete)
-        if (EXCLUDED_ADDRESSES.includes(hostLower)) {
-          continue;
-        }
-
-        if (!hostStats[hostLower]) {
-          hostStats[hostLower] = {
-            address: host,
-            contests: 0,
-            completedContests: 0,
-            totalLikes: 0,
-            totalRecasts: 0,
-            totalReplies: 0,
-            totalVolume: 0,
-            contestInfos: [],
-          };
-        }
-
-        hostStats[hostLower].contests++;
-
-        // Only count completed contests for scoring (V2 status: 2 = Completed)
-        if (Number(status) === 2) {
-          hostStats[hostLower].completedContests++;
-
-          // Extract actual cast hash
-          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-          if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].contestInfos.push({
-              castHash: actualCastHash,
-              type: 'v2',
-              id: batch[j], // Contest ID from batch
-            });
+            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+            if (actualCastHash && actualCastHash !== '') {
+              hostStats[hostLower].contestInfos.push({
+                castHash: actualCastHash,
+                type: 'token',
+                id: batch[j],
+                socialFromKV: !!socialData,
+              });
+            }
           }
-          // V2 contests don't have volumeRequirement in the same way
+        }
+      }
+
+      // Process NFT contests from KV index
+      for (let i = 0; i < nftContests.length; i += BATCH_SIZE) {
+        const batch = nftContests.slice(i, i + BATCH_SIZE);
+        const contestPromises = batch.map(id =>
+          nftContestContract.getContest(id).catch(() => null)
+        );
+        const socialPromises = batch.map(id =>
+          kvClient.get(`contest:social:nft-${id}`).catch(() => null)
+        );
+
+        const [contestResults, socialResults] = await Promise.all([
+          Promise.all(contestPromises),
+          Promise.all(socialPromises)
+        ]);
+
+        if (i + BATCH_SIZE < nftContests.length) {
+          await new Promise(r => setTimeout(r, BATCH_DELAY));
+        }
+
+        for (let j = 0; j < batch.length; j++) {
+          const contestData = contestResults[j];
+          const socialData = socialResults[j];
+          if (!contestData) continue;
+
+          const [host, , , , , , , castId, , , status] = contestData;
+          seasonContestCount++;
+          const hostLower = host.toLowerCase();
+
+          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
+
+          if (!hostStats[hostLower]) {
+            hostStats[hostLower] = {
+              address: host,
+              contests: 0,
+              completedContests: 0,
+              totalLikes: 0,
+              totalRecasts: 0,
+              totalReplies: 0,
+              totalVolume: 0,
+              contestInfos: [],
+            };
+          }
+
+          hostStats[hostLower].contests++;
+
+          if (Number(status) === 2) {
+            hostStats[hostLower].completedContests++;
+
+            if (socialData) {
+              hostStats[hostLower].totalLikes += socialData.likes || 0;
+              hostStats[hostLower].totalRecasts += socialData.recasts || 0;
+              hostStats[hostLower].totalReplies += socialData.replies || 0;
+            }
+
+            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+            if (actualCastHash && actualCastHash !== '') {
+              hostStats[hostLower].contestInfos.push({
+                castHash: actualCastHash,
+                type: 'nft',
+                id: batch[j],
+                socialFromKV: !!socialData,
+              });
+            }
+          }
+        }
+      }
+
+      // Process V2 contests from KV index
+      for (let i = 0; i < v2Contests.length; i += BATCH_SIZE) {
+        const batch = v2Contests.slice(i, i + BATCH_SIZE);
+        const contestPromises = batch.map(id =>
+          contestManagerV2.getContest(id).catch(() => null)
+        );
+        const socialPromises = batch.map(id =>
+          kvClient.get(`contest:social:v2-${id}`).catch(() => null)
+        );
+
+        const [contestResults, socialResults] = await Promise.all([
+          Promise.all(contestPromises),
+          Promise.all(socialPromises)
+        ]);
+
+        if (i + BATCH_SIZE < v2Contests.length) {
+          await new Promise(r => setTimeout(r, BATCH_DELAY));
+        }
+
+        for (let j = 0; j < batch.length; j++) {
+          const contestData = contestResults[j];
+          const socialData = socialResults[j];
+          if (!contestData) continue;
+
+          const [host, , status, castId] = contestData;
+          seasonContestCount++;
+          const hostLower = host.toLowerCase();
+
+          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
+
+          if (!hostStats[hostLower]) {
+            hostStats[hostLower] = {
+              address: host,
+              contests: 0,
+              completedContests: 0,
+              totalLikes: 0,
+              totalRecasts: 0,
+              totalReplies: 0,
+              totalVolume: 0,
+              contestInfos: [],
+            };
+          }
+
+          hostStats[hostLower].contests++;
+
+          if (Number(status) === 2) {
+            hostStats[hostLower].completedContests++;
+
+            if (socialData) {
+              hostStats[hostLower].totalLikes += socialData.likes || 0;
+              hostStats[hostLower].totalRecasts += socialData.recasts || 0;
+              hostStats[hostLower].totalReplies += socialData.replies || 0;
+            }
+
+            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+            if (actualCastHash && actualCastHash !== '') {
+              hostStats[hostLower].contestInfos.push({
+                castHash: actualCastHash,
+                type: 'v2',
+                id: batch[j],
+                socialFromKV: !!socialData,
+              });
+            }
+          }
+        }
+      }
+
+      console.log(`KV-based processing complete: ${seasonContestCount} contests, ${Object.keys(hostStats).length} unique hosts`);
+
+    } else {
+      // ═══════════════════════════════════════════════════════════════════
+      // FALLBACK: Original blockchain-based processing (when KV unavailable)
+      // ═══════════════════════════════════════════════════════════════════
+
+      // Process LEGACY TOKEN contests (IDs 1 to totalLegacyTokenContests)
+      const legacyContestIds = Array.from({ length: totalLegacyTokenContests }, (_, i) => i + 1);
+
+      for (let i = 0; i < legacyContestIds.length; i += BATCH_SIZE) {
+        const batch = legacyContestIds.slice(i, i + BATCH_SIZE);
+        const contestPromises = batch.map(id =>
+          contestContract.getContest(id).catch(() => null)
+        );
+
+        const contestResults = await Promise.all(contestPromises);
+
+        if (i + BATCH_SIZE < legacyContestIds.length) {
+          await new Promise(r => setTimeout(r, BATCH_DELAY));
+        }
+
+        for (let j = 0; j < batch.length; j++) {
+          const contestData = contestResults[j];
+          if (!contestData) continue;
+
+          const [host, , , , endTime, castId, , volumeRequirement, status] = contestData;
+          const contestEndTime = Number(endTime);
+
+          if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
+            continue;
+          }
+
+          seasonContestCount++;
+          const hostLower = host.toLowerCase();
+
+          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
+
+          if (!hostStats[hostLower]) {
+            hostStats[hostLower] = {
+              address: host,
+              contests: 0,
+              completedContests: 0,
+              totalLikes: 0,
+              totalRecasts: 0,
+              totalReplies: 0,
+              totalVolume: 0,
+              contestInfos: [],
+            };
+          }
+
+          hostStats[hostLower].contests++;
+
+          if (Number(status) === 2) {
+            hostStats[hostLower].completedContests++;
+
+            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+            if (actualCastHash && actualCastHash !== '') {
+              hostStats[hostLower].contestInfos.push({
+                castHash: actualCastHash,
+                type: 'token',
+                id: batch[j],
+              });
+            }
+
+            const volume = Number(volumeRequirement) / 1e18;
+            hostStats[hostLower].totalVolume += volume;
+          }
+        }
+      }
+
+      // Process NFT CONTESTS (IDs 1 to totalNftContests)
+      const nftContestIds = Array.from({ length: totalNftContests }, (_, i) => i + 1);
+
+      for (let i = 0; i < nftContestIds.length; i += BATCH_SIZE) {
+        const batch = nftContestIds.slice(i, i + BATCH_SIZE);
+        const contestPromises = batch.map(id =>
+          nftContestContract.getContest(id).catch(() => null)
+        );
+
+        const contestResults = await Promise.all(contestPromises);
+
+        if (i + BATCH_SIZE < nftContestIds.length) {
+          await new Promise(r => setTimeout(r, BATCH_DELAY));
+        }
+
+        for (let j = 0; j < batch.length; j++) {
+          const contestData = contestResults[j];
+          if (!contestData) continue;
+
+          const [host, , , , , , endTime, castId, , volumeRequirement, status] = contestData;
+          const contestEndTime = Number(endTime);
+
+          if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
+            continue;
+          }
+
+          seasonContestCount++;
+          const hostLower = host.toLowerCase();
+
+          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
+
+          if (!hostStats[hostLower]) {
+            hostStats[hostLower] = {
+              address: host,
+              contests: 0,
+              completedContests: 0,
+              totalLikes: 0,
+              totalRecasts: 0,
+              totalReplies: 0,
+              totalVolume: 0,
+              contestInfos: [],
+            };
+          }
+
+          hostStats[hostLower].contests++;
+
+          if (Number(status) === 2) {
+            hostStats[hostLower].completedContests++;
+
+            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+            if (actualCastHash && actualCastHash !== '') {
+              hostStats[hostLower].contestInfos.push({
+                castHash: actualCastHash,
+                type: 'nft',
+                id: batch[j],
+              });
+            }
+
+            const volume = Number(volumeRequirement) / 1e18;
+            hostStats[hostLower].totalVolume += volume;
+          }
+        }
+      }
+
+      // Process V2 contests (IDs V2_START_ID to nextV2ContestId - 1)
+      const v2ContestIds = Array.from({ length: totalV2Contests }, (_, i) => CONFIG.V2_START_ID + i);
+
+      for (let i = 0; i < v2ContestIds.length; i += BATCH_SIZE) {
+        const batch = v2ContestIds.slice(i, i + BATCH_SIZE);
+        const contestPromises = batch.map(id =>
+          contestManagerV2.getContest(id).catch(() => null)
+        );
+
+        const contestResults = await Promise.all(contestPromises);
+
+        if (i + BATCH_SIZE < v2ContestIds.length) {
+          await new Promise(r => setTimeout(r, BATCH_DELAY));
+        }
+
+        for (let j = 0; j < batch.length; j++) {
+          const contestData = contestResults[j];
+          if (!contestData) continue;
+
+          const [host, , status, castId, endTime] = contestData;
+          const contestEndTime = Number(endTime);
+
+          if (contestEndTime < seasonStartTime || contestEndTime > seasonEndTime) {
+            continue;
+          }
+
+          seasonContestCount++;
+          const hostLower = host.toLowerCase();
+
+          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
+
+          if (!hostStats[hostLower]) {
+            hostStats[hostLower] = {
+              address: host,
+              contests: 0,
+              completedContests: 0,
+              totalLikes: 0,
+              totalRecasts: 0,
+              totalReplies: 0,
+              totalVolume: 0,
+              contestInfos: [],
+            };
+          }
+
+          hostStats[hostLower].contests++;
+
+          if (Number(status) === 2) {
+            hostStats[hostLower].completedContests++;
+
+            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
+            if (actualCastHash && actualCastHash !== '') {
+              hostStats[hostLower].contestInfos.push({
+                castHash: actualCastHash,
+                type: 'v2',
+                id: batch[j],
+              });
+            }
+          }
         }
       }
     }
@@ -651,25 +877,45 @@ module.exports = async (req, res) => {
         continue;
       }
 
-      // Batch fetch cast engagements for this host (uses KV cache when available)
-      const engagementPromises = stats.contestInfos.map(contestInfo =>
-        getCastEngagement(contestInfo, hostFid, kvClient)
-      );
-      const engagements = await Promise.all(engagementPromises);
-
       let ownedCastsCount = 0;
       let kvCacheHits = 0;
-      engagements.forEach(engagement => {
-        if (engagement.isAuthor) {
-          stats.totalLikes += engagement.likes;
-          stats.totalRecasts += engagement.recasts;
-          stats.totalReplies += engagement.replies;
-          ownedCastsCount++;
-          if (engagement.fromKVCache) kvCacheHits++;
-        }
-      });
 
-      console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount}/${stats.contestInfos.length} casts authored by host (${kvCacheHits} from KV cache)`);
+      // Check if we already loaded social data from KV in the KV path
+      const allSocialFromKV = useKVIndex && stats.contestInfos.every(c => c.socialFromKV);
+
+      if (allSocialFromKV) {
+        // Social data was already loaded from KV - just count the contests
+        ownedCastsCount = stats.contestInfos.filter(c => c.socialFromKV).length;
+        kvCacheHits = ownedCastsCount;
+        console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount} contests (all social data from KV)`);
+      } else {
+        // Fallback: Fetch cast engagements for contests missing KV data
+        const contestsNeedingFetch = stats.contestInfos.filter(c => !c.socialFromKV);
+
+        if (contestsNeedingFetch.length > 0) {
+          const engagementPromises = contestsNeedingFetch.map(contestInfo =>
+            getCastEngagement(contestInfo, hostFid, kvClient)
+          );
+          const engagements = await Promise.all(engagementPromises);
+
+          engagements.forEach(engagement => {
+            if (engagement.isAuthor) {
+              stats.totalLikes += engagement.likes;
+              stats.totalRecasts += engagement.recasts;
+              stats.totalReplies += engagement.replies;
+              ownedCastsCount++;
+              if (engagement.fromKVCache) kvCacheHits++;
+            }
+          });
+        }
+
+        // Count contests that already had KV data as owned
+        const kvContests = stats.contestInfos.filter(c => c.socialFromKV);
+        ownedCastsCount += kvContests.length;
+        kvCacheHits += kvContests.length;
+
+        console.log(`   Host ${userInfo?.username || stats.address.slice(0,8)}: ${ownedCastsCount}/${stats.contestInfos.length} casts (${kvCacheHits} from KV cache)`);
+      }
 
       // Fetch votes and token holdings in PARALLEL
       // Always include the host address, plus any verified addresses from Farcaster
