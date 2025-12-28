@@ -268,6 +268,12 @@ module.exports = async (req, res) => {
         if (socialData.error) {
           results.errors.push({ type: 'token', id, error: socialData.error });
           console.log(`    ERROR: ${socialData.error}`);
+          // Still add to season index with zero social data
+          if (!dryRun) {
+            await storeSocialData(kv, 'token', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null });
+            await addToSeasonIndex(kv, seasonId, 'token', id, contestEndTime);
+          }
+          results.processed.push({ type: 'token', id, likes: 0, recasts: 0, replies: 0, socialError: socialData.error });
           continue;
         }
 
@@ -318,6 +324,12 @@ module.exports = async (req, res) => {
         if (socialData.error) {
           results.errors.push({ type: 'nft', id, error: socialData.error });
           console.log(`    ERROR: ${socialData.error}`);
+          // Still add to season index with zero social data
+          if (!dryRun) {
+            await storeSocialData(kv, 'nft', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null });
+            await addToSeasonIndex(kv, seasonId, 'nft', id, contestEndTime);
+          }
+          results.processed.push({ type: 'nft', id, likes: 0, recasts: 0, replies: 0, socialError: socialData.error });
           continue;
         }
 
@@ -368,6 +380,12 @@ module.exports = async (req, res) => {
         if (socialData.error) {
           results.errors.push({ type: 'v2', id, error: socialData.error });
           console.log(`    ERROR: ${socialData.error}`);
+          // Still add to season index with zero social data
+          if (!dryRun) {
+            await storeSocialData(kv, 'v2', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null });
+            await addToSeasonIndex(kv, seasonId, 'v2', id, contestEndTime);
+          }
+          results.processed.push({ type: 'v2', id, likes: 0, recasts: 0, replies: 0, socialError: socialData.error });
           continue;
         }
 
