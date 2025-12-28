@@ -84,8 +84,9 @@ async function getCastEngagement(castHash) {
 
 /**
  * Store social data in KV
+ * Now includes host address and status for leaderboard to read without blockchain calls
  */
-async function storeSocialData(kv, contestType, contestId, socialData) {
+async function storeSocialData(kv, contestType, contestId, socialData, contestDetails = {}) {
   const cacheKey = `contest:social:${contestType}-${contestId}`;
 
   const cacheData = {
@@ -94,6 +95,9 @@ async function storeSocialData(kv, contestType, contestId, socialData) {
     replies: socialData.replies || 0,
     castHash: socialData.castHash || null,
     hostFid: socialData.hostFid || null,
+    // NEW: Store host address and status so leaderboard doesn't need blockchain calls
+    host: contestDetails.host || null,
+    status: contestDetails.status !== undefined ? Number(contestDetails.status) : null,
     capturedAt: Date.now(),
     backfilled: true, // Mark as backfilled vs captured at finalization
   };
@@ -241,7 +245,7 @@ module.exports = async (req, res) => {
     for (let id = 1; id < nextTokenId; id++) {
       try {
         const contest = await contestEscrow.getContest(id);
-        const [, , , , endTime, castId, , , status] = contest;
+        const [host, , , , endTime, castId, , , status] = contest;
         const contestEndTime = Number(endTime);
 
         // Skip if not completed (status 2) or cancelled (status 3)
@@ -261,6 +265,9 @@ module.exports = async (req, res) => {
 
         console.log(`  Token #${id}: ${actualCastHash.substring(0, 10)}...`);
 
+        // Contest details for storage (eliminates blockchain calls from leaderboard)
+        const contestDetails = { host, status: Number(status) };
+
         // Fetch social data
         await new Promise(r => setTimeout(r, CONFIG.API_DELAY_MS));
         const socialData = await getCastEngagement(actualCastHash);
@@ -268,9 +275,9 @@ module.exports = async (req, res) => {
         if (socialData.error) {
           results.errors.push({ type: 'token', id, error: socialData.error });
           console.log(`    ERROR: ${socialData.error}`);
-          // Still add to season index with zero social data
+          // Still add to season index with zero social data but include host/status
           if (!dryRun) {
-            await storeSocialData(kv, 'token', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null });
+            await storeSocialData(kv, 'token', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null }, contestDetails);
             await addToSeasonIndex(kv, seasonId, 'token', id, contestEndTime);
           }
           results.processed.push({ type: 'token', id, likes: 0, recasts: 0, replies: 0, socialError: socialData.error });
@@ -278,13 +285,14 @@ module.exports = async (req, res) => {
         }
 
         if (!dryRun) {
-          await storeSocialData(kv, 'token', id, socialData);
+          await storeSocialData(kv, 'token', id, socialData, contestDetails);
           await addToSeasonIndex(kv, seasonId, 'token', id, contestEndTime);
         }
 
         results.processed.push({
           type: 'token',
           id,
+          host,
           likes: socialData.likes,
           recasts: socialData.recasts,
           replies: socialData.replies,
@@ -301,7 +309,7 @@ module.exports = async (req, res) => {
     for (let id = 1; id < nextNftId; id++) {
       try {
         const contest = await nftContestEscrow.getContest(id);
-        const [, , , , , , endTime, castId, , , status] = contest;
+        const [host, , , , , , endTime, castId, , , status] = contest;
         const contestEndTime = Number(endTime);
 
         if (status !== 2n && status !== 3n) {
@@ -318,15 +326,18 @@ module.exports = async (req, res) => {
 
         console.log(`  NFT #${id}: ${actualCastHash.substring(0, 10)}...`);
 
+        // Contest details for storage (eliminates blockchain calls from leaderboard)
+        const contestDetails = { host, status: Number(status) };
+
         await new Promise(r => setTimeout(r, CONFIG.API_DELAY_MS));
         const socialData = await getCastEngagement(actualCastHash);
 
         if (socialData.error) {
           results.errors.push({ type: 'nft', id, error: socialData.error });
           console.log(`    ERROR: ${socialData.error}`);
-          // Still add to season index with zero social data
+          // Still add to season index with zero social data but include host/status
           if (!dryRun) {
-            await storeSocialData(kv, 'nft', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null });
+            await storeSocialData(kv, 'nft', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null }, contestDetails);
             await addToSeasonIndex(kv, seasonId, 'nft', id, contestEndTime);
           }
           results.processed.push({ type: 'nft', id, likes: 0, recasts: 0, replies: 0, socialError: socialData.error });
@@ -334,13 +345,14 @@ module.exports = async (req, res) => {
         }
 
         if (!dryRun) {
-          await storeSocialData(kv, 'nft', id, socialData);
+          await storeSocialData(kv, 'nft', id, socialData, contestDetails);
           await addToSeasonIndex(kv, seasonId, 'nft', id, contestEndTime);
         }
 
         results.processed.push({
           type: 'nft',
           id,
+          host,
           likes: socialData.likes,
           recasts: socialData.recasts,
           replies: socialData.replies,
@@ -357,7 +369,7 @@ module.exports = async (req, res) => {
     for (let id = CONFIG.V2_START_ID; id < nextV2Id; id++) {
       try {
         const contest = await contestManager.getContest(id);
-        const [, , status, castId, endTime] = contest;
+        const [host, , status, castId, endTime] = contest;
         const contestEndTime = Number(endTime);
 
         if (status !== 2n && status !== 3n) {
@@ -374,15 +386,18 @@ module.exports = async (req, res) => {
 
         console.log(`  V2 #${id}: ${actualCastHash.substring(0, 10)}...`);
 
+        // Contest details for storage (eliminates blockchain calls from leaderboard)
+        const contestDetails = { host, status: Number(status) };
+
         await new Promise(r => setTimeout(r, CONFIG.API_DELAY_MS));
         const socialData = await getCastEngagement(actualCastHash);
 
         if (socialData.error) {
           results.errors.push({ type: 'v2', id, error: socialData.error });
           console.log(`    ERROR: ${socialData.error}`);
-          // Still add to season index with zero social data
+          // Still add to season index with zero social data but include host/status
           if (!dryRun) {
-            await storeSocialData(kv, 'v2', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null });
+            await storeSocialData(kv, 'v2', id, { likes: 0, recasts: 0, replies: 0, castHash: actualCastHash, hostFid: null }, contestDetails);
             await addToSeasonIndex(kv, seasonId, 'v2', id, contestEndTime);
           }
           results.processed.push({ type: 'v2', id, likes: 0, recasts: 0, replies: 0, socialError: socialData.error });
@@ -390,13 +405,14 @@ module.exports = async (req, res) => {
         }
 
         if (!dryRun) {
-          await storeSocialData(kv, 'v2', id, socialData);
+          await storeSocialData(kv, 'v2', id, socialData, contestDetails);
           await addToSeasonIndex(kv, seasonId, 'v2', id, contestEndTime);
         }
 
         results.processed.push({
           type: 'v2',
           id,
+          host,
           likes: socialData.likes,
           recasts: socialData.recasts,
           replies: socialData.replies,

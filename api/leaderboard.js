@@ -428,63 +428,36 @@ module.exports = async (req, res) => {
 
     if (useKVIndex) {
       // ═══════════════════════════════════════════════════════════════════
-      // KV-BASED PROCESSING: Only fetch contests that are in the season index
+      // KV-ONLY PROCESSING: Read ALL data from KV cache (NO blockchain calls)
+      // Social data now includes host address and status from backfill
       // ═══════════════════════════════════════════════════════════════════
 
-      // Group contests by type for efficient batching
-      const tokenContests = [];
-      const nftContests = [];
-      const v2Contests = [];
+      console.log(`Processing ${kvContestKeys.length} contests from KV cache (no blockchain calls)`);
 
-      for (const key of kvContestKeys) {
-        const [type, idStr] = key.split('-');
-        const id = parseInt(idStr);
-        if (type === 'token') tokenContests.push(id);
-        else if (type === 'nft') nftContests.push(id);
-        else if (type === 'v2') v2Contests.push(id);
-      }
-
-      console.log(`Season ${seasonId} breakdown: token=${tokenContests.length}, nft=${nftContests.length}, v2=${v2Contests.length}`);
-
-      // Helper function to retry RPC calls
-      const retryGetContest = async (contract, id, maxRetries = 3) => {
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-          try {
-            return await contract.getContest(id);
-          } catch (e) {
-            if (attempt < maxRetries - 1) {
-              await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
-            }
-          }
-        }
-        return null;
-      };
-
-      // Process token contests from KV index
-      for (let i = 0; i < tokenContests.length; i += BATCH_SIZE) {
-        const batch = tokenContests.slice(i, i + BATCH_SIZE);
-        const contestPromises = batch.map(id =>
-          retryGetContest(contestContract, id)
-        );
-        const socialPromises = batch.map(id =>
-          kvClient.get(`contest:social:token-${id}`).catch(() => null)
+      // Fetch all social data from KV in batches
+      for (let i = 0; i < kvContestKeys.length; i += BATCH_SIZE) {
+        const batch = kvContestKeys.slice(i, i + BATCH_SIZE);
+        const socialPromises = batch.map(key =>
+          kvClient.get(`contest:social:${key}`).catch(() => null)
         );
 
-        const [contestResults, socialResults] = await Promise.all([
-          Promise.all(contestPromises),
-          Promise.all(socialPromises)
-        ]);
-
-        if (i + BATCH_SIZE < tokenContests.length) {
-          await new Promise(r => setTimeout(r, BATCH_DELAY));
-        }
+        const socialResults = await Promise.all(socialPromises);
 
         for (let j = 0; j < batch.length; j++) {
-          const contestData = contestResults[j];
+          const contestKey = batch[j];
           const socialData = socialResults[j];
-          if (!contestData) continue;
 
-          const [host, , , , , castId, , , status] = contestData;
+          // Skip if no social data in KV (shouldn't happen after backfill)
+          if (!socialData || !socialData.host) {
+            console.log(`   Missing host data for ${contestKey}, skipping`);
+            continue;
+          }
+
+          const [type, idStr] = contestKey.split('-');
+          const id = parseInt(idStr);
+          const host = socialData.host;
+          const status = socialData.status;
+
           seasonContestCount++;
           const hostLower = host.toLowerCase();
 
@@ -505,164 +478,28 @@ module.exports = async (req, res) => {
 
           hostStats[hostLower].contests++;
 
-          if (Number(status) === 2) {
+          if (status === 2) {
             hostStats[hostLower].completedContests++;
 
             // Use social data from KV cache directly
-            if (socialData) {
-              hostStats[hostLower].totalLikes += socialData.likes || 0;
-              hostStats[hostLower].totalRecasts += socialData.recasts || 0;
-              hostStats[hostLower].totalReplies += socialData.replies || 0;
-            }
+            hostStats[hostLower].totalLikes += socialData.likes || 0;
+            hostStats[hostLower].totalRecasts += socialData.recasts || 0;
+            hostStats[hostLower].totalReplies += socialData.replies || 0;
 
-            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-            if (actualCastHash && actualCastHash !== '') {
+            const castHash = socialData.castHash || '';
+            if (castHash && castHash !== '') {
               hostStats[hostLower].contestInfos.push({
-                castHash: actualCastHash,
-                type: 'token',
-                id: batch[j],
-                socialFromKV: !!socialData,
+                castHash,
+                type,
+                id,
+                socialFromKV: true,
               });
             }
           }
         }
       }
 
-      // Process NFT contests from KV index
-      for (let i = 0; i < nftContests.length; i += BATCH_SIZE) {
-        const batch = nftContests.slice(i, i + BATCH_SIZE);
-        const contestPromises = batch.map(id =>
-          retryGetContest(nftContestContract, id)
-        );
-        const socialPromises = batch.map(id =>
-          kvClient.get(`contest:social:nft-${id}`).catch(() => null)
-        );
-
-        const [contestResults, socialResults] = await Promise.all([
-          Promise.all(contestPromises),
-          Promise.all(socialPromises)
-        ]);
-
-        if (i + BATCH_SIZE < nftContests.length) {
-          await new Promise(r => setTimeout(r, BATCH_DELAY));
-        }
-
-        for (let j = 0; j < batch.length; j++) {
-          const contestData = contestResults[j];
-          const socialData = socialResults[j];
-          if (!contestData) continue;
-
-          const [host, , , , , , , castId, , , status] = contestData;
-          seasonContestCount++;
-          const hostLower = host.toLowerCase();
-
-          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
-
-          if (!hostStats[hostLower]) {
-            hostStats[hostLower] = {
-              address: host,
-              contests: 0,
-              completedContests: 0,
-              totalLikes: 0,
-              totalRecasts: 0,
-              totalReplies: 0,
-              totalVolume: 0,
-              contestInfos: [],
-            };
-          }
-
-          hostStats[hostLower].contests++;
-
-          if (Number(status) === 2) {
-            hostStats[hostLower].completedContests++;
-
-            if (socialData) {
-              hostStats[hostLower].totalLikes += socialData.likes || 0;
-              hostStats[hostLower].totalRecasts += socialData.recasts || 0;
-              hostStats[hostLower].totalReplies += socialData.replies || 0;
-            }
-
-            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-            if (actualCastHash && actualCastHash !== '') {
-              hostStats[hostLower].contestInfos.push({
-                castHash: actualCastHash,
-                type: 'nft',
-                id: batch[j],
-                socialFromKV: !!socialData,
-              });
-            }
-          }
-        }
-      }
-
-      // Process V2 contests from KV index
-      for (let i = 0; i < v2Contests.length; i += BATCH_SIZE) {
-        const batch = v2Contests.slice(i, i + BATCH_SIZE);
-        const contestPromises = batch.map(id =>
-          retryGetContest(contestManagerV2, id)
-        );
-        const socialPromises = batch.map(id =>
-          kvClient.get(`contest:social:v2-${id}`).catch(() => null)
-        );
-
-        const [contestResults, socialResults] = await Promise.all([
-          Promise.all(contestPromises),
-          Promise.all(socialPromises)
-        ]);
-
-        if (i + BATCH_SIZE < v2Contests.length) {
-          await new Promise(r => setTimeout(r, BATCH_DELAY));
-        }
-
-        for (let j = 0; j < batch.length; j++) {
-          const contestData = contestResults[j];
-          const socialData = socialResults[j];
-          if (!contestData) continue;
-
-          const [host, , status, castId] = contestData;
-          seasonContestCount++;
-          const hostLower = host.toLowerCase();
-
-          if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
-
-          if (!hostStats[hostLower]) {
-            hostStats[hostLower] = {
-              address: host,
-              contests: 0,
-              completedContests: 0,
-              totalLikes: 0,
-              totalRecasts: 0,
-              totalReplies: 0,
-              totalVolume: 0,
-              contestInfos: [],
-            };
-          }
-
-          hostStats[hostLower].contests++;
-
-          if (Number(status) === 2) {
-            hostStats[hostLower].completedContests++;
-
-            if (socialData) {
-              hostStats[hostLower].totalLikes += socialData.likes || 0;
-              hostStats[hostLower].totalRecasts += socialData.recasts || 0;
-              hostStats[hostLower].totalReplies += socialData.replies || 0;
-            }
-
-            const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-            if (actualCastHash && actualCastHash !== '') {
-              hostStats[hostLower].contestInfos.push({
-                castHash: actualCastHash,
-                type: 'v2',
-                id: batch[j],
-                socialFromKV: !!socialData,
-              });
-            }
-          }
-        }
-      }
-
-      console.log(`KV-based processing complete: ${seasonContestCount} contests, ${Object.keys(hostStats).length} unique hosts`);
+      console.log(`KV-only processing complete: ${seasonContestCount} contests, ${Object.keys(hostStats).length} unique hosts (0 blockchain calls)`);
 
     } else {
       // ═══════════════════════════════════════════════════════════════════
