@@ -415,6 +415,19 @@ module.exports = async (req, res) => {
     console.log(`  Errors: ${results.errors.length}`);
     console.log(`${'='.repeat(60)}\n`);
 
+    // Clear leaderboard cache so it picks up the new data
+    if (!dryRun) {
+      try {
+        console.log('Clearing leaderboard cache...');
+        await kv.del(`leaderboard:s${seasonId}:l10`);
+        await kv.del(`leaderboard:s${seasonId}:l25`);
+        await kv.del(`leaderboard:s${seasonId}:l50`);
+        console.log('Leaderboard cache cleared');
+      } catch (e) {
+        console.log('Could not clear leaderboard cache:', e.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       dryRun,
