@@ -423,8 +423,8 @@ module.exports = async (req, res) => {
       }
     }
 
-    const BATCH_SIZE = 15;
-    const BATCH_DELAY = 350;
+    const BATCH_SIZE = 5;  // Reduced to avoid RPC rate limiting
+    const BATCH_DELAY = 500; // Increased delay between batches
 
     if (useKVIndex) {
       // ═══════════════════════════════════════════════════════════════════
@@ -446,11 +446,25 @@ module.exports = async (req, res) => {
 
       console.log(`Season ${seasonId} breakdown: token=${tokenContests.length}, nft=${nftContests.length}, v2=${v2Contests.length}`);
 
+      // Helper function to retry RPC calls
+      const retryGetContest = async (contract, id, maxRetries = 3) => {
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            return await contract.getContest(id);
+          } catch (e) {
+            if (attempt < maxRetries - 1) {
+              await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+            }
+          }
+        }
+        return null;
+      };
+
       // Process token contests from KV index
       for (let i = 0; i < tokenContests.length; i += BATCH_SIZE) {
         const batch = tokenContests.slice(i, i + BATCH_SIZE);
         const contestPromises = batch.map(id =>
-          contestContract.getContest(id).catch(() => null)
+          retryGetContest(contestContract, id)
         );
         const socialPromises = batch.map(id =>
           kvClient.get(`contest:social:token-${id}`).catch(() => null)
@@ -518,7 +532,7 @@ module.exports = async (req, res) => {
       for (let i = 0; i < nftContests.length; i += BATCH_SIZE) {
         const batch = nftContests.slice(i, i + BATCH_SIZE);
         const contestPromises = batch.map(id =>
-          nftContestContract.getContest(id).catch(() => null)
+          retryGetContest(nftContestContract, id)
         );
         const socialPromises = batch.map(id =>
           kvClient.get(`contest:social:nft-${id}`).catch(() => null)
@@ -585,7 +599,7 @@ module.exports = async (req, res) => {
       for (let i = 0; i < v2Contests.length; i += BATCH_SIZE) {
         const batch = v2Contests.slice(i, i + BATCH_SIZE);
         const contestPromises = batch.map(id =>
-          contestManagerV2.getContest(id).catch(() => null)
+          retryGetContest(contestManagerV2, id)
         );
         const socialPromises = batch.map(id =>
           kvClient.get(`contest:social:v2-${id}`).catch(() => null)
