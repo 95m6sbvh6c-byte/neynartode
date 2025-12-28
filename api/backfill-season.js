@@ -116,11 +116,62 @@ async function addToSeasonIndex(kv, seasonId, contestType, contestId, endTime) {
 module.exports = async (req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // GET: Check current KV storage state
+  if (req.method === 'GET') {
+    if (!process.env.KV_REST_API_URL) {
+      return res.status(500).json({ error: 'KV storage not configured' });
+    }
+
+    const seasonId = parseInt(req.query.season) || 2;
+
+    try {
+      const { kv } = require('@vercel/kv');
+
+      // Get all contests in the season index
+      const indexKey = `season:${seasonId}:contests`;
+      const contestKeys = await kv.zrange(indexKey, 0, -1) || [];
+
+      // Group by type
+      const tokenContests = contestKeys.filter(k => k.startsWith('token-')).map(k => parseInt(k.split('-')[1]));
+      const nftContests = contestKeys.filter(k => k.startsWith('nft-')).map(k => parseInt(k.split('-')[1]));
+      const v2Contests = contestKeys.filter(k => k.startsWith('v2-')).map(k => parseInt(k.split('-')[1]));
+
+      // Sample some social data to verify
+      const sampleKeys = contestKeys.slice(0, 5);
+      const sampleData = await Promise.all(
+        sampleKeys.map(async (key) => {
+          const socialKey = `contest:social:${key}`;
+          const data = await kv.get(socialKey).catch(() => null);
+          return { key, socialKey, hasData: !!data, data: data ? { likes: data.likes, recasts: data.recasts, replies: data.replies } : null };
+        })
+      );
+
+      return res.status(200).json({
+        seasonId,
+        indexKey,
+        totalContests: contestKeys.length,
+        breakdown: {
+          token: tokenContests.length,
+          nft: nftContests.length,
+          v2: v2Contests.length,
+        },
+        contestIds: {
+          token: tokenContests.sort((a, b) => a - b),
+          nft: nftContests.sort((a, b) => a - b),
+          v2: v2Contests.sort((a, b) => a - b),
+        },
+        sampleSocialData: sampleData,
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
   }
 
   if (req.method !== 'POST') {
