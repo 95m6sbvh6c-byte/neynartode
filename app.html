@@ -1986,12 +1986,16 @@ ${prizeLine}
 
       console.log('Sharing contest with mini app URL:', { contestId, isNft, winnerCount, participantCount, miniAppUrl });
 
-      // Build embeds - quote cast only
-      // Note: NFT images from IPFS don't render well as Farcaster embeds, so we skip them
+      // Build embeds - quote cast first, then proxied NFT image if available
       const embeds = [];
       if (castId) {
         const cleanCastHash = castId.split('|')[0]; // Strip encoded requirements
         embeds.push(`https://warpcast.com/~/conversations/${cleanCastHash}`);
+      }
+      // Add NFT image via our proxy (avoids IPFS 403 errors)
+      if (isNft && nftImage) {
+        const proxiedImage = `https://frame-opal-eight.vercel.app/api/image-proxy?url=${encodeURIComponent(nftImage)}`;
+        embeds.push(proxiedImage);
       }
 
       // Use SDK composeCast - embeds as plain string array
@@ -7511,12 +7515,15 @@ ${prizeLine}
 👇 Enter now!
 ${miniAppUrl}`;
 
-        // Build embeds - quote the original cast
-        // Note: NFT images from IPFS don't render well as Farcaster embeds, so we skip them
-        // The mini app URL provides a preview instead
+        // Build embeds - quote the original cast, add proxied NFT image if available
         const announcementEmbeds = [];
         const cleanCastHash = castId.split('|')[0]; // Strip encoded requirements
         announcementEmbeds.push(`https://warpcast.com/~/conversations/${cleanCastHash}`); // Quote original cast
+        // Add NFT image via our proxy (avoids IPFS 403 errors)
+        if (isNftContest && state.prizeNftImage) {
+          const proxiedImage = `https://frame-opal-eight.vercel.app/api/image-proxy?url=${encodeURIComponent(state.prizeNftImage)}`;
+          announcementEmbeds.push(proxiedImage);
+        }
 
         // Open compose modal for host to review/edit before posting
         console.log('📣 Opening compose modal for contest announcement...');
@@ -7530,13 +7537,19 @@ ${miniAppUrl}`;
             console.log('✅ Compose modal opened for announcement');
           } catch (e) {
             console.log('⚠️ Could not open compose modal:', e.message);
-            // Fallback: open Warpcast compose URL
-            const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(announcementCastText)}&embeds[]=${encodeURIComponent(announcementEmbeds[0])}`;
+            // Fallback: open Warpcast compose URL with all embeds
+            let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(announcementCastText)}`;
+            announcementEmbeds.forEach(embed => {
+              warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
+            });
             window.open(warpcastUrl, '_blank');
           }
         } else {
-          // Fallback: open Warpcast compose URL
-          const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(announcementCastText)}&embeds[]=${encodeURIComponent(announcementEmbeds[0])}`;
+          // Fallback: open Warpcast compose URL with all embeds
+          let warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(announcementCastText)}`;
+          announcementEmbeds.forEach(embed => {
+            warpcastUrl += `&embeds[]=${encodeURIComponent(embed)}`;
+          });
           window.open(warpcastUrl, '_blank');
         }
 
