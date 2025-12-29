@@ -864,14 +864,17 @@ module.exports = async (req, res) => {
 
     // OPTIMIZATION: For status=active, only check recent contests (active contests are always new)
     // This dramatically reduces RPC calls when loading the active contests tab
-    const recentOnlyLimit = statusFilter === 'active' ? 30 : null; // Check last 30 per contract type (covers 20+ active)
+    const isActiveFilter = statusFilter === 'active';
+    // V2 needs more (30) since all new token contests use it, NFT only needs 10
+    const v2RecentLimit = isActiveFilter ? 30 : null;
+    const nftRecentLimit = isActiveFilter ? 10 : null;
 
     // Create fetcher functions for V1 token contests (most recent first)
     // SKIP for active filter: All new token contests use ContestManager V2 now
     // V1 ContestEscrow only has completed/cancelled contests (legacy)
-    if (statusFilter !== 'active') {
-      const tokenStartId = recentOnlyLimit ? Math.max(1, totalTokenContests - recentOnlyLimit + 1) : 1;
-      for (let i = totalTokenContests; i >= tokenStartId; i--) {
+    if (!isActiveFilter) {
+      // For history/all, fetch all V1 token contests
+      for (let i = totalTokenContests; i >= 1; i--) {
         const contestId = i; // Capture in closure
         tokenFetchers.push(() =>
           getContestDetails(provider, tokenContract, contestId)
@@ -891,7 +894,7 @@ module.exports = async (req, res) => {
 
     // Create fetcher functions for V1 NFT contests (most recent first)
     // Note: V1 NFT contests may still have active contests, so we check them
-    const nftStartId = recentOnlyLimit ? Math.max(1, totalNftContests - recentOnlyLimit + 1) : 1;
+    const nftStartId = nftRecentLimit ? Math.max(1, totalNftContests - nftRecentLimit + 1) : 1;
     for (let i = totalNftContests; i >= nftStartId; i--) {
       const contestId = i;
       nftFetchers.push(() =>
@@ -909,9 +912,9 @@ module.exports = async (req, res) => {
     }
 
     // Create fetcher functions for V2 contests (most recent first)
-    const v2StartId = recentOnlyLimit ? Math.max(V2_START_CONTEST_ID, v2HighestId - recentOnlyLimit + 1) : V2_START_CONTEST_ID;
+    const v2StartId = v2RecentLimit ? Math.max(V2_START_CONTEST_ID, v2HighestId - v2RecentLimit + 1) : V2_START_CONTEST_ID;
     const actualV2Count = v2HighestId >= v2StartId ? v2HighestId - v2StartId + 1 : 0;
-    console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${actualV2Count} contests${recentOnlyLimit ? ' - active filter optimization' : ''})`);
+    console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${actualV2Count} contests${isActiveFilter ? ' - active filter optimization' : ''})`);
     for (let i = v2HighestId; i >= v2StartId; i--) {
       const contestId = i;
       v2Fetchers.push(() =>
