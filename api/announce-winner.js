@@ -245,8 +245,10 @@ async function postWinnerAnnouncement(quotedCastHash, message, signerUuid, nftIm
     // Build embeds array - quote cast first, then NFT image if available
     const embeds = [{ url: quotedCastUrl }];
     if (nftImageUrl) {
-      embeds.push({ url: nftImageUrl });
-      console.log(`   Embedding NFT image: ${nftImageUrl}`);
+      // Use proxied URL for IPFS images to avoid rendering issues in Farcaster
+      const proxiedImage = `https://frame-opal-eight.vercel.app/api/image-proxy?url=${encodeURIComponent(nftImageUrl)}`;
+      embeds.push({ url: proxiedImage });
+      console.log(`   Embedding NFT image (proxied): ${proxiedImage}`);
     }
 
     // Post as a new cast (not a reply) with the original cast embedded as a quote

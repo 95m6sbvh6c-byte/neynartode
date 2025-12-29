@@ -183,7 +183,9 @@ ${miniAppUrl}`;
           // Build embeds array
           const embeds = [];
           if (isNft && nftImage) {
-            embeds.push({ url: nftImage });
+            // Use proxied URL for IPFS images to avoid rendering issues in Farcaster
+            const proxiedImage = `https://frame-opal-eight.vercel.app/api/image-proxy?url=${encodeURIComponent(nftImage)}`;
+            embeds.push({ url: proxiedImage });
           }
 
           // Post cast via Neynar API
