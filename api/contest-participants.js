@@ -69,6 +69,23 @@ module.exports = async (req, res) => {
   try {
     const { kv } = require('@vercel/kv');
 
+    // Check for cached participant data first (includes entry counts for consistent colors)
+    const cacheKey = `contest:participants:${contestId}`;
+    const cached = await kv.get(cacheKey);
+    if (cached && cached.participants && cached.cachedAt) {
+      // Cache valid for 5 minutes
+      const cacheAge = Date.now() - cached.cachedAt;
+      if (cacheAge < 300000) {
+        console.log(`Contest ${contestId}: Using cached participants (${cached.participants.length} users, age: ${Math.round(cacheAge/1000)}s)`);
+        return res.status(200).json({
+          participants: cached.participants,
+          count: cached.count,
+          displayed: cached.participants.length,
+          fromCache: true
+        });
+      }
+    }
+
     // Get all FIDs who entered this contest
     // Check both key formats and COMBINE results for V2 contests
     const contestIdNum = parseInt(contestId);
@@ -205,6 +222,21 @@ module.exports = async (req, res) => {
         entryCount
       };
     }).filter(p => p.pfpUrl); // Only include users with PFPs
+
+    // Sort by entryCount descending for consistent display order
+    participants.sort((a, b) => b.entryCount - a.entryCount);
+
+    // Cache the participant data for consistent colors across reloads
+    try {
+      await kv.set(cacheKey, {
+        participants,
+        count: entryFids.length,
+        cachedAt: Date.now()
+      });
+      console.log(`Contest ${contestId}: Cached ${participants.length} participants with entry counts`);
+    } catch (cacheError) {
+      console.error('Failed to cache participants:', cacheError.message);
+    }
 
     return res.status(200).json({
       participants,
