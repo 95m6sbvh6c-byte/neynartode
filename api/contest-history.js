@@ -650,6 +650,14 @@ module.exports = async (req, res) => {
 
           console.log(`KV cache: ${cachedContests.length} hit, ${missingKeys.length} miss`);
 
+          // Calculate per-contract counts from season index keys
+          let kvTokenCount = 0, kvNftCount = 0, kvV2Count = 0;
+          for (const key of kvContestKeys) {
+            if (key.startsWith('token-')) kvTokenCount++;
+            else if (key.startsWith('nft-')) kvNftCount++;
+            else if (key.startsWith('v2-')) kvV2Count++;
+          }
+
           // If we have enough cached contests for the requested limit, use KV-only
           if (cachedContests.length >= limit || missingKeys.length === 0) {
             // Sort by endTime descending
@@ -754,6 +762,9 @@ module.exports = async (req, res) => {
             return res.status(200).json({
               contests: limitedContests,
               total: kvContestKeys.length,
+              totalToken: kvTokenCount,
+              totalNft: kvNftCount,
+              totalV2: kvV2Count,
               fetched: limitedContests.length,
               limit,
               fromKVCache: true,
