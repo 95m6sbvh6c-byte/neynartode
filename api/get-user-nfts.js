@@ -2,20 +2,20 @@
  * Get User NFTs API
  *
  * Fetches NFTs owned by a wallet address.
- * Uses SimpleHash API (free tier) as primary, with QuickNode as fallback.
+ * Uses Blockscout API (Base's official explorer - free, no key needed).
  *
  * Also fetches individual NFT metadata by contract+tokenId.
  *
  * Usage:
  *   GET /api/get-user-nfts?address=0x...
- *   GET /api/get-user-nfts?address=0x...&cursor=abc123 (for pagination)
+ *   GET /api/get-user-nfts?address=0x...&pageKey=abc123 (for pagination)
  *   GET /api/get-user-nfts?contract=0x...&tokenId=123 (get single NFT metadata)
  */
 
 const { ethers } = require('ethers');
 
-// SimpleHash API (free tier: 1000 requests/day, no key needed for basic queries)
-const SIMPLEHASH_BASE_URL = 'https://api.simplehash.com/api/v0';
+// Blockscout API (Base's official explorer - free, no API key needed)
+const BLOCKSCOUT_BASE_URL = 'https://base.blockscout.com/api/v2';
 
 // RPC for direct contract calls as fallback
 const BASE_RPC = 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/';
@@ -29,47 +29,46 @@ const NFT_ABI = [
 ];
 
 /**
- * Fetch single NFT metadata - tries SimpleHash first, falls back to direct contract call
+ * Fetch single NFT metadata - tries Blockscout first, falls back to direct contract call
  */
 async function getNftMetadata(contractAddress, tokenId) {
   try {
-    // Try SimpleHash API first
-    const url = `${SIMPLEHASH_BASE_URL}/nfts/base/${contractAddress}/${tokenId}`;
-    console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId} via SimpleHash...`);
+    // Try Blockscout API first - get NFT instance info
+    const url = `${BLOCKSCOUT_BASE_URL}/tokens/${contractAddress}/instances/${tokenId}`;
+    console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId} via Blockscout...`);
 
     const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'X-API-KEY': process.env.SIMPLEHASH_API_KEY || ''
-      }
+      headers: { 'Accept': 'application/json' }
     });
 
     if (response.ok) {
       const nft = await response.json();
 
-      if (nft && nft.contract_address) {
-        let imageUrl = nft.image_url || nft.previews?.image_medium_url || '';
+      if (nft) {
+        let imageUrl = nft.image_url || '';
         if (imageUrl.startsWith('ipfs://')) {
           imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
         }
 
+        const tokenType = nft.token?.type || 'ERC-721';
+
         return {
           success: true,
-          contractAddress: nft.contract_address,
-          tokenId: nft.token_id,
-          name: nft.name || `#${tokenId}`,
-          collection: nft.collection?.name || 'Unknown Collection',
+          contractAddress: contractAddress,
+          tokenId: tokenId,
+          name: nft.metadata?.name || `#${tokenId}`,
+          collection: nft.token?.name || 'Unknown Collection',
           image: imageUrl,
-          tokenType: nft.contract?.type === 'ERC1155' ? 'ERC1155' : 'ERC721',
-          description: nft.description || '',
-          attributes: nft.extra_metadata?.attributes || [],
-          floorPrice: nft.collection?.floor_prices?.[0]?.value || null,
+          tokenType: tokenType.includes('1155') ? 'ERC1155' : 'ERC721',
+          description: nft.metadata?.description || '',
+          attributes: nft.metadata?.attributes || [],
+          floorPrice: null,
         };
       }
     }
 
     // Fall back to direct contract call
-    console.log('SimpleHash API failed, falling back to direct contract call...');
+    console.log('Blockscout API failed, falling back to direct contract call...');
     return await getNftMetadataFromContract(contractAddress, tokenId);
 
   } catch (error) {
@@ -220,60 +219,72 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
 }
 
 /**
- * Fetch NFTs owned by an address using SimpleHash API (free tier)
+ * Fetch NFTs owned by an address using Blockscout API (free, no key needed)
  */
 async function getNftsForOwner(ownerAddress, cursor = null) {
   try {
-    // SimpleHash uses 'base' as the chain identifier
-    let url = `${SIMPLEHASH_BASE_URL}/nfts/owners?chains=base&wallet_addresses=${ownerAddress}&limit=50`;
+    // Blockscout NFT endpoint for address
+    let url = `${BLOCKSCOUT_BASE_URL}/addresses/${ownerAddress}/nft?type=ERC-721,ERC-1155`;
 
+    // Blockscout uses different pagination params
     if (cursor) {
-      url += `&cursor=${cursor}`;
+      // cursor format: "token_hash:id" from next_page_params
+      url += `&${cursor}`;
     }
 
-    console.log(`Fetching NFTs for ${ownerAddress} via SimpleHash...`);
+    console.log(`Fetching NFTs for ${ownerAddress} via Blockscout...`);
 
     const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'X-API-KEY': process.env.SIMPLEHASH_API_KEY || '' // Optional - works without key for basic queries
-      }
+      headers: { 'Accept': 'application/json' }
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('SimpleHash API error:', response.status, errorText);
-      throw new Error(`SimpleHash API error: ${response.status}`);
+      console.error('Blockscout API error:', response.status, errorText);
+      throw new Error(`Blockscout API error: ${response.status}`);
     }
 
     const data = await response.json();
 
-    // Transform the response to match our format
-    const nfts = (data.nfts || []).map(nft => {
-      const isERC1155 = nft.contract?.type === 'ERC1155';
+    // Transform the Blockscout response to match our format
+    const nfts = (data.items || []).map(nft => {
+      const tokenType = nft.token?.type || nft.token_type || 'ERC-721';
+      const isERC1155 = tokenType.includes('1155');
 
-      let imageUrl = nft.image_url || nft.previews?.image_medium_url || '';
+      let imageUrl = nft.image_url || '';
       if (imageUrl.startsWith('ipfs://')) {
         imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
       }
 
       return {
-        contractAddress: nft.contract_address,
-        tokenId: nft.token_id,
-        name: nft.name || `#${nft.token_id}`,
-        collection: nft.collection?.name || 'Unknown Collection',
+        contractAddress: nft.token?.address_hash || nft.token?.address,
+        tokenId: nft.id,
+        name: nft.metadata?.name || `#${nft.id}`,
+        collection: nft.token?.name || 'Unknown Collection',
         image: imageUrl,
         tokenType: isERC1155 ? 'ERC1155' : 'ERC721',
-        balance: nft.owners?.[0]?.quantity || 1,
-        contractName: nft.collection?.name,
-        symbol: nft.contract?.symbol,
-        floorPrice: nft.collection?.floor_prices?.[0]?.value || null,
+        balance: parseInt(nft.value) || 1,
+        contractName: nft.token?.name,
+        symbol: nft.token?.symbol,
+        floorPrice: null,
       };
     });
 
+    // Build pagination cursor from next_page_params if present
+    let pageKey = null;
+    if (data.next_page_params) {
+      const params = new URLSearchParams();
+      Object.entries(data.next_page_params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          params.append(key, value);
+        }
+      });
+      pageKey = params.toString();
+    }
+
     return {
       nfts,
-      pageKey: data.next_cursor || null,
+      pageKey,
       totalCount: nfts.length,
     };
 
