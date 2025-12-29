@@ -445,11 +445,11 @@ async function getCastEngagement(castId) {
 
 /**
  * Store social engagement data for a contest at finalization time
- * This caches the data so leaderboard doesn't need to call Neynar API
+ * This caches the data so leaderboard doesn't need to call Neynar API or blockchain
  *
  * @param {string} contestType - 'token', 'nft', or 'v2'
  * @param {number|string} contestId - Contest ID
- * @param {object} socialData - { likes, recasts, replies, castHash, hostFid }
+ * @param {object} socialData - { likes, recasts, replies, castHash, hostFid, host, status }
  */
 async function storeSocialData(contestType, contestId, socialData) {
   if (!process.env.KV_REST_API_URL) {
@@ -467,6 +467,9 @@ async function storeSocialData(contestType, contestId, socialData) {
       replies: socialData.replies || 0,
       castHash: socialData.castHash || null,
       hostFid: socialData.hostFid || null,
+      // NEW: Store host address and status so leaderboard doesn't need blockchain calls
+      host: socialData.host || null,
+      status: socialData.status !== undefined ? Number(socialData.status) : 2, // Default to completed (2)
       capturedAt: Date.now(),
     };
 
@@ -901,6 +904,8 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
             replies: engagementForCache.repliers ? engagementForCache.repliers.length : 0,
             castHash: actualCastHash,
             hostFid: engagementForCache.castAuthorFid || null,
+            host: host, // Host address for leaderboard (no blockchain call needed)
+            status: 2,  // Completed status
           };
 
           const contestType = isNftContest ? 'nft' : 'token';
@@ -1294,6 +1299,8 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
           replies: engagement.repliers ? engagement.repliers.length : 0,
           castHash: actualCastHash,
           hostFid: engagement.castAuthorFid || null,
+          host: host, // Host address for leaderboard (no blockchain call needed)
+          status: 2,  // Completed status
         };
 
         // V1 legacy contests are always token contests (not NFT - NFT uses USE_V2_LOGIC_FOR_V1)
@@ -1721,6 +1728,8 @@ async function checkAndFinalizeV2Contest(contestId) {
           replies: engagement.repliers ? engagement.repliers.length : 0,
           castHash: actualCastHash,
           hostFid: hostFid,
+          host: host, // Host address for leaderboard (no blockchain call needed)
+          status: 2,  // Completed status
         };
 
         await storeSocialData('v2', contestId, socialData);
