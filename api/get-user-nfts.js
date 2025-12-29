@@ -29,53 +29,15 @@ const NFT_ABI = [
 ];
 
 /**
- * Fetch single NFT metadata - tries Blockscout first, falls back to direct contract call
+ * Fetch single NFT metadata - uses direct contract call for fresh metadata
+ * (Blockscout can have stale cached metadata for revealed NFTs)
  */
 async function getNftMetadata(contractAddress, tokenId) {
-  try {
-    // Try Blockscout API first - get NFT instance info
-    const url = `${BLOCKSCOUT_BASE_URL}/tokens/${contractAddress}/instances/${tokenId}`;
-    console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId} via Blockscout...`);
+  console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId} via direct contract call...`);
 
-    const response = await fetch(url, {
-      headers: { 'Accept': 'application/json' }
-    });
-
-    if (response.ok) {
-      const nft = await response.json();
-
-      if (nft) {
-        let imageUrl = nft.image_url || '';
-        if (imageUrl.startsWith('ipfs://')) {
-          imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
-        }
-
-        const tokenType = nft.token?.type || 'ERC-721';
-
-        return {
-          success: true,
-          contractAddress: contractAddress,
-          tokenId: tokenId,
-          name: nft.metadata?.name || `#${tokenId}`,
-          collection: nft.token?.name || 'Unknown Collection',
-          image: imageUrl,
-          tokenType: tokenType.includes('1155') ? 'ERC1155' : 'ERC721',
-          description: nft.metadata?.description || '',
-          attributes: nft.metadata?.attributes || [],
-          floorPrice: null,
-        };
-      }
-    }
-
-    // Fall back to direct contract call
-    console.log('Blockscout API failed, falling back to direct contract call...');
-    return await getNftMetadataFromContract(contractAddress, tokenId);
-
-  } catch (error) {
-    console.error('Error fetching NFT metadata:', error);
-    // Try direct contract call as fallback
-    return await getNftMetadataFromContract(contractAddress, tokenId);
-  }
+  // Always use direct contract call for single NFT lookups
+  // This ensures we get fresh metadata (important for revealed NFTs)
+  return await getNftMetadataFromContract(contractAddress, tokenId);
 }
 
 /**
