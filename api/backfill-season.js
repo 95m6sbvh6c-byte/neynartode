@@ -26,6 +26,7 @@ const CONFIG = {
 
   // Rate limiting
   API_DELAY_MS: 100,
+  RPC_DELAY_MS: 150, // Delay between blockchain calls to avoid 50/second limit
 };
 
 // Contract ABIs
@@ -244,6 +245,8 @@ module.exports = async (req, res) => {
     console.log(`\n--- Processing V1 Token Contests ---`);
     for (let id = 1; id < nextTokenId; id++) {
       try {
+        // Rate limit blockchain calls
+        await new Promise(r => setTimeout(r, CONFIG.RPC_DELAY_MS));
         const contest = await contestEscrow.getContest(id);
         const [host, , , , endTime, castId, , , status] = contest;
         const contestEndTime = Number(endTime);
@@ -308,6 +311,8 @@ module.exports = async (req, res) => {
     console.log(`\n--- Processing V1 NFT Contests ---`);
     for (let id = 1; id < nextNftId; id++) {
       try {
+        // Rate limit blockchain calls
+        await new Promise(r => setTimeout(r, CONFIG.RPC_DELAY_MS));
         const contest = await nftContestEscrow.getContest(id);
         const [host, , , , , , endTime, castId, , , status] = contest;
         const contestEndTime = Number(endTime);
@@ -368,6 +373,8 @@ module.exports = async (req, res) => {
     console.log(`\n--- Processing V2 Contests ---`);
     for (let id = CONFIG.V2_START_ID; id < nextV2Id; id++) {
       try {
+        // Rate limit blockchain calls
+        await new Promise(r => setTimeout(r, CONFIG.RPC_DELAY_MS));
         const contest = await contestManager.getContest(id);
         const [host, , status, castId, endTime] = contest;
         const contestEndTime = Number(endTime);
