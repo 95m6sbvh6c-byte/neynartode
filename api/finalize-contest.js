@@ -444,6 +444,30 @@ async function getCastEngagement(castId) {
 // ═══════════════════════════════════════════════════════════════════
 
 /**
+ * Clear stale contest cache from contest-history
+ * This ensures the history tab shows correct status after finalization
+ *
+ * @param {string} contestType - 'token', 'nft', or 'v2'
+ * @param {number|string} contestId - Contest ID
+ */
+async function clearContestCache(contestType, contestId) {
+  if (!process.env.KV_REST_API_URL) {
+    return false;
+  }
+
+  try {
+    const { kv } = require('@vercel/kv');
+    const cacheKey = `contest:${contestType}:${contestId}`;
+    await kv.del(cacheKey);
+    console.log(`   🗑️ Cleared stale contest cache: ${cacheKey}`);
+    return true;
+  } catch (error) {
+    console.log(`   ⚠️ Could not clear cache ${contestType}:${contestId}: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Store social engagement data for a contest at finalization time
  * This caches the data so leaderboard doesn't need to call Neynar API or blockchain
  *
@@ -889,6 +913,12 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
       // Auto-announce
       if (winner !== '0x0000000000000000000000000000000000000000') {
         // ═══════════════════════════════════════════════════════════════════
+        // CLEAR STALE CACHE: Remove old contest cache so history shows correct status
+        // ═══════════════════════════════════════════════════════════════════
+        const contestType = isNftContest ? 'nft' : 'token';
+        await clearContestCache(contestType, contestId);
+
+        // ═══════════════════════════════════════════════════════════════════
         // SEASON CACHING: Store social data and add to season index
         // ═══════════════════════════════════════════════════════════════════
         try {
@@ -908,7 +938,6 @@ async function checkAndFinalizeContest(contestId, isNftContest = false) {
             status: 2,  // Completed status
           };
 
-          const contestType = isNftContest ? 'nft' : 'token';
           await storeSocialData(contestType, contestId, socialData);
 
           // Determine season and add to index
@@ -1713,6 +1742,11 @@ async function checkAndFinalizeV2Contest(contestId) {
     // Auto-announce winners if found
     if (selectedWinners.length > 0) {
       // ═══════════════════════════════════════════════════════════════════
+      // CLEAR STALE CACHE: Remove old contest cache so history shows correct status
+      // ═══════════════════════════════════════════════════════════════════
+      await clearContestCache('v2', contestId);
+
+      // ═══════════════════════════════════════════════════════════════════
       // SEASON CACHING: Store social data and add to season index
       // ═══════════════════════════════════════════════════════════════════
       try {
@@ -1918,10 +1952,26 @@ module.exports = async (req, res) => {
     //   /api/finalize-contest?contestId=1&nft=true     (V1 NFT contest)
     //   /api/finalize-contest?contestId=108&v2=true    (V2 contest - explicit)
     //   /api/finalize-contest?contestId=108            (V2 contest - auto-detected if >= V2_START_CONTEST_ID)
+    //   /api/finalize-contest?contestId=170&clearCache=true (clear stale cache only)
     if (req.method === 'GET') {
       const contestId = parseInt(req.query.contestId);
       const isNftContest = req.query.nft === 'true' || req.query.nft === '1';
       const isV2Contest = req.query.v2 === 'true' || req.query.v2 === '1';
+      const clearCacheOnly = req.query.clearCache === 'true' || req.query.clearCache === '1';
+
+      // Handle cache-clear-only mode (for fixing stale caches)
+      if (clearCacheOnly && contestId && !isNaN(contestId)) {
+        const contestType = isNftContest ? 'nft' : (isV2Contest || contestId >= CONFIG.V2_START_CONTEST_ID ? 'v2' : 'token');
+        const cleared = await clearContestCache(contestType, contestId);
+        return res.status(200).json({
+          success: true,
+          action: 'cache_cleared',
+          contestId,
+          contestType,
+          cacheKey: `contest:${contestType}:${contestId}`,
+          cleared
+        });
+      }
 
       // If no contestId provided, this is likely a cron request - check all pending
       // Vercel cron sends GET requests with Authorization header
