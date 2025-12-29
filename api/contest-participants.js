@@ -65,6 +65,9 @@ module.exports = async (req, res) => {
   // Allow force refresh with ?refresh=1 to recalculate holder status
   const forceRefresh = refresh === '1' || refresh === 'true';
 
+  // Log immediately when request arrives (helps debug if cache is hiding issues)
+  console.log(`[contest-participants] Contest ${contestId} - Request received, refresh=${forceRefresh}`);
+
   if (!process.env.KV_REST_API_URL) {
     return res.status(200).json({ participants: [], error: 'KV not configured' });
   }
@@ -243,10 +246,25 @@ module.exports = async (req, res) => {
 
     // Log holder summary
     const holders = holderChecks.filter(c => c.isHolder);
-    console.log(`Contest ${contestId}: ${holders.length}/${holderChecks.length} users are holders`);
+    const repliers = Array.from(hasRepliedSet).length;
+    console.log(`Contest ${contestId}: ${holders.length}/${holderChecks.length} users are holders, ${repliers} have replied`);
 
     // Build holder status map
     holderChecks.forEach(check => holderStatusMap.set(check.fid, check.isHolder));
+
+    // Build debug info for troubleshooting (included in response when refresh=1)
+    const debugInfo = forceRefresh ? {
+      totalUsers: users.length,
+      holdersFound: holders.length,
+      repliersFound: repliers,
+      holderDetails: holders.map(h => ({ fid: h.fid, balance: h.balance })),
+      sampleUserAddresses: users.slice(0, 3).map(u => ({
+        fid: u.fid,
+        username: u.username,
+        verified: u.verified_addresses?.eth_addresses || [],
+        custody: u.custody_address || null
+      }))
+    } : null;
 
     // Map to participant objects with hasReplied, isHolder, and entryCount
     const participants = users.map(user => {
@@ -283,11 +301,18 @@ module.exports = async (req, res) => {
       console.error('Failed to cache participants:', cacheError.message);
     }
 
-    return res.status(200).json({
+    const response = {
       participants,
       count: entryFids.length,
       displayed: participants.length
-    });
+    };
+
+    // Include debug info when force refresh is used
+    if (debugInfo) {
+      response.debug = debugInfo;
+    }
+
+    return res.status(200).json(response);
 
   } catch (error) {
     console.error('Contest participants error:', error);
