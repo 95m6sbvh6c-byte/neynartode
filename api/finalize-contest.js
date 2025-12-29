@@ -1803,40 +1803,17 @@ async function checkAllPendingContests() {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
   const results = [];
 
-  // Max contests to check per contract type (defined outside if block for V2 access)
-  // Increased to 100 to ensure all active V2 contests are checked (was 15, causing older contests to be skipped)
-  const MAX_CONTESTS_TO_CHECK = 100n;
+  // Max contests to check per contract type
+  // V2 ContestManager: 40 contests (all new token contests use this)
+  // NFT Escrow: 10 contests (legacy, fewer active)
+  // V1 Token Escrow: SKIP (no longer used for new contests)
+  const MAX_V2_CONTESTS_TO_CHECK = 40n;
+  const MAX_NFT_CONTESTS_TO_CHECK = 10n;
 
-  // V1 ETH and NFT contest finalization (disabled by default - legacy contracts)
-  if (CONFIG.FINALIZE_V1_CONTESTS) {
-    // Check ETH contests
-    const ethEscrow = new ethers.Contract(
-      CONFIG.CONTEST_ESCROW,
-      CONTEST_ESCROW_ABI,
-      provider
-    );
+  console.log('\n⏭️ Skipping V1 Token Escrow (all new token contests use V2)');
 
-    const ethNextId = await ethEscrow.nextContestId();
-    const ethStartId = ethNextId > MAX_CONTESTS_TO_CHECK ? ethNextId - MAX_CONTESTS_TO_CHECK : 1n;
-
-    console.log(`\n🔍 Checking V1 ETH contests ${ethStartId} to ${ethNextId - 1n}...`);
-
-    for (let i = ethStartId; i < ethNextId; i++) {
-      try {
-        const canFinalize = await ethEscrow.canFinalize(i);
-
-        if (canFinalize) {
-          console.log(`\n📋 ETH Contest #${i} is ready to finalize`);
-          const result = await checkAndFinalizeContest(Number(i), false);
-          results.push(result);
-        }
-      } catch (e) {
-        console.log(`   Skipping ETH contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
-        continue;
-      }
-    }
-
-    // Check NFT contests
+  // V1 NFT Escrow: Check last 10 contests
+  try {
     const nftEscrow = new ethers.Contract(
       CONFIG.NFT_CONTEST_ESCROW,
       NFT_CONTEST_ESCROW_ABI,
@@ -1844,7 +1821,7 @@ async function checkAllPendingContests() {
     );
 
     const nftNextId = await nftEscrow.nextContestId();
-    const nftStartId = nftNextId > MAX_CONTESTS_TO_CHECK ? nftNextId - MAX_CONTESTS_TO_CHECK : 1n;
+    const nftStartId = nftNextId > MAX_NFT_CONTESTS_TO_CHECK ? nftNextId - MAX_NFT_CONTESTS_TO_CHECK : 1n;
 
     console.log(`\n🔍 Checking V1 NFT contests ${nftStartId} to ${nftNextId - 1n}...`);
 
@@ -1868,8 +1845,8 @@ async function checkAllPendingContests() {
         continue;
       }
     }
-  } else {
-    console.log('\n⏭️ V1 contest finalization is disabled (FINALIZE_V1_CONTESTS=false)');
+  } catch (e) {
+    console.log(`\n⚠️ Could not check NFT contests:`, e.message?.slice(0, 50));
   }
 
   // Check V2 ContestManager contests
@@ -1881,10 +1858,14 @@ async function checkAllPendingContests() {
     );
 
     const v2NextId = await v2Manager.nextContestId();
-    const v2StartId = v2NextId > MAX_CONTESTS_TO_CHECK ? v2NextId - MAX_CONTESTS_TO_CHECK : BigInt(CONFIG.V2_START_CONTEST_ID);
+    const v2StartId = v2NextId > MAX_V2_CONTESTS_TO_CHECK ? v2NextId - MAX_V2_CONTESTS_TO_CHECK : BigInt(CONFIG.V2_START_CONTEST_ID);
 
     if (v2NextId > v2StartId) {
       console.log(`\n🔍 Checking V2 contests ${v2StartId} to ${v2NextId - 1n}...`);
+
+      // Process in batches to avoid rate limiting (50 req/sec on QuickNode)
+      const BATCH_SIZE = 10;
+      const DELAY_MS = 300; // 300ms between batches = ~33 req/sec max
 
       for (let i = v2StartId; i < v2NextId; i++) {
         try {
@@ -1898,6 +1879,11 @@ async function checkAllPendingContests() {
         } catch (e) {
           console.log(`   Skipping V2 contest #${i}: ${e.message?.slice(0, 50) || 'unknown error'}`);
           continue;
+        }
+
+        // Add delay every BATCH_SIZE contests to avoid rate limiting
+        if ((Number(i - v2StartId) + 1) % BATCH_SIZE === 0) {
+          await new Promise(r => setTimeout(r, DELAY_MS));
         }
       }
     } else {
