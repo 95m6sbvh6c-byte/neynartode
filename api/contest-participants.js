@@ -131,8 +131,18 @@ module.exports = async (req, res) => {
     // Fetch user profiles from Neynar in bulk (cached)
     const users = await getUsersByFids(limitedFids.map(f => parseInt(f)));
 
+    console.log(`Contest ${contestId}: Fetched ${users?.length || 0} users from Neynar`);
+
     if (!users || users.length === 0) {
       return res.status(200).json({ participants: [], count: entryFids.length });
+    }
+
+    // Debug: Log first user's addresses to verify we're getting them
+    if (users[0]) {
+      console.log(`Contest ${contestId}: First user ${users[0].fid} (${users[0].username}) addresses:`, {
+        verified: users[0].verified_addresses?.eth_addresses || [],
+        custody: users[0].custody_address || 'none'
+      });
     }
 
     // Now fetch actual replies from the contest cast to determine who has replied
