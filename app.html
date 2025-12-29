@@ -1173,6 +1173,18 @@
       };
     }
 
+    // Proxy IPFS images through our server to avoid 403 errors in Warpcast webview
+    function proxyImage(url) {
+      if (!url) return '';
+      // Check if it's an IPFS URL that needs proxying
+      if (url.includes('ipfs.io') || url.includes('ipfs://') ||
+          url.includes('cloudflare-ipfs.com') || url.includes('dweb.link') ||
+          url.includes('nftstorage.link') || url.includes('/ipfs/')) {
+        return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+      }
+      return url;
+    }
+
     // Celebration overlay with fireworks
     function showCelebration(castHash) {
       const container = document.getElementById('celebration-container');
@@ -1974,14 +1986,12 @@ ${prizeLine}
 
       console.log('Sharing contest with mini app URL:', { contestId, isNft, winnerCount, participantCount, miniAppUrl });
 
-      // Build embeds - quote cast first, then NFT image
+      // Build embeds - quote cast only
+      // Note: NFT images from IPFS don't render well as Farcaster embeds, so we skip them
       const embeds = [];
       if (castId) {
         const cleanCastHash = castId.split('|')[0]; // Strip encoded requirements
         embeds.push(`https://warpcast.com/~/conversations/${cleanCastHash}`);
-      }
-      if (isNft && nftImage) {
-        embeds.push(nftImage);
       }
 
       // Use SDK composeCast - embeds as plain string array
@@ -5032,7 +5042,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           let prizeHtml = '';
           if (contest.isNft) {
             const nftImg = contest.nftImage
-              ? `<img src="${contest.nftImage}" alt="${contest.nftName || ''}" class="w-10 h-10 rounded-lg object-cover" onerror="this.style.display='none'" />`
+              ? `<img src="${proxyImage(contest.nftImage)}" alt="${contest.nftName || ''}" class="w-10 h-10 rounded-lg object-cover" onerror="this.onerror=null; this.src='https://via.placeholder.com/40/8b5cf6/ffffff?text=NFT'" />`
               : `<div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs">NFT</div>`;
             prizeHtml = `
               <div class="flex items-center gap-2">
@@ -5694,7 +5704,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                                 <button onclick="selectNftFromPicker(state.userNfts[${idx}])" class="p-2 rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--accent)] hover:bg-opacity-20 transition-colors text-left group ${state.prizeNftAddress === nft.contractAddress && state.prizeNftTokenId === nft.tokenId ? 'ring-2 ring-[var(--accent)]' : ''}">
                                   <div class="aspect-square rounded-lg overflow-hidden mb-1 bg-[var(--bg-primary)]">
                                     ${nft.image ? `
-                                      <img src="${nft.image}" alt="${nft.name}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<div class=\\'flex items-center justify-center h-full text-2xl\\'>🖼️</div>'" />
+                                      <img src="${proxyImage(nft.image)}" alt="${nft.name}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<div class=\\'flex items-center justify-center h-full text-2xl\\'>🖼️</div>'" />
                                     ` : `
                                       <div class="flex items-center justify-center h-full text-2xl">🖼️</div>
                                     `}
@@ -5731,7 +5741,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       ${state.prizeNftImage ? `
                         <div class="p-4 bg-[var(--bg-secondary)] rounded-xl">
                           <div class="flex gap-4">
-                            <img src="${state.prizeNftImage}" alt="${state.prizeNftName}" class="w-24 h-24 rounded-xl object-cover" onerror="this.src='https://via.placeholder.com/96/8b5cf6/ffffff?text=NFT'" />
+                            <img src="${proxyImage(state.prizeNftImage)}" alt="${state.prizeNftName}" class="w-24 h-24 rounded-xl object-cover" onerror="this.src='https://via.placeholder.com/96/8b5cf6/ffffff?text=NFT'" />
                             <div class="flex-1">
                               <div class="text-xs text-[var(--success)] mb-1">NFT Selected</div>
                               <div class="font-medium text-[var(--text-primary)] mb-1">${state.prizeNftName}</div>
@@ -6533,7 +6543,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               displayName: state.userProfile.displayName,
               pfpUrl: state.userProfile.pfpUrl
             } : null,
-            prize: state.prizeType === 'token' ? `${state.prizeTokenAmount} ${state.prizeTokenTicker}` : `NFT #${state.prizeNftId}`,
+            prize: state.prizeType === 'token' ? `${state.prizeTokenAmount} ${state.prizeTokenTicker}` : `${state.prizeNftName || 'NFT'} #${state.prizeNftTokenId || '?'}`,
             startTime: startTime,
             endTime: endTime,
             duration: `${hours}h ${minutes}m`,
@@ -7501,13 +7511,12 @@ ${prizeLine}
 👇 Enter now!
 ${miniAppUrl}`;
 
-        // Build embeds - quote the original cast, add NFT image if available
+        // Build embeds - quote the original cast
+        // Note: NFT images from IPFS don't render well as Farcaster embeds, so we skip them
+        // The mini app URL provides a preview instead
         const announcementEmbeds = [];
         const cleanCastHash = castId.split('|')[0]; // Strip encoded requirements
         announcementEmbeds.push(`https://warpcast.com/~/conversations/${cleanCastHash}`); // Quote original cast
-        if (isNftContest && state.prizeNftImage) {
-          announcementEmbeds.push(state.prizeNftImage);
-        }
 
         // Open compose modal for host to review/edit before posting
         console.log('📣 Opening compose modal for contest announcement...');
@@ -7553,7 +7562,7 @@ ${miniAppUrl}`;
           // NFT-specific fields
           isNft: state.prizeType === 'nft',
           nftImage: state.prizeType === 'nft' ? state.prizeNftImage : '',
-          nftName: state.prizeType === 'nft' ? `${state.prizeNftName || 'NFT'} #${state.prizeNftId}` : ''
+          nftName: state.prizeType === 'nft' ? `${state.prizeNftName || 'NFT'} #${state.prizeNftTokenId || '?'}` : ''
         };
 
         // Reset form only after successful launch
