@@ -132,7 +132,7 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType) {
     // Handle different URI schemes
     let metadataUrl = tokenUri;
     if (tokenUri.startsWith('ipfs://')) {
-      metadataUrl = tokenUri.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+      metadataUrl = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
     } else if (tokenUri.startsWith('ar://')) {
       metadataUrl = tokenUri.replace('ar://', 'https://arweave.net/');
     } else if (tokenUri.startsWith('data:application/json')) {
@@ -143,7 +143,7 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType) {
         const metadata = JSON.parse(jsonStr);
         let imageUrl = metadata.image || '';
         if (imageUrl.startsWith('ipfs://')) {
-          imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+          imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
         }
         return {
           name: metadata.name || `${collectionName} #${tokenId}`,
@@ -168,7 +168,7 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType) {
 
       let imageUrl = metadata.image || metadata.image_url || '';
       if (imageUrl.startsWith('ipfs://')) {
-        imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+        imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
       } else if (imageUrl.startsWith('ar://')) {
         imageUrl = imageUrl.replace('ar://', 'https://arweave.net/');
       }
@@ -378,6 +378,26 @@ async function getContestDetails(provider, contract, contestId) {
 }
 
 /**
+ * Get cached NFT contest data from store-nft-contest API
+ * Returns null if not cached
+ */
+async function getCachedNftContestData(contestId) {
+  if (!process.env.KV_REST_API_URL) return null;
+
+  try {
+    const { kv } = await import('@vercel/kv');
+    const cached = await kv.get(`nft:contest:${contestId}`);
+    if (cached) {
+      console.log(`NFT contest ${contestId}: Using stored NFT metadata (image, name, collection)`);
+      return cached;
+    }
+  } catch (e) {
+    // Fall through to contract fetch
+  }
+  return null;
+}
+
+/**
  * Fetch NFT contest details from NFTContestEscrow (with caching)
  */
 async function getNftContestDetails(provider, contract, contestId) {
@@ -404,8 +424,20 @@ async function getNftContestDetails(provider, contract, contestId) {
     // Convert tokenId to number for display
     const tokenIdNum = Number(tokenId);
 
-    // Always use Alchemy API for NFT metadata (more reliable than cached URLs)
-    const nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType));
+    // Try to get NFT metadata from our store-nft-contest cache first (faster, more reliable)
+    // Falls back to direct contract calls if not cached
+    let nftMetadata;
+    const storedNftData = await getCachedNftContestData(contestId);
+    if (storedNftData && storedNftData.image) {
+      nftMetadata = {
+        name: storedNftData.name || `NFT #${tokenIdNum}`,
+        image: storedNftData.image,
+        collection: storedNftData.collection || 'NFT Collection',
+      };
+    } else {
+      // Fallback to direct contract call for metadata
+      nftMetadata = await getNftMetadata(provider, nftContract, tokenIdNum, Number(nftType));
+    }
 
     // Get requirement token info
     const requirementTokenInfo = tokenRequirement !== '0x0000000000000000000000000000000000000000'

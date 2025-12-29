@@ -7407,25 +7407,37 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               });
               console.log('✅ Prize token value captured:', prizeAmt, state.prizeTokenTicker || 'tokens');
             } else if (state.prizeType === 'nft') {
-              // For NFT contests: store floor price AND metadata for cached access
-              const nftContestId = `NFT-${contestId}`;
-              const floorPrice = state.prizeNftFloorPrice || null;
+              // For NFT contests: store complete metadata for cached access
+              // Used by: Share button, entry display, notifications, active contest page, history tab
+              const hours = parseInt(state.durationHours) || 0;
+              const mins = parseInt(state.durationMinutes) || 0;
+              const endTime = Date.now() + ((hours * 60 + mins) * 60 * 1000);
 
-              await fetch(`${apiBaseUrl}/api/store?type=nftprice`, {
+              await fetch(`${apiBaseUrl}/api/store-nft-contest`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  contestId: nftContestId,
-                  floorPriceETH: floorPrice,
-                  // Store NFT metadata for cached access in history
-                  nftName: state.prizeNftName || null,
-                  nftImage: state.prizeNftImage || null,
-                  nftContract: state.prizeNftContract || null,
-                  nftTokenId: state.prizeNftTokenId || state.prizeNftId || null,
-                  nftCollection: state.prizeNftCollection || null
+                  contestId: contestId,
+                  contractAddress: state.prizeNftAddress || state.prizeNftContract || '',
+                  tokenId: state.prizeNftTokenId || state.prizeNftId || '',
+                  image: state.prizeNftImage || '',
+                  name: state.prizeNftName || `NFT #${state.prizeNftTokenId || state.prizeNftId || '?'}`,
+                  collection: state.prizeNftCollection || 'Unknown Collection',
+                  description: state.prizeNftDescription || '',
+                  attributes: state.prizeNftAttributes || [],
+                  tokenType: state.prizeNftType || 'ERC721',
+                  creatorFid: state.currentUser?.fid || null,
+                  creatorUsername: state.currentUser?.username || '',
+                  creatorPfp: state.currentUser?.pfpUrl || '',
+                  entryFee: '0',
+                  maxEntries: null,
+                  endTime: endTime,
+                  prizeType: 'nft',
+                  floorPriceETH: state.prizeNftFloorPrice || null,
+                  status: 'active'
                 })
               });
-              console.log('✅ NFT metadata cached:', state.prizeNftName, 'floor:', floorPrice, 'ETH');
+              console.log('✅ Complete NFT metadata cached:', state.prizeNftName, 'floor:', state.prizeNftFloorPrice || 'N/A', 'ETH');
             }
           } catch (e) {
             console.log('⚠️ Could not store prize value:', e.message);
