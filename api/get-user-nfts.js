@@ -83,7 +83,7 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
     // Resolve metadata URL
     let metadataUrl = tokenUri;
     if (tokenUri.startsWith('ipfs://')) {
-      metadataUrl = tokenUri.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+      metadataUrl = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
     } else if (tokenUri.startsWith('ar://')) {
       metadataUrl = tokenUri.replace('ar://', 'https://arweave.net/');
     } else if (tokenUri.startsWith('data:application/json')) {
@@ -94,7 +94,7 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
         const metadata = JSON.parse(jsonStr);
         let imageUrl = metadata.image || '';
         if (imageUrl.startsWith('ipfs://')) {
-          imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+          imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
         }
         return {
           success: true,
@@ -147,7 +147,7 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
     const metadata = await metaResponse.json();
     let imageUrl = metadata.image || metadata.image_url || '';
     if (imageUrl.startsWith('ipfs://')) {
-      imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+      imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
     }
 
     return {
@@ -215,7 +215,7 @@ async function getNftsForOwner(ownerAddress, cursor = null) {
 
       let imageUrl = nft.image_url || '';
       if (imageUrl.startsWith('ipfs://')) {
-        imageUrl = imageUrl.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
+        imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
       }
 
       return {
