@@ -2333,6 +2333,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       historyLoading: false,
       historyError: null,
       historyTotal: 0,
+      historyTotalToken: 0,
+      historyTotalV2: 0,
 
       // Suggestions (anonymous)
       suggestions: [],
@@ -3925,6 +3927,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const data = await response.json();
         state.historyData = data.contests || [];
         state.historyTotal = data.total || 0;
+        state.historyTotalToken = data.totalToken || 0;
+        state.historyTotalV2 = data.totalV2 || 0;
         state.historyLoading = false;
         apiCallInProgress = false;
         render();
@@ -5253,18 +5257,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             ${renderHeader()}
 
             <!-- Stats Summary -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div class="grid grid-cols-3 gap-3 mb-4">
               <div class="stat-card">
-                <div class="stat-label">Total Contests</div>
+                <div class="stat-label">Season 2 Contests</div>
                 <div class="stat-value stat-value-sm">${state.historyTotal || 0}</div>
               </div>
               <div class="stat-card">
-                <div class="stat-label">Completed</div>
-                <div class="stat-value stat-value-sm text-[var(--success)]">${(state.historyData || []).filter(c => c.status === 2).length}</div>
+                <div class="stat-label">Token Contests</div>
+                <div class="stat-value stat-value-sm">${state.historyTotalToken || 0}</div>
               </div>
               <div class="stat-card">
-                <div class="stat-label">Cancelled</div>
-                <div class="stat-value stat-value-sm text-[var(--warning)]">${(state.historyData || []).filter(c => c.status === 3).length}</div>
+                <div class="stat-label">V2 Contests</div>
+                <div class="stat-value stat-value-sm">${state.historyTotalV2 || 0}</div>
               </div>
             </div>
 
