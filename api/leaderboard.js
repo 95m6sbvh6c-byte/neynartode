@@ -413,8 +413,15 @@ module.exports = async (req, res) => {
         const indexKey = `season:${seasonId}:contests`;
         kvContestKeys = await kvClient.zrange(indexKey, 0, -1) || [];
         if (kvContestKeys.length > 0) {
-          useKVIndex = true;
-          console.log(`Using KV season index: ${kvContestKeys.length} contests in season ${seasonId}`);
+          // Check if KV data has host field (new format after backfill)
+          const sampleKey = kvContestKeys[0];
+          const sampleData = await kvClient.get(`contest:social:${sampleKey}`);
+          if (sampleData && sampleData.host) {
+            useKVIndex = true;
+            console.log(`Using KV season index: ${kvContestKeys.length} contests in season ${seasonId} (has host data)`);
+          } else {
+            console.log(`KV data missing host field, falling back to blockchain scan (run backfill to fix)`);
+          }
         } else {
           console.log(`KV season index empty, falling back to blockchain scan`);
         }
