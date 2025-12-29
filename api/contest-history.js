@@ -604,6 +604,175 @@ module.exports = async (req, res) => {
     // Status filter: 'active' = only active/pending, 'history' = only completed/cancelled (default), 'all' = everything
     const statusFilter = req.query.status || 'history';
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // KV-FIRST APPROACH: For history tab, try to load from KV season index
+    // This eliminates blockchain calls for completed contests that are cached
+    // ═══════════════════════════════════════════════════════════════════════
+
+    if (statusFilter === 'history' && process.env.KV_REST_API_URL) {
+      try {
+        const { kv } = await import('@vercel/kv');
+
+        // Get current season (default 2) to check the season index
+        const seasonId = 2; // Could be dynamic in future
+        const indexKey = `season:${seasonId}:contests`;
+        const kvContestKeys = await kv.zrange(indexKey, 0, -1, { rev: true }) || [];
+
+        if (kvContestKeys.length > 0) {
+          console.log(`KV-first: Found ${kvContestKeys.length} contests in season ${seasonId} index`);
+
+          // Read full contest details from individual caches
+          const cachedContests = [];
+          const missingKeys = [];
+
+          for (const contestKey of kvContestKeys) {
+            const [type, idStr] = contestKey.split('-');
+            const id = parseInt(idStr);
+
+            // Determine cache key based on type
+            let cacheKey;
+            if (type === 'token') cacheKey = `contest:token:${id}`;
+            else if (type === 'nft') cacheKey = `contest:nft:${id}`;
+            else if (type === 'v2') cacheKey = `contest:v2:${id}`;
+            else continue;
+
+            const cached = await kv.get(cacheKey);
+            if (cached) {
+              // Add contract type info
+              cached.contractType = type;
+              if (type === 'nft') cached.contestIdDisplay = `NFT-${id}`;
+              else if (type === 'v2') cached.contestIdDisplay = `V2-${id}`;
+              cachedContests.push(cached);
+            } else {
+              missingKeys.push({ type, id });
+            }
+          }
+
+          console.log(`KV cache: ${cachedContests.length} hit, ${missingKeys.length} miss`);
+
+          // If we have enough cached contests for the requested limit, use KV-only
+          if (cachedContests.length >= limit || missingKeys.length === 0) {
+            // Sort by endTime descending
+            cachedContests.sort((a, b) => b.endTime - a.endTime);
+
+            // Apply host filter if specified
+            let filteredContests = cachedContests;
+            if (hostFilter) {
+              filteredContests = cachedContests.filter(c => c.host.toLowerCase() === hostFilter);
+            }
+
+            // Apply limit
+            const limitedContests = filteredContests.slice(0, limit);
+
+            // Fetch user info if requested
+            if (includeUsers && limitedContests.length > 0) {
+              const addressesToLookup = new Set();
+              limitedContests.forEach(contest => {
+                addressesToLookup.add(contest.host.toLowerCase());
+                if (contest.winner !== '0x0000000000000000000000000000000000000000') {
+                  addressesToLookup.add(contest.winner.toLowerCase());
+                }
+                if (contest.winners && contest.winners.length > 0) {
+                  contest.winners.forEach(w => {
+                    if (w !== '0x0000000000000000000000000000000000000000') {
+                      addressesToLookup.add(w.toLowerCase());
+                    }
+                  });
+                }
+              });
+
+              const userPromises = Array.from(addressesToLookup).map(addr =>
+                getUserByWallet(addr).then(user => ({ addr, user })).catch(() => ({ addr, user: null }))
+              );
+              const userResults = await Promise.all(userPromises);
+
+              const userMap = {};
+              userResults.forEach(({ addr, user }) => { userMap[addr] = user; });
+
+              limitedContests.forEach(contest => {
+                contest.hostUser = userMap[contest.host.toLowerCase()] || null;
+                if (contest.winner !== '0x0000000000000000000000000000000000000000') {
+                  contest.winnerUser = userMap[contest.winner.toLowerCase()] || null;
+                }
+                if (contest.winners && contest.winners.length > 0) {
+                  contest.winnerUsers = contest.winners
+                    .filter(w => w !== '0x0000000000000000000000000000000000000000')
+                    .map(w => userMap[w.toLowerCase()] || null);
+                }
+              });
+            }
+
+            // Fetch participant counts from KV
+            const V2_START_ID = 105;
+            const participantPromises = limitedContests.map(async (contest) => {
+              const contestId = contest.contestId.toString();
+              const isV2Contest = contest.contestId >= V2_START_ID;
+
+              let count = 0;
+              if (isV2Contest) {
+                const v2Count = await kv.scard(`contest_entries:v2-${contestId}`).catch(() => 0);
+                const legacyCount = await kv.scard(`contest_entries:${contestId}`).catch(() => 0);
+                count = (v2Count || 0) + (legacyCount || 0);
+              } else {
+                count = await kv.scard(`contest_entries:${contestId}`).catch(() => 0);
+              }
+              return { contestId: contest.contestId, isV2: contest.isV2, count };
+            });
+            const participantCounts = await Promise.all(participantPromises);
+
+            participantCounts.forEach(({ contestId, isV2, count }) => {
+              const contest = limitedContests.find(c => c.contestId === contestId && c.isV2 === isV2);
+              if (contest) contest.participantCount = count;
+            });
+
+            // Fetch social data from KV
+            const socialPromises = limitedContests.map(async (contest) => {
+              if (contest.status !== 2) return { contestId: contest.contestId, contractType: contest.contractType, social: null };
+
+              const cacheKey = `contest:social:${contest.contractType}-${contest.contestId}`;
+              try {
+                const socialData = await kv.get(cacheKey);
+                return { contestId: contest.contestId, contractType: contest.contractType, social: socialData || null };
+              } catch (e) {
+                return { contestId: contest.contestId, contractType: contest.contractType, social: null };
+              }
+            });
+            const socialResults = await Promise.all(socialPromises);
+
+            socialResults.forEach(({ contestId, contractType, social }) => {
+              const contest = limitedContests.find(c => c.contestId === contestId && c.contractType === contractType);
+              if (contest && social) {
+                contest.likes = social.likes || 0;
+                contest.recasts = social.recasts || 0;
+                contest.replies = social.replies || 0;
+                contest.socialCapturedAt = social.capturedAt || null;
+              }
+            });
+
+            console.log(`KV-ONLY: Returning ${limitedContests.length} contests (0 blockchain calls)`);
+
+            return res.status(200).json({
+              contests: limitedContests,
+              total: kvContestKeys.length,
+              fetched: limitedContests.length,
+              limit,
+              fromKVCache: true,
+              debug: {
+                kvContestsInIndex: kvContestKeys.length,
+                cachedContests: cachedContests.length,
+                missingContests: missingKeys.length,
+              }
+            });
+          }
+
+          // If not enough cached, fall through to blockchain fetch
+          console.log(`KV cache insufficient (${cachedContests.length} < ${limit}), falling back to blockchain`);
+        }
+      } catch (e) {
+        console.log('KV-first approach failed:', e.message, '- falling back to blockchain');
+      }
+    }
+
     // Get total contest counts from all contracts (with retry on rate limit)
     const fetchWithRetry = async (fn, maxRetries = 3) => {
       for (let i = 0; i < maxRetries; i++) {
