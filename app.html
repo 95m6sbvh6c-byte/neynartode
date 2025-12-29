@@ -3475,11 +3475,17 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
         })();
 
-        // 4. Load leaderboard (delayed to avoid RPC rate limiting)
-        // Wait 1.5s after wallet connection before loading leaderboard
+        // 4. Load active contests FIRST (this is what users see on the main tab)
+        // Small delay to let wallet connection complete
+        setTimeout(() => {
+          loadActiveContests().catch(e => console.error('Active contests load failed:', e));
+        }, 500);
+
+        // 5. Load leaderboard data AFTER active contests (background)
+        // Longer delay since leaderboard is on a different tab
         setTimeout(() => {
           loadLeaderboard().catch(e => console.error('Leaderboard load failed:', e));
-        }, 1500);
+        }, 2000);
 
         // NOTE: Signer check is now lazy - handled when user tries to enter a raffle
         // This prevents blocking the app entry and unnecessary signer creation prompts
@@ -3719,10 +3725,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.leaderboardData = [];
       }
 
-      // RATE LIMIT STAGGER: Wait 500ms before fetching active contests
-      await new Promise(r => setTimeout(r, 500));
+      // Mark API calls as complete
+      apiCallInProgress = false;
 
-      // Fetch active contests from contest-history API
+      // Re-render to show leaderboard
+      render();
+    }
+
+    // Load active contests - called first for faster perceived loading
+    async function loadActiveContests() {
       // Check for cached contests first (for faster initial load)
       const cachedContests = sessionStorage.getItem('neynartodes_active_contests');
       const cachedTime = sessionStorage.getItem('neynartodes_contests_time');
@@ -3796,10 +3807,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           } catch (e) {
             console.log('Could not cache contests:', e.message);
           }
-          // Load user's contest entries (delayed 1.5s to avoid RPC rate limiting)
-          setTimeout(() => loadContestEntries(), 1500);
-          // Load participant PFPs for floating avatars (delayed 3s to avoid rate limiting)
-          setTimeout(() => loadContestParticipants(), 3000);
+          // Load user's contest entries (delayed 1s to avoid RPC rate limiting)
+          setTimeout(() => loadContestEntries(), 1000);
+          // Load participant PFPs for floating avatars (delayed 2s to avoid rate limiting)
+          setTimeout(() => loadContestParticipants(), 2000);
         }
         state.contestsLoading = false;
       } catch (e) {
@@ -3807,9 +3818,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.upcomingContests = [];
         state.contestsLoading = false;
       }
-
-      // Mark API calls as complete
-      apiCallInProgress = false;
 
       // Re-render to show active contests
       render();
