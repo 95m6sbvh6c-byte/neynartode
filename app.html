@@ -3476,16 +3476,17 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         })();
 
         // 4. Load active contests FIRST (this is what users see on the main tab)
-        // Small delay to let wallet connection complete
+        // Delay to let wallet connection RPC calls complete (avoids rate limiting)
         setTimeout(() => {
           loadActiveContests().catch(e => console.error('Active contests load failed:', e));
-        }, 500);
+        }, 1500);
 
         // 5. Load leaderboard data AFTER active contests (background)
-        // Longer delay since leaderboard is on a different tab
+        // Longer delay to let contest-history API RPC calls complete first
+        // (contest-history makes many blockchain calls that need to finish)
         setTimeout(() => {
           loadLeaderboard().catch(e => console.error('Leaderboard load failed:', e));
-        }, 2000);
+        }, 6000);
 
         // NOTE: Signer check is now lazy - handled when user tries to enter a raffle
         // This prevents blocking the app entry and unnecessary signer creation prompts
