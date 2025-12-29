@@ -867,24 +867,30 @@ module.exports = async (req, res) => {
     const recentOnlyLimit = statusFilter === 'active' ? 30 : null; // Check last 30 per contract type (covers 20+ active)
 
     // Create fetcher functions for V1 token contests (most recent first)
-    // Caching makes this efficient - completed contests are cached for 7 days
-    const tokenStartId = recentOnlyLimit ? Math.max(1, totalTokenContests - recentOnlyLimit + 1) : 1;
-    for (let i = totalTokenContests; i >= tokenStartId; i--) {
-      const contestId = i; // Capture in closure
-      tokenFetchers.push(() =>
-        getContestDetails(provider, tokenContract, contestId)
-          .then(contest => {
-            if (contest) {
-              contest.contractType = 'token';
-              return contest;
-            }
-            return null;
-          })
-          .catch(() => null)
-      );
+    // SKIP for active filter: All new token contests use ContestManager V2 now
+    // V1 ContestEscrow only has completed/cancelled contests (legacy)
+    if (statusFilter !== 'active') {
+      const tokenStartId = recentOnlyLimit ? Math.max(1, totalTokenContests - recentOnlyLimit + 1) : 1;
+      for (let i = totalTokenContests; i >= tokenStartId; i--) {
+        const contestId = i; // Capture in closure
+        tokenFetchers.push(() =>
+          getContestDetails(provider, tokenContract, contestId)
+            .then(contest => {
+              if (contest) {
+                contest.contractType = 'token';
+                return contest;
+              }
+              return null;
+            })
+            .catch(() => null)
+        );
+      }
+    } else {
+      console.log('Skipping V1 token contests for active filter (all new contests use V2)');
     }
 
     // Create fetcher functions for V1 NFT contests (most recent first)
+    // Note: V1 NFT contests may still have active contests, so we check them
     const nftStartId = recentOnlyLimit ? Math.max(1, totalNftContests - recentOnlyLimit + 1) : 1;
     for (let i = totalNftContests; i >= nftStartId; i--) {
       const contestId = i;
