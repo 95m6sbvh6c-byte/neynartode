@@ -56,11 +56,14 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { contestId } = req.query;
+  const { contestId, refresh } = req.query;
 
   if (!contestId) {
     return res.status(400).json({ error: 'Missing contestId parameter' });
   }
+
+  // Allow force refresh with ?refresh=1 to recalculate holder status
+  const forceRefresh = refresh === '1' || refresh === 'true';
 
   if (!process.env.KV_REST_API_URL) {
     return res.status(200).json({ participants: [], error: 'KV not configured' });
@@ -71,19 +74,24 @@ module.exports = async (req, res) => {
 
     // Check for cached participant data first (includes entry counts for consistent colors)
     const cacheKey = `contest:participants:${contestId}`;
-    const cached = await kv.get(cacheKey);
-    if (cached && cached.participants && cached.cachedAt) {
-      // Cache valid for 5 minutes
-      const cacheAge = Date.now() - cached.cachedAt;
-      if (cacheAge < 300000) {
-        console.log(`Contest ${contestId}: Using cached participants (${cached.participants.length} users, age: ${Math.round(cacheAge/1000)}s)`);
-        return res.status(200).json({
-          participants: cached.participants,
-          count: cached.count,
-          displayed: cached.participants.length,
-          fromCache: true
-        });
+
+    if (!forceRefresh) {
+      const cached = await kv.get(cacheKey);
+      if (cached && cached.participants && cached.cachedAt) {
+        // Cache valid for 5 minutes
+        const cacheAge = Date.now() - cached.cachedAt;
+        if (cacheAge < 300000) {
+          console.log(`Contest ${contestId}: Using cached participants (${cached.participants.length} users, age: ${Math.round(cacheAge/1000)}s)`);
+          return res.status(200).json({
+            participants: cached.participants,
+            count: cached.count,
+            displayed: cached.participants.length,
+            fromCache: true
+          });
+        }
       }
+    } else {
+      console.log(`Contest ${contestId}: Force refresh requested, recalculating...`);
     }
 
     // Get all FIDs who entered this contest
@@ -173,32 +181,59 @@ module.exports = async (req, res) => {
       // Continue without reply data - just won't show stacked PFPs
     }
 
-    // Check holder status for all users in parallel
+    // Check holder status for all users - do in small batches to avoid RPC rate limits
     const holderStatusMap = new Map();
     const token = new ethers.Contract(NEYNARTODES_TOKEN, ERC20_ABI, provider);
 
-    // Get addresses for all users and check balances
-    const holderChecks = await Promise.all(
-      users.map(async (user) => {
-        try {
-          // Get all verified addresses for this user
-          const addresses = user.verified_addresses?.eth_addresses || [];
-          if (user.custody_address) addresses.push(user.custody_address);
+    // Process holder checks in batches of 5 to avoid rate limiting
+    const holderChecks = [];
+    const batchSize = 5;
 
-          if (addresses.length === 0) return { fid: user.fid, isHolder: false };
+    for (let i = 0; i < users.length; i += batchSize) {
+      const batch = users.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (user) => {
+          try {
+            // Get all verified addresses for this user
+            const addresses = user.verified_addresses?.eth_addresses || [];
+            if (user.custody_address) addresses.push(user.custody_address);
 
-          // Check balance across all addresses
-          const balances = await Promise.all(
-            addresses.map(addr => token.balanceOf(addr).catch(() => 0n))
-          );
-          const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
+            if (addresses.length === 0) {
+              return { fid: user.fid, isHolder: false, reason: 'no addresses' };
+            }
 
-          return { fid: user.fid, isHolder: totalBalance >= HOLDER_THRESHOLD };
-        } catch (e) {
-          return { fid: user.fid, isHolder: false };
-        }
-      })
-    );
+            // Check balance across all addresses
+            const balances = await Promise.all(
+              addresses.map(addr => token.balanceOf(addr).catch((e) => {
+                console.log(`Balance check failed for ${addr}: ${e.message}`);
+                return 0n;
+              }))
+            );
+            const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
+            const isHolder = totalBalance >= HOLDER_THRESHOLD;
+
+            if (isHolder) {
+              console.log(`Contest ${contestId}: User ${user.fid} (${user.username}) is a holder with ${ethers.formatUnits(totalBalance, 18)} tokens`);
+            }
+
+            return { fid: user.fid, isHolder, balance: totalBalance.toString() };
+          } catch (e) {
+            console.error(`Holder check failed for user ${user.fid}:`, e.message);
+            return { fid: user.fid, isHolder: false, error: e.message };
+          }
+        })
+      );
+      holderChecks.push(...batchResults);
+
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < users.length) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+
+    // Log holder summary
+    const holders = holderChecks.filter(c => c.isHolder);
+    console.log(`Contest ${contestId}: ${holders.length}/${holderChecks.length} users are holders`);
 
     // Build holder status map
     holderChecks.forEach(check => holderStatusMap.set(check.fid, check.isHolder));
