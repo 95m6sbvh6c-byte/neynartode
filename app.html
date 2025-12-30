@@ -5595,6 +5595,24 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                         <input type="number" id="durationMinutes" value="${state.durationMinutes}" min="0" max="59" class="input-modern" />
                       </div>
                     </div>
+                    ${state.seasonEndTime ? (() => {
+                      const seasonCutoffMs = (state.seasonEndTime * 1000) - (5 * 60 * 1000);
+                      const contestStartMs = state.startMode === 'scheduled' && state.startDate
+                        ? new Date(state.startDate).getTime()
+                        : Date.now();
+                      const maxDurationMs = seasonCutoffMs - contestStartMs;
+                      const maxDurationMins = Math.floor(maxDurationMs / (60 * 1000));
+                      const maxHours = Math.floor(maxDurationMins / 60);
+                      const maxMins = maxDurationMins % 60;
+                      const seasonEndDate = new Date(state.seasonEndTime * 1000);
+
+                      if (maxDurationMins <= 0) {
+                        return `<div class="text-xs text-[var(--warning)] mt-2">Season ends ${seasonEndDate.toLocaleDateString()}. New contests unavailable.</div>`;
+                      } else if (maxDurationMins < 60 * 24) {
+                        return `<div class="text-xs text-[var(--text-muted)] mt-2">Season ends ${seasonEndDate.toLocaleDateString()} - Max duration: ${maxHours}h ${maxMins}m</div>`;
+                      }
+                      return '';
+                    })() : ''}
                   </div>
 
                   ${state.startMode === 'scheduled' && state.startDate && state.durationHours !== '' && state.durationMinutes !== '' ? `
@@ -6459,6 +6477,30 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           if (totalMinutes < 1) {
             showToast('Contest duration must be at least 1 minute!', 'error');
             return;
+          }
+
+          // Validate contest doesn't extend past season end (with 5 minute buffer)
+          if (state.seasonEndTime) {
+            const seasonCutoffMs = (state.seasonEndTime * 1000) - (5 * 60 * 1000); // 5 minutes before season end
+            const contestStartMs = state.startMode === 'scheduled' && state.startDate
+              ? new Date(state.startDate).getTime()
+              : Date.now();
+            const contestEndMs = contestStartMs + (totalMinutes * 60 * 1000);
+
+            if (contestEndMs > seasonCutoffMs) {
+              const seasonEndDate = new Date(state.seasonEndTime * 1000);
+              const maxDurationMs = seasonCutoffMs - contestStartMs;
+              const maxDurationMins = Math.floor(maxDurationMs / (60 * 1000));
+              const maxHours = Math.floor(maxDurationMins / 60);
+              const maxMins = maxDurationMins % 60;
+
+              if (maxDurationMins <= 0) {
+                showToast(`Season ends ${seasonEndDate.toLocaleString()}. Cannot create new contests this close to season end.`, 'error');
+              } else {
+                showToast(`Contest would end after season! Max duration: ${maxHours}h ${maxMins}m (Season ends ${seasonEndDate.toLocaleString()})`, 'error');
+              }
+              return;
+            }
           }
 
           // Validate scheduled start date
