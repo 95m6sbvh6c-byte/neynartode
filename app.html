@@ -4760,14 +4760,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               <div class="stat-card">
                 <div class="stat-label text-center">Current Leader</div>
                 ${state.leaderboardData.length > 0 ? `
-                  <a href="https://warpcast.com/${state.leaderboardData[0].username}" target="_blank" class="flex flex-col items-center hover:opacity-80 transition-opacity mt-2">
+                  <button onclick="openProfile('${state.leaderboardData[0].username}')" class="flex flex-col items-center hover:opacity-80 transition-opacity mt-2 cursor-pointer bg-transparent border-none w-full">
                     ${state.leaderboardData[0].pfpUrl
                       ? `<img src="${state.leaderboardData[0].pfpUrl}" alt="" class="w-12 h-12 rounded-full object-cover mb-2" onerror="this.style.display='none';" />`
                       : `<span class="w-12 h-12 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xl mb-2">${state.leaderboardData[0].pfp}</span>`
                     }
-                    <span class="stat-value stat-value-sm">@${state.leaderboardData[0].username}</span>
+                    <span class="stat-value stat-value-sm text-[var(--accent-light)]">@${state.leaderboardData[0].username}</span>
                     <div class="stat-subtitle">${state.leaderboardData[0].totalScore.toLocaleString()} points</div>
-                  </a>
+                  </button>
                 ` : `
                   <div class="text-center mt-2">
                     <div class="stat-value stat-value-sm">TBA</div>
@@ -4921,16 +4921,16 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                             </div>
                           </td>
                           <td class="py-4 px-2">
-                            <a href="https://warpcast.com/${host.username}" target="_blank" class="flex flex-col items-center hover:opacity-80 transition-opacity">
+                            <button onclick="openProfile('${host.username}')" class="flex flex-col items-center hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-none">
                               ${host.pfpUrl
                                 ? `<img src="${host.pfpUrl}" alt="" class="w-8 h-8 rounded-full object-cover mb-1" onerror="this.style.display='none';" />`
                                 : `<span class="w-8 h-8 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-sm mb-1">${host.pfp}</span>`
                               }
-                              <div class="text-xs font-medium text-[var(--text-primary)] text-center">
+                              <div class="text-xs font-medium text-[var(--accent-light)] text-center hover:underline">
                                 @${host.username}
                                 ${host.badges.map(badge => `<span title="${getBadgeTitle(badge)}">${getBadgeEmoji(badge)}</span>`).join('')}
                               </div>
-                            </a>
+                            </button>
                           </td>
                           <td class="py-4 px-2 text-right">
                             <div class="font-semibold text-[var(--accent-light)]" title="Contest: ${(host.contestScore || 0).toLocaleString()} | Votes: ${(host.voteScore || 0).toLocaleString()}">
@@ -6221,6 +6221,23 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (buyTokenButton) {
         buyTokenButton.onclick = window.openBuyToken;
       }
+
+      // Open profile function - opens Warpcast profile using SDK
+      window.openProfile = async (username) => {
+        const url = `https://warpcast.com/${username}`;
+        const sdk = window.FarcasterSDK;
+
+        if (sdk && sdk.actions && sdk.actions.openUrl) {
+          try {
+            await sdk.actions.openUrl(url);
+          } catch (e) {
+            console.log('Open URL error:', e);
+            window.open(url, '_blank');
+          }
+        } else {
+          window.open(url, '_blank');
+        }
+      };
 
       // (Cast success button removed - compose modal opens automatically on contest creation)
 
