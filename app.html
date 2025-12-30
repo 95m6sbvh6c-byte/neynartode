@@ -1952,11 +1952,32 @@
     }
 
     async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage, winnerCount = 1, participantCount = 0, isV2 = false) {
-      // Different prize line for NFT vs token
-      const prizeLine = isNft ? `🖼️ NFT Prize: ${prize}` : `🎁 Prize: ${prize}`;
+      // Calculate per-winner prize for multi-winner contests
+      let prizeLine;
+      let winnersLine = '';
 
-      // Winner count line (for multi-winner contests)
-      const winnersLine = winnerCount > 1 ? `👥 ${winnerCount} Winners!` : '';
+      if (isNft) {
+        prizeLine = `🖼️ NFT Prize: ${prize}`;
+      } else if (winnerCount > 1) {
+        // Parse the prize amount and calculate per-winner share
+        const prizeMatch = prize.match(/^([\d,.]+)\s*(.+)$/);
+        if (prizeMatch) {
+          const totalAmount = parseFloat(prizeMatch[1].replace(/,/g, ''));
+          const symbol = prizeMatch[2];
+          const perWinner = totalAmount / winnerCount;
+          // Format per-winner amount nicely
+          const perWinnerFormatted = perWinner >= 1000
+            ? perWinner.toLocaleString(undefined, { maximumFractionDigits: 2 })
+            : perWinner.toLocaleString(undefined, { maximumFractionDigits: 4 });
+          prizeLine = `🎁 Prize: ${prize} (${perWinnerFormatted} ${symbol} each)`;
+          winnersLine = `👥 ${winnerCount} Winners!`;
+        } else {
+          prizeLine = `🎁 Prize: ${prize}`;
+          winnersLine = `👥 ${winnerCount} Winners!`;
+        }
+      } else {
+        prizeLine = `🎁 Prize: ${prize}`;
+      }
 
       // Participants line (if we have participant data)
       const participantsLine = participantCount > 0 ? `🎟️ ${participantCount} entries so far` : '';
@@ -2767,7 +2788,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           nftType: state.prizeNftType,
           tokenId: tokenId,
           signerAddress: signerAddress,
-          escrowContract: CONFIG.CONTRACTS.nftContestEscrow
+          escrowAddress: CONFIG.CONTRACTS.nftContestEscrow
         });
 
         // Check if already approved
@@ -2782,7 +2803,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           if (state.prizeNftType === 'ERC721') {
             const approved = await nftContract.getApproved(tokenId);
             const isApprovedForAll = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-            console.log('ERC721 approval check:', { approved, isApprovedForAll });
+            console.log('ERC721 approval check:', { approved, isApprovedForAll, escrow: CONFIG.CONTRACTS.nftContestEscrow });
             isAlreadyApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
           } else {
             isAlreadyApproved = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
