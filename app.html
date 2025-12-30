@@ -413,6 +413,7 @@
                 announcement = {
                   prize: contestDetails.prize || 'tokens',
                   hostUsername: contestDetails.hostUser?.username || '',
+                  hostFid: contestDetails.hostUser?.fid || null,
                   timeLeft,
                   isNft: contestDetails.isNft || false,
                   nftImage: contestDetails.nftImage || '',
@@ -542,6 +543,7 @@
                 announcement = {
                   prize: contestDetails.prize || 'tokens',
                   hostUsername: contestDetails.hostUser?.username || '',
+                  hostFid: contestDetails.hostUser?.fid || null,
                   timeLeft,
                   isNft: contestDetails.isNft || false,
                   nftImage: contestDetails.nftImage || '',

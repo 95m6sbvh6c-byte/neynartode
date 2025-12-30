@@ -138,21 +138,26 @@ module.exports = async (req, res) => {
     if (announcement) {
       (async () => {
         try {
-          const { prize, hostUsername, timeLeft, isNft, nftImage, nftName } = announcement;
+          const { prize, hostUsername, hostFid, timeLeft, isNft, nftImage, nftName, contestId: annContestId } = announcement;
 
-          // Build announcement text (quote cast embed provides the link to original)
+          // Extract numeric contest ID for miniapp link
+          const numericContestId = (annContestId || contestId).toString().replace('v2-', '');
+          const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${numericContestId}`;
+
+          // Build announcement text with miniapp link
           const prizeText = isNft ? (nftName || 'an NFT') : (prize || 'tokens');
           const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
 
-          const castText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeft} remaining!`;
+          const castText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeft} remaining!
 
-          // Build embeds array - always quote the original contest cast
+${miniAppUrl}`;
+
+          // Build embeds array - quote the original contest cast using cast_id format
           const embeds = [];
 
-          // Add quote cast embed (this makes the announcement quote the original cast)
-          if (hostUsername && castHash) {
-            const quoteCastUrl = `https://warpcast.com/${hostUsername}/${castHash}`;
-            embeds.push({ url: quoteCastUrl });
+          // Add quote cast embed using cast_id format (prevents duplicate link issue)
+          if (hostFid && castHash) {
+            embeds.push({ cast_id: { fid: parseInt(hostFid), hash: castHash } });
           }
 
           // Add NFT image if applicable
