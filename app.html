@@ -3057,12 +3057,33 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       return extractCastInfo(input).hash;
     }
 
-    // Resolve a short hash to full hash by looking up user's recent casts
+    // Resolve a short hash to full hash by looking up user's casts
     async function resolveShortHash(shortHash, username) {
       try {
         console.log(`Resolving short hash ${shortHash} for user ${username}`);
 
-        // First get the user's FID from username
+        // Method 1: Try Neynar cast lookup API directly with short hash
+        // Sometimes this works if the hash is unique enough
+        try {
+          const directResponse = await fetch(`https://api.neynar.com/v2/farcaster/cast?identifier=${shortHash}&type=hash`, {
+            headers: {
+              'accept': 'application/json',
+              'api_key': CONFIG.NEYNAR_API_KEY
+            }
+          });
+
+          if (directResponse.ok) {
+            const directData = await directResponse.json();
+            if (directData.cast?.hash) {
+              console.log(`Direct lookup resolved ${shortHash} to: ${directData.cast.hash}`);
+              return directData.cast.hash;
+            }
+          }
+        } catch (e) {
+          console.log('Direct lookup failed, trying user casts method');
+        }
+
+        // Method 2: Get user's FID and search their casts
         const userResponse = await fetch(`https://api.neynar.com/v2/farcaster/user/by_username?username=${username}`, {
           headers: {
             'accept': 'application/json',
@@ -3079,29 +3100,45 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const fid = userData.user?.fid;
         if (!fid) return null;
 
-        // Fetch user's recent casts
-        const castsResponse = await fetch(`https://api.neynar.com/v2/farcaster/feed/user/casts?fid=${fid}&limit=25`, {
-          headers: {
-            'accept': 'application/json',
-            'api_key': CONFIG.NEYNAR_API_KEY
+        // Fetch user's casts with pagination to find older casts
+        let cursor = null;
+        let attempts = 0;
+        const maxAttempts = 4; // Check up to ~400 casts
+
+        while (attempts < maxAttempts) {
+          const url = cursor
+            ? `https://api.neynar.com/v2/farcaster/feed/user/casts?fid=${fid}&limit=100&cursor=${cursor}`
+            : `https://api.neynar.com/v2/farcaster/feed/user/casts?fid=${fid}&limit=100`;
+
+          const castsResponse = await fetch(url, {
+            headers: {
+              'accept': 'application/json',
+              'api_key': CONFIG.NEYNAR_API_KEY
+            }
+          });
+
+          if (!castsResponse.ok) break;
+
+          const castsData = await castsResponse.json();
+
+          // Find the cast that starts with the short hash
+          const matchingCast = castsData.casts?.find(cast =>
+            cast.hash.toLowerCase().startsWith(shortHash.toLowerCase())
+          );
+
+          if (matchingCast) {
+            console.log(`Resolved ${shortHash} to full hash: ${matchingCast.hash}`);
+            return matchingCast.hash;
           }
-        });
 
-        if (!castsResponse.ok) return null;
+          // Check if there are more casts to fetch
+          cursor = castsData.next?.cursor;
+          if (!cursor || !castsData.casts?.length) break;
 
-        const castsData = await castsResponse.json();
-
-        // Find the cast that starts with the short hash
-        const matchingCast = castsData.casts?.find(cast =>
-          cast.hash.toLowerCase().startsWith(shortHash.toLowerCase())
-        );
-
-        if (matchingCast) {
-          console.log(`Resolved ${shortHash} to full hash: ${matchingCast.hash}`);
-          return matchingCast.hash;
+          attempts++;
         }
 
-        console.log(`No cast found starting with ${shortHash}`);
+        console.log(`No cast found starting with ${shortHash} after checking ${(attempts + 1) * 100} casts`);
         return null;
       } catch (e) {
         console.error('Error resolving short hash:', e);
