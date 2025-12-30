@@ -3,9 +3,8 @@
  *
  * Handles the "Enter Raffle" button action:
  * 1. Posts like to contest cast via Neynar
- * 2. Posts recast to contest cast via Neynar
- * 3. Records entry in KV storage
- * 4. Posts announcement cast (auto-cast in background)
+ * 2. Records entry in KV storage
+ * 3. Posts announcement cast with quote of original cast (auto-cast in background)
  *
  * Called AFTER wallet transaction succeeds (for non-holders)
  * or directly (for holders who don't need wash trade).
@@ -118,32 +117,6 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Post recast via Neynar API
-    const recastResponse = await fetch('https://api.neynar.com/v2/farcaster/reaction', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': NEYNAR_API_KEY
-      },
-      body: JSON.stringify({
-        signer_uuid,
-        reaction_type: 'recast',
-        target: castHash
-      })
-    });
-
-    if (!recastResponse.ok) {
-      const errorData = await recastResponse.json().catch(() => ({}));
-      // Don't fail if already recasted
-      if (!errorData.message?.includes('already')) {
-        console.error('Recast failed:', errorData);
-        return res.status(500).json({
-          error: 'Failed to post recast',
-          details: errorData.message || recastResponse.statusText
-        });
-      }
-    }
-
     // Record entry in KV
     const entry = {
       fid: parseInt(fid),
@@ -180,8 +153,16 @@ module.exports = async (req, res) => {
 Go check this out!! 👇
 ${miniAppUrl}`;
 
-          // Build embeds array
+          // Build embeds array - always quote the original contest cast
           const embeds = [];
+
+          // Add quote cast embed (this makes the announcement quote the original cast)
+          if (hostUsername && castHash) {
+            const quoteCastUrl = `https://warpcast.com/${hostUsername}/${castHash}`;
+            embeds.push({ url: quoteCastUrl });
+          }
+
+          // Add NFT image if applicable
           if (isNft && nftImage) {
             // Use proxied URL for IPFS images to avoid rendering issues in Farcaster
             const proxiedImage = `https://frame-opal-eight.vercel.app/api/image-proxy?url=${encodeURIComponent(nftImage)}`;
