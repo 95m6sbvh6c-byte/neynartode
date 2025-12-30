@@ -4703,6 +4703,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 state.currentView === 'active' ? 'Active Contests' :
                 'Suggestions'}
             </h2>
+            ${state.currentView === 'active' ? `
+              <p class="text-xs text-[var(--text-secondary)] mt-1">Hold 100M <a href="#" onclick="openBuyToken(); return false;" class="text-[var(--accent-light)] hover:text-[var(--accent)] font-semibold">$NEYNARTODES</a> for free Raffle entries!</p>
+            ` : ''}
           </div>
 
           <!-- Other navigation tabs (excluding current page) -->
@@ -6190,31 +6193,33 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         connectButton.onclick = connectWallet;
       }
 
-      // Buy token button - opens Warpcast wallet swap directly in-app
+      // Buy token function - opens Warpcast wallet swap directly in-app
+      window.openBuyToken = async () => {
+        const tokenAddress = CONFIG.CONTRACTS.neynartodes;
+        // CAIP-19 format: eip155:{chainId}/erc20:{tokenAddress}
+        const buyTokenCaip19 = `eip155:${CONFIG.CHAIN_ID}/erc20:${tokenAddress}`;
+        const sdk = window.FarcasterSDK;
+
+        if (sdk && sdk.actions && sdk.actions.swapToken) {
+          try {
+            // Use native SDK swapToken action - opens swap form in-app
+            await sdk.actions.swapToken({
+              buyToken: buyTokenCaip19
+            });
+          } catch (e) {
+            console.log('Swap error:', e);
+            showToast(`$NEYNARTODES: ${tokenAddress}`, 'info', 8000);
+          }
+        } else {
+          // SDK not available - show contract address
+          showToast(`$NEYNARTODES Contract: ${tokenAddress}`, 'info', 8000);
+        }
+      };
+
+      // Buy token button on splash page
       const buyTokenButton = document.getElementById('buyTokenButton');
       if (buyTokenButton) {
-        buyTokenButton.onclick = async () => {
-          // Use CONFIG for token address and chain ID
-          const tokenAddress = CONFIG.CONTRACTS.neynartodes;
-          // CAIP-19 format: eip155:{chainId}/erc20:{tokenAddress}
-          const buyTokenCaip19 = `eip155:${CONFIG.CHAIN_ID}/erc20:${tokenAddress}`;
-          const sdk = window.FarcasterSDK;
-
-          if (sdk && sdk.actions && sdk.actions.swapToken) {
-            try {
-              // Use native SDK swapToken action - opens swap form in-app
-              await sdk.actions.swapToken({
-                buyToken: buyTokenCaip19
-              });
-            } catch (e) {
-              console.log('Swap error:', e);
-              showToast(`$NEYNARTODES: ${tokenAddress}`, 'info', 8000);
-            }
-          } else {
-            // SDK not available - show contract address
-            showToast(`$NEYNARTODES Contract: ${tokenAddress}`, 'info', 8000);
-          }
-        };
+        buyTokenButton.onclick = window.openBuyToken;
       }
 
       // (Cast success button removed - compose modal opens automatically on contest creation)
