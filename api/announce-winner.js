@@ -399,7 +399,7 @@ async function announceWinner(contestId) {
   }
 
   // Build announcement message
-  let announcement = `🎉 CONTEST COMPLETE!\n\n`;
+  let announcement = `🎉 CONTEST #${contestId} COMPLETE!\n\n`;
 
   if (customMessage) {
     announcement += `${customMessage}\n\n`;
@@ -415,9 +415,9 @@ async function announceWinner(contestId) {
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n`;
 
-  // Add TX hash link if available
+  // Add TX hash link if available (full link, not truncated)
   if (finalizeTxHash) {
-    announcement += `🔗 TX: basescan.org/tx/${finalizeTxHash.slice(0, 10)}...\n`;
+    announcement += `🔗 https://basescan.org/tx/${finalizeTxHash}\n`;
   }
 
   announcement += `\nCongrats ${winnerTag}! 🦎\n\n`;
@@ -592,7 +592,7 @@ async function announceNftWinner(contestId) {
   }
 
   // Build announcement message
-  let announcement = `🎉 NFT CONTEST COMPLETE!\n\n`;
+  let announcement = `🎉 NFT CONTEST #${contestId} COMPLETE!\n\n`;
 
   if (customMessage) {
     announcement += `${customMessage}\n\n`;
@@ -608,9 +608,9 @@ async function announceNftWinner(contestId) {
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n`;
 
-  // Add TX hash link if available
+  // Add TX hash link if available (full link, not truncated)
   if (finalizeTxHash) {
-    announcement += `🔗 TX: basescan.org/tx/${finalizeTxHash.slice(0, 10)}...\n`;
+    announcement += `🔗 https://basescan.org/tx/${finalizeTxHash}\n`;
   }
 
   announcement += `\nCongrats ${winnerTag}! 🦎\n\n`;
@@ -816,8 +816,8 @@ async function announceV2Winners(contestId) {
 
   // Build announcement message
   let announcement = isNftContest
-    ? `🎉 NFT CONTEST COMPLETE!\n\n`
-    : `🎉 CONTEST COMPLETE!\n\n`;
+    ? `🎉 NFT CONTEST #${contestId} COMPLETE!\n\n`
+    : `🎉 CONTEST #${contestId} COMPLETE!\n\n`;
 
   if (customMessage) {
     announcement += `${customMessage}\n\n`;
@@ -842,9 +842,9 @@ async function announceV2Winners(contestId) {
   announcement += `👥 Participants: ${participantCount}\n`;
   announcement += `🎲 Selected via Chainlink VRF\n`;
 
-  // Add TX hash link if available
+  // Add TX hash link if available (full link, not truncated)
   if (finalizeTxHash) {
-    announcement += `🔗 TX: basescan.org/tx/${finalizeTxHash.slice(0, 10)}...\n`;
+    announcement += `🔗 https://basescan.org/tx/${finalizeTxHash}\n`;
   }
 
   // Add congrats without re-tagging (already tagged in winner list above)
