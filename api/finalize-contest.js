@@ -57,6 +57,7 @@ const CONFIG = {
   // Blocked FIDs - these users cannot win contests
   BLOCKED_FIDS: [
     1188162,  // App owner - excluded from winning
+    1990047,  // ropiik - scam token contests
   ],
 };
 

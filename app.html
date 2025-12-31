@@ -2155,7 +2155,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
       },
       // Use V2 for new contests (set to true when ready to switch)
-      USE_V2_CONTESTS: true
+      USE_V2_CONTESTS: true,
+      // Banned FIDs - these users cannot create contests (scammers)
+      BANNED_FIDS: [
+        1990047,  // ropiik - scam token contests
+      ]
     };
 
     // ===== NFT ABIs (needed for approval and transfer flow) =====
@@ -6813,6 +6817,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const statusDiv = document.getElementById('launchStatus');
       try {
         console.log('🚀 launchContestOnChain() called');
+
+        // Check if user is banned from creating contests
+        if (CONFIG.BANNED_FIDS && CONFIG.BANNED_FIDS.includes(state.userFid)) {
+          showToast('Your account has been suspended from creating contests.', 'error');
+          if (statusDiv) statusDiv.textContent = '❌ Account suspended';
+          return;
+        }
+
         if (statusDiv) statusDiv.textContent = 'Step 5: Getting wallet provider...';
 
         // Use the stored provider (Farcaster or MetaMask)
