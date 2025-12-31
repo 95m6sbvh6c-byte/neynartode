@@ -865,9 +865,9 @@ module.exports = async (req, res) => {
     // OPTIMIZATION: For status=active, only check recent contests (active contests are always new)
     // This dramatically reduces RPC calls when loading the active contests tab
     const isActiveFilter = statusFilter === 'active';
-    // V2 needs more (30) since all new token contests use it, NFT only needs 10
-    const v2RecentLimit = isActiveFilter ? 30 : null;
-    const nftRecentLimit = isActiveFilter ? 10 : null;
+    // V2 needs 50 to catch longer-running contests (24h+ duration), NFT needs 15
+    const v2RecentLimit = isActiveFilter ? 50 : null;
+    const nftRecentLimit = isActiveFilter ? 15 : null;
 
     // Create fetcher functions for V1 token contests (most recent first)
     // SKIP for active filter: All new token contests use ContestManager V2 now
