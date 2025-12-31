@@ -865,9 +865,9 @@ module.exports = async (req, res) => {
     // OPTIMIZATION: For status=active, only check recent contests (active contests are always new)
     // This dramatically reduces RPC calls when loading the active contests tab
     const isActiveFilter = statusFilter === 'active';
-    // V2 needs 50 to catch longer-running contests (24h+ duration), NFT needs 15
-    const v2RecentLimit = isActiveFilter ? 50 : null;
-    const nftRecentLimit = isActiveFilter ? 15 : null;
+    // V2 needs 100 to catch longer-running contests (24h+ duration), NFT needs 20
+    const v2RecentLimit = isActiveFilter ? 100 : null;
+    const nftRecentLimit = isActiveFilter ? 20 : null;
 
     // Create fetcher functions for V1 token contests (most recent first)
     // SKIP for active filter: All new token contests use ContestManager V2 now
@@ -938,6 +938,8 @@ module.exports = async (req, res) => {
     // Conservative settings to avoid 429 errors during concurrent API calls
     const batchSize = 5; // Small batches to stay well under rate limit
     const delayMs = 400; // 400ms between batches for safety margin
+    const bigDelayEvery = 50; // Add 1 second delay after every 50 fetchers
+    const bigDelayMs = 1000; // 1 second pause to avoid rate limits
 
     const processBatch = async (fetchers) => {
       const results = [];
@@ -947,7 +949,13 @@ module.exports = async (req, res) => {
         const batchResults = await Promise.all(batch.map(fn => fn()));
         results.push(...batchResults);
         if (i + batchSize < fetchers.length) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
+          // Add extra 1 second delay every 50 fetchers to avoid rate limits
+          const fetchersDone = i + batchSize;
+          if (fetchersDone % bigDelayEvery === 0) {
+            await new Promise(resolve => setTimeout(resolve, bigDelayMs));
+          } else {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
         }
       }
       return results;
