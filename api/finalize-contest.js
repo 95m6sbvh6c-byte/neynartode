@@ -58,6 +58,10 @@ const CONFIG = {
   BLOCKED_FIDS: [
     1188162,  // App owner - excluded from winning
     1990047,  // ropiik - scam token contests
+    892902,   // liadavid - suspected multi-account abuse
+    533329,   // ayeshawaqas - suspected multi-account abuse
+    940217,   // futurepicker - suspected multi-account abuse
+    874752,   // lunamarsh - suspected multi-account abuse
   ],
 };
 
