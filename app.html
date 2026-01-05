@@ -31,41 +31,7 @@
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
 
-    // Try to play splash audio using Web Audio API (may bypass autoplay restrictions)
-    try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const response = await fetch('/Splash_Sound_Still%20Hungry_2.mp3');
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-
-      // Add gain node for volume control
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0.5;
-
-      source.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      source.onended = () => console.log('Splash audio finished playing');
-      source.start(0);
-
-      window.splashAudioPlayed = true;
-      console.log('Splash audio started playing (Web Audio API)');
-    } catch (e) {
-      console.log('Web Audio API attempt failed:', e.message);
-      // Fallback to HTML5 Audio
-      try {
-        window.splashAudioElement = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
-        window.splashAudioElement.volume = 0.5;
-        await window.splashAudioElement.play();
-        window.splashAudioPlayed = true;
-        console.log('Splash audio started playing (HTML5 fallback)');
-      } catch (e2) {
-        console.log('HTML5 Audio fallback also failed:', e2.message);
-      }
-    }
+    // Splash audio will be handled in attachEventListeners (plays on first tap)
 
     // Wagmi will be loaded dynamically when needed (to not block app loading)
     window.WagmiLoaded = false;
@@ -6265,35 +6231,36 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // ===== EVENT LISTENERS =====
     function attachEventListeners() {
-      // Splash audio - pre-load and play on first user interaction (no autoplay)
-      if (!state.isLoggedIn && !window.splashAudioPlayed && !window.splashAudioSetup) {
+      // Splash audio - plays on first tap (Enter button)
+      if (!state.isLoggedIn && !window.splashAudioSetup) {
         window.splashAudioSetup = true;
+        console.log('Setting up splash audio click handler');
 
-        // Create and pre-load audio element
-        if (!window.splashAudioElement) {
-          window.splashAudioElement = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
-          window.splashAudioElement.volume = 0.5;
-          window.splashAudioElement.preload = 'auto';
-          // Pre-load by loading the audio data
-          window.splashAudioElement.load();
-          console.log('Splash audio pre-loaded');
-        }
+        const playOnClick = async (e) => {
+          if (window.splashAudioPlayed) return;
+          window.splashAudioPlayed = true;
+          console.log('User clicked, attempting to play audio...');
 
-        // Play on first user interaction (click or touch)
-        const playOnInteraction = () => {
-          if (window.splashAudioElement && !window.splashAudioPlayed) {
-            window.splashAudioPlayed = true; // Set immediately to prevent double-play
-            window.splashAudioElement.play().then(() => {
-              console.log('Splash audio playing');
-            }).catch(e => {
-              console.log('Audio play failed:', e.message);
-            });
+          try {
+            const audio = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
+            audio.volume = 0.5;
+
+            // Log audio element state
+            console.log('Audio element created, src:', audio.src);
+            console.log('Audio canPlayType mp3:', audio.canPlayType('audio/mpeg'));
+
+            audio.onerror = (err) => {
+              console.log('Audio error event:', err, audio.error?.message || audio.error?.code);
+            };
+
+            await audio.play();
+            console.log('Splash audio playing!');
+          } catch (e) {
+            console.log('Audio play error:', e.name, e.message);
           }
         };
 
-        // Capture phase ensures we catch the event before any other handlers
-        document.addEventListener('click', playOnInteraction, { once: true, capture: true });
-        document.addEventListener('touchstart', playOnInteraction, { once: true, capture: true });
+        document.addEventListener('click', playOnClick, { once: true, capture: true });
       }
 
       // Login page
