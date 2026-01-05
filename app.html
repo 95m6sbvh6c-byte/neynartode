@@ -4641,11 +4641,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     function renderLoginPage() {
       return `
         <div class="min-h-screen flex flex-col items-center justify-center p-6" style="background: var(--bg-primary);">
-          <!-- Splash Audio -->
-          <audio id="splashAudio" preload="auto">
-            <source src="/Splash_Sound_Still%20Hungry_2.mp3" type="audio/mpeg">
-          </audio>
-
           <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.12) 0%, transparent 50%);"></div>
 
           <div class="max-w-md w-full text-center relative z-10 animate-fade-in">
@@ -6234,11 +6229,16 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // ===== EVENT LISTENERS =====
     function attachEventListeners() {
-      // Splash audio - try to play on login page
-      const splashAudio = document.getElementById('splashAudio');
-      if (splashAudio && !window.splashAudioPlayed) {
-        splashAudio.volume = 0.5;
-        splashAudio.play().then(() => {
+      // Splash audio - create global audio element that persists across re-renders
+      if (!state.isLoggedIn && !window.splashAudioPlayed) {
+        // Create audio element once and store globally
+        if (!window.splashAudioElement) {
+          window.splashAudioElement = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
+          window.splashAudioElement.volume = 0.5;
+        }
+
+        const audio = window.splashAudioElement;
+        audio.play().then(() => {
           window.splashAudioPlayed = true;
           console.log('Splash audio playing');
         }).catch(e => {
@@ -6247,10 +6247,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           if (!window.splashAudioFallbackSet) {
             window.splashAudioFallbackSet = true;
             const playOnInteraction = () => {
-              const audio = document.getElementById('splashAudio');
-              if (audio && !window.splashAudioPlayed) {
-                audio.volume = 0.5;
-                audio.play().then(() => {
+              if (window.splashAudioElement && !window.splashAudioPlayed) {
+                window.splashAudioElement.play().then(() => {
                   window.splashAudioPlayed = true;
                   console.log('Splash audio playing after interaction');
                 }).catch(() => {});
