@@ -65,7 +65,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'KV storage not configured' });
   }
 
-  const { seasonId = 2, clearAfterArchive = false, dryRun = false } = req.body || {};
+  const { seasonId = 2, clearAfterArchive = false, dryRun = false, displayName = null } = req.body || {};
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`ARCHIVE SEASON ${seasonId}${dryRun ? ' (DRY RUN)' : ''}`);
@@ -230,6 +230,7 @@ module.exports = async (req, res) => {
     const archive = {
       seasonId,
       theme: season.theme,
+      displayName: displayName || season.theme, // Custom name for the archive
       startTime: seasonStartTime,
       endTime: seasonEndTime,
       hostPool: ethers.formatEther(season.hostPool),
@@ -290,6 +291,7 @@ module.exports = async (req, res) => {
       dryRun,
       seasonId,
       theme: season.theme,
+      displayName: archive.displayName,
       archiveKey: `season_archive:${seasonId}`,
       cleared: clearAfterArchive && !dryRun,
       stats: archive.stats,
