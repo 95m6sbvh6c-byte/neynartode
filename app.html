@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Danng Neynartodes!! - Season 0</title>
+  <title>Neynartodes - Main Launch Coming Soon</title>
 
   <!-- Farcaster Mini App Embed -->
   <meta name="fc:frame" content='{"version":"1","imageUrl":"https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png","button":{"title":"Launch NEYNARtodes","action":{"type":"launch_frame","name":"NEYNARtodes","url":"https://frame-opal-eight.vercel.app/app","splashImageUrl":"https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png","splashBackgroundColor":"#667eea"}}}' />
@@ -2159,6 +2159,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       // Banned FIDs - these users cannot create contests (scammers)
       BANNED_FIDS: [
         1990047,  // ropiik - scam token contests
+      ],
+      // Maintenance mode - blocks all users except admins
+      MAINTENANCE_MODE: true,
+      ADMIN_FIDS: [
+        // 1188162,  // brianwharton - app owner (commented out to preview maintenance page)
       ]
     };
 
@@ -4498,6 +4503,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     function render() {
       const app = document.getElementById('app');
 
+      // Check for maintenance mode (admins bypass)
+      const isAdmin = CONFIG.ADMIN_FIDS && CONFIG.ADMIN_FIDS.includes(state.userFid);
+      if (CONFIG.MAINTENANCE_MODE && !isAdmin) {
+        app.innerHTML = renderMaintenancePage();
+        attachEventListeners();
+        return;
+      }
+
       if (!state.isLoggedIn) {
         app.innerHTML = renderLoginPage();
       } else if (state.launchSuccess) {
@@ -4515,6 +4528,48 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       }
 
       attachEventListeners();
+    }
+
+    function renderMaintenancePage() {
+      return `
+        <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);">
+          <img src="/neynartode-sticker.png" alt="Neynartodes" style="width: 150px; height: 150px; margin-bottom: 2rem; animation: pulse 2s ease-in-out infinite;" />
+
+          <h1 style="font-size: 2rem; font-weight: bold; color: #fff; margin-bottom: 1rem;">
+            Under Construction
+          </h1>
+
+          <div style="font-size: 1.25rem; color: #a0aec0; margin-bottom: 2rem; max-width: 400px;">
+            Preparing for Main Launch
+          </div>
+
+          <div style="background: rgba(102, 126, 234, 0.2); border: 1px solid rgba(102, 126, 234, 0.4); border-radius: 12px; padding: 1.5rem; max-width: 400px; margin-bottom: 2rem;">
+            <div style="font-size: 1rem; color: #e2e8f0; margin-bottom: 1rem;">
+              BETA Season has ended!
+            </div>
+            <div style="font-size: 0.9rem; color: #a0aec0; line-height: 1.6;">
+              Thank you to all our amazing hosts and participants. We're working on exciting updates for Main Launch.
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;">
+            <a href="https://warpcast.com/brianwharton" target="_blank" style="background: #667eea; color: white; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 500; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+              Follow for Updates
+            </a>
+          </div>
+
+          <div style="margin-top: 3rem; font-size: 0.8rem; color: #718096;">
+            Main Launch coming soon...
+          </div>
+        </div>
+
+        <style>
+          @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.9; }
+          }
+        </style>
+      `;
     }
 
     function renderLaunchSuccess() {
