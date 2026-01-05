@@ -31,19 +31,40 @@
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
 
-    // Try to play splash audio immediately after ready (within launch gesture context)
-    // Store globally to prevent garbage collection and interruption
+    // Try to play splash audio using Web Audio API (may bypass autoplay restrictions)
     try {
-      window.splashAudioElement = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
-      window.splashAudioElement.volume = 0.5;
-      window.splashAudioElement.onended = () => console.log('Splash audio finished playing');
-      window.splashAudioElement.onerror = (e) => console.log('Splash audio error:', e);
-      window.splashAudioElement.onpause = () => console.log('Splash audio paused');
-      await window.splashAudioElement.play();
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const response = await fetch('/Splash_Sound_Still%20Hungry_2.mp3');
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+
+      // Add gain node for volume control
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 0.5;
+
+      source.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      source.onended = () => console.log('Splash audio finished playing');
+      source.start(0);
+
       window.splashAudioPlayed = true;
-      console.log('Splash audio started playing (SDK ready context)');
+      console.log('Splash audio started playing (Web Audio API)');
     } catch (e) {
-      console.log('SDK ready audio attempt failed:', e.message);
+      console.log('Web Audio API attempt failed:', e.message);
+      // Fallback to HTML5 Audio
+      try {
+        window.splashAudioElement = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
+        window.splashAudioElement.volume = 0.5;
+        await window.splashAudioElement.play();
+        window.splashAudioPlayed = true;
+        console.log('Splash audio started playing (HTML5 fallback)');
+      } catch (e2) {
+        console.log('HTML5 Audio fallback also failed:', e2.message);
+      }
     }
 
     // Wagmi will be loaded dynamically when needed (to not block app loading)
