@@ -31,6 +31,17 @@
     window.FarcasterSDK = sdk;
     await sdk.actions.ready();
 
+    // Try to play splash audio immediately after ready (within launch gesture context)
+    try {
+      const splashAudio = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
+      splashAudio.volume = 0.5;
+      await splashAudio.play();
+      window.splashAudioPlayed = true;
+      console.log('Splash audio playing (SDK ready context)');
+    } catch (e) {
+      console.log('SDK ready audio attempt:', e.message);
+    }
+
     // Wagmi will be loaded dynamically when needed (to not block app loading)
     window.WagmiLoaded = false;
     window.loadWagmi = async function() {
