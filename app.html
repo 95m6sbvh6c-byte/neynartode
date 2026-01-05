@@ -4639,8 +4639,39 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     function renderLoginPage() {
+      // Try to autoplay splash sound (will work if user has interacted before or in mini-app context)
+      setTimeout(() => {
+        const splashAudio = document.getElementById('splashAudio');
+        if (splashAudio && !window.splashAudioPlayed) {
+          splashAudio.volume = 0.5;
+          splashAudio.play().then(() => {
+            window.splashAudioPlayed = true;
+            console.log('Splash audio playing');
+          }).catch(e => {
+            console.log('Autoplay blocked, will play on interaction:', e.message);
+            // Add one-time click handler to play on first interaction
+            const playOnInteraction = () => {
+              if (!window.splashAudioPlayed) {
+                splashAudio.play().then(() => {
+                  window.splashAudioPlayed = true;
+                }).catch(() => {});
+              }
+              document.removeEventListener('click', playOnInteraction);
+              document.removeEventListener('touchstart', playOnInteraction);
+            };
+            document.addEventListener('click', playOnInteraction, { once: true });
+            document.addEventListener('touchstart', playOnInteraction, { once: true });
+          });
+        }
+      }, 100);
+
       return `
         <div class="min-h-screen flex flex-col items-center justify-center p-6" style="background: var(--bg-primary);">
+          <!-- Splash Audio -->
+          <audio id="splashAudio" preload="auto">
+            <source src="/Splash_Sound_Still%20Hungry_2.mp3" type="audio/mpeg">
+          </audio>
+
           <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.12) 0%, transparent 50%);"></div>
 
           <div class="max-w-md w-full text-center relative z-10 animate-fade-in">
