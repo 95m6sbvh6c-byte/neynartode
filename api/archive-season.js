@@ -65,7 +65,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'KV storage not configured' });
   }
 
-  const { seasonId = 2, clearAfterArchive = false, dryRun = false, displayName = null } = req.body || {};
+  const { seasonId = 2, clearAfterArchive = false, dryRun = false, displayName = null, kvOnly = true } = req.body || {};
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`ARCHIVE SEASON ${seasonId}${dryRun ? ' (DRY RUN)' : ''}`);
@@ -198,6 +198,11 @@ module.exports = async (req, res) => {
           participantCount: contestDetails.participantCount || 0,
         };
       } else {
+        // Skip chain fallback if kvOnly mode (faster, avoids timeouts)
+        if (kvOnly) {
+          continue; // Skip contests not in KV cache
+        }
+
         // Fetch from chain (fallback)
         chainFetches++;
         try {
