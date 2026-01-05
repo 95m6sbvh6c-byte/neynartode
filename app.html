@@ -4639,32 +4639,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     function renderLoginPage() {
-      // Try to autoplay splash sound (will work if user has interacted before or in mini-app context)
-      setTimeout(() => {
-        const splashAudio = document.getElementById('splashAudio');
-        if (splashAudio && !window.splashAudioPlayed) {
-          splashAudio.volume = 0.5;
-          splashAudio.play().then(() => {
-            window.splashAudioPlayed = true;
-            console.log('Splash audio playing');
-          }).catch(e => {
-            console.log('Autoplay blocked, will play on interaction:', e.message);
-            // Add one-time click handler to play on first interaction
-            const playOnInteraction = () => {
-              if (!window.splashAudioPlayed) {
-                splashAudio.play().then(() => {
-                  window.splashAudioPlayed = true;
-                }).catch(() => {});
-              }
-              document.removeEventListener('click', playOnInteraction);
-              document.removeEventListener('touchstart', playOnInteraction);
-            };
-            document.addEventListener('click', playOnInteraction, { once: true });
-            document.addEventListener('touchstart', playOnInteraction, { once: true });
-          });
-        }
-      }, 100);
-
       return `
         <div class="min-h-screen flex flex-col items-center justify-center p-6" style="background: var(--bg-primary);">
           <!-- Splash Audio -->
@@ -6260,6 +6234,34 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // ===== EVENT LISTENERS =====
     function attachEventListeners() {
+      // Splash audio - try to play on login page
+      const splashAudio = document.getElementById('splashAudio');
+      if (splashAudio && !window.splashAudioPlayed) {
+        splashAudio.volume = 0.5;
+        splashAudio.play().then(() => {
+          window.splashAudioPlayed = true;
+          console.log('Splash audio playing');
+        }).catch(e => {
+          console.log('Autoplay blocked:', e.message);
+          // Set up one-time click handler as fallback
+          if (!window.splashAudioFallbackSet) {
+            window.splashAudioFallbackSet = true;
+            const playOnInteraction = () => {
+              const audio = document.getElementById('splashAudio');
+              if (audio && !window.splashAudioPlayed) {
+                audio.volume = 0.5;
+                audio.play().then(() => {
+                  window.splashAudioPlayed = true;
+                  console.log('Splash audio playing after interaction');
+                }).catch(() => {});
+              }
+            };
+            document.addEventListener('click', playOnInteraction, { once: true });
+            document.addEventListener('touchstart', playOnInteraction, { once: true });
+          }
+        });
+      }
+
       // Login page
       const connectButton = document.getElementById('connectButton');
       if (connectButton) {
