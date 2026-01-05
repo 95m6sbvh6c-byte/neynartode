@@ -4505,7 +4505,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const app = document.getElementById('app');
 
       // Check for maintenance mode (admins bypass)
-      const isAdmin = CONFIG.ADMIN_FIDS && CONFIG.ADMIN_FIDS.includes(state.userFid);
+      // Check both state.userFid and FarcasterContext since FID may not be in state yet
+      const userFid = state.userFid || window.FarcasterContext?.user?.fid;
+      const isAdmin = CONFIG.ADMIN_FIDS && userFid && CONFIG.ADMIN_FIDS.includes(userFid);
       if (CONFIG.MAINTENANCE_MODE && !isAdmin) {
         app.innerHTML = renderMaintenancePage();
         attachEventListeners();
