@@ -51,6 +51,10 @@
       "dest": "/public/Neynartodes_1200x638_splash.png"
     },
     {
+      "src": "/splash-sound.mp3",
+      "dest": "/public/splash-sound.mp3"
+    },
+    {
       "src": "/.well-known/farcaster.json",
       "dest": "/.well-known/farcaster.json"
     },
