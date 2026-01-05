@@ -92,61 +92,112 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: `Season ${seasonId} not found or not started` });
     }
 
-    // Get all contests from the season index
-    const indexKey = `season:${seasonId}:contests`;
-    const contestKeys = await kv.zrange(indexKey, 0, -1) || [];
+    // ═══════════════════════════════════════════════════════════════════
+    // COMPREHENSIVE ARCHIVE: Scan ALL contest caches from KV storage
+    // This ensures we archive ALL contests, not just those in season index
+    // ═══════════════════════════════════════════════════════════════════
 
-    console.log(`\nFound ${contestKeys.length} contests in season ${seasonId} index`);
-
-    // Collect all contest data
-    const contestsData = [];
-    const hostStats = {};
-
-    // Initialize contracts
+    // Initialize contracts to get total counts
     const contestEscrow = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
     const nftContestEscrow = new ethers.Contract(CONFIG.NFT_CONTEST_ESCROW, NFT_CONTEST_ESCROW_ABI, provider);
     const contestManager = new ethers.Contract(CONFIG.CONTEST_MANAGER_V2, CONTEST_MANAGER_V2_ABI, provider);
 
-    for (const contestKey of contestKeys) {
+    // Get total contest counts from all three contracts
+    const [tokenNextId, nftNextId, v2NextId] = await Promise.all([
+      contestEscrow.nextContestId(),
+      nftContestEscrow.nextContestId().catch(() => 1n),
+      contestManager.nextContestId().catch(() => BigInt(CONFIG.V2_START_ID)),
+    ]);
+
+    const totalTokenContests = Number(tokenNextId) - 1;
+    const totalNftContests = Number(nftNextId) - 1;
+    const totalV2Contests = Number(v2NextId) - CONFIG.V2_START_ID;
+
+    console.log(`\nContract contest counts: Token=${totalTokenContests}, NFT=${totalNftContests}, V2=${totalV2Contests}`);
+    console.log(`Total possible contests: ${totalTokenContests + totalNftContests + totalV2Contests}`);
+
+    // Build list of ALL contest keys to scan
+    const allContestKeys = [];
+    for (let i = 1; i <= totalTokenContests; i++) allContestKeys.push(`token-${i}`);
+    for (let i = 1; i <= totalNftContests; i++) allContestKeys.push(`nft-${i}`);
+    for (let i = CONFIG.V2_START_ID; i < Number(v2NextId); i++) allContestKeys.push(`v2-${i}`);
+
+    console.log(`Scanning ${allContestKeys.length} contest caches from KV...`);
+
+    // Collect all contest data
+    const contestsData = [];
+    const hostStats = {};
+    let kvHits = 0;
+    let chainFetches = 0;
+
+    for (const contestKey of allContestKeys) {
       const [type, idStr] = contestKey.split('-');
       const id = parseInt(idStr);
 
-      console.log(`  Processing ${contestKey}...`);
+      // Try KV contest cache first
+      const cacheKey = `contest:${type}:${id}`;
+      let contestDetails = await kv.get(cacheKey);
 
-      // Get social data from cache
+      // Get social data from KV
       const socialKey = `contest:social:${contestKey}`;
       const socialData = await kv.get(socialKey) || { likes: 0, recasts: 0, replies: 0 };
 
-      // Get contest details from chain
-      let contestDetails = null;
+      // If no cache, fetch from chain
       let host = null;
       let winner = null;
       let winners = [];
 
-      try {
-        if (type === 'token') {
-          const contest = await contestEscrow.getContest(id);
-          host = contest[0];
-          winner = contest[9];
-          contestDetails = {
-            type: 'token',
-            id,
-            host,
-            prizeToken: contest[1],
-            prizeAmount: ethers.formatEther(contest[2]),
-            startTime: Number(contest[3]),
-            endTime: Number(contest[4]),
-            castId: contest[5],
-            status: Number(contest[8]),
-            winner,
-          };
-        } else if (type === 'nft') {
-          const contest = await nftContestEscrow.getContest(id);
-          host = contest[0];
-          winner = contest[11];
-          contestDetails = {
-            type: 'nft',
-            id,
+      if (contestDetails) {
+        kvHits++;
+        host = contestDetails.host;
+        winner = contestDetails.winner || '0x0000000000000000000000000000000000000000';
+        winners = contestDetails.winners || [];
+
+        // Normalize cached data to archive format
+        contestDetails = {
+          type,
+          id,
+          host,
+          prizeToken: contestDetails.prizeToken,
+          prizeAmount: contestDetails.prizeAmount?.toString() || '0',
+          startTime: contestDetails.startTime,
+          endTime: contestDetails.endTime,
+          castId: contestDetails.castId,
+          status: contestDetails.status,
+          winner,
+          winners,
+          isNft: contestDetails.isNft || type === 'nft',
+          nftName: contestDetails.nftName,
+          nftImage: contestDetails.nftImage,
+          participantCount: contestDetails.participantCount || 0,
+        };
+      } else {
+        // Fetch from chain (fallback)
+        chainFetches++;
+        try {
+          if (type === 'token') {
+            const contest = await contestEscrow.getContest(id);
+            host = contest[0];
+            winner = contest[9];
+            contestDetails = {
+              type: 'token',
+              id,
+              host,
+              prizeToken: contest[1],
+              prizeAmount: ethers.formatEther(contest[2]),
+              startTime: Number(contest[3]),
+              endTime: Number(contest[4]),
+              castId: contest[5],
+              status: Number(contest[8]),
+              winner,
+            };
+          } else if (type === 'nft') {
+            const contest = await nftContestEscrow.getContest(id);
+            host = contest[0];
+            winner = contest[11];
+            contestDetails = {
+              type: 'nft',
+              id,
             host,
             nftType: Number(contest[1]),
             nftContract: contest[2],
@@ -226,6 +277,18 @@ module.exports = async (req, res) => {
       }))
       .sort((a, b) => b.totalScore - a.totalScore);
 
+    // Calculate totals by type
+    const tokenContests = contestsData.filter(c => c.type === 'token');
+    const nftContests = contestsData.filter(c => c.type === 'nft');
+    const v2Contests = contestsData.filter(c => c.type === 'v2');
+
+    // Calculate total social engagement
+    const totalLikes = contestsData.reduce((sum, c) => sum + (c.social?.likes || 0), 0);
+    const totalRecasts = contestsData.reduce((sum, c) => sum + (c.social?.recasts || 0), 0);
+    const totalReplies = contestsData.reduce((sum, c) => sum + (c.social?.replies || 0), 0);
+
+    console.log(`\nData Sources: ${kvHits} from KV cache, ${chainFetches} from blockchain`);
+
     // Build archive object
     const archive = {
       seasonId,
@@ -239,19 +302,27 @@ module.exports = async (req, res) => {
       archivedAt: Date.now(),
       stats: {
         totalContests: contestsData.length,
+        tokenContests: tokenContests.length,
+        nftContests: nftContests.length,
+        v2Contests: v2Contests.length,
         completedContests: contestsData.filter(c => c.status === 2).length,
         cancelledContests: contestsData.filter(c => c.status === 3).length,
         uniqueHosts: Object.keys(hostStats).length,
+        totalLikes,
+        totalRecasts,
+        totalReplies,
+        totalEngagement: totalLikes + totalRecasts + totalReplies,
       },
       contests: contestsData,
       leaderboard: hostRankings.slice(0, 50), // Top 50 hosts
     };
 
     console.log(`\nArchive Summary:`);
-    console.log(`  Total Contests: ${archive.stats.totalContests}`);
+    console.log(`  Total Contests: ${archive.stats.totalContests} (Token: ${archive.stats.tokenContests}, NFT: ${archive.stats.nftContests}, V2: ${archive.stats.v2Contests})`);
     console.log(`  Completed: ${archive.stats.completedContests}`);
     console.log(`  Cancelled: ${archive.stats.cancelledContests}`);
     console.log(`  Unique Hosts: ${archive.stats.uniqueHosts}`);
+    console.log(`  Total Engagement: ${archive.stats.totalEngagement} (Likes: ${archive.stats.totalLikes}, Recasts: ${archive.stats.totalRecasts}, Replies: ${archive.stats.totalReplies})`);
     console.log(`  Top Host: ${hostRankings[0]?.address || 'N/A'} (${hostRankings[0]?.totalScore || 0} pts)`);
 
     if (!dryRun) {
@@ -265,12 +336,13 @@ module.exports = async (req, res) => {
         console.log(`\nClearing season ${seasonId} cache...`);
 
         // Clear social data for each contest
-        for (const contestKey of contestKeys) {
+        for (const contestKey of allContestKeys) {
           const socialKey = `contest:social:${contestKey}`;
           await kv.del(socialKey);
         }
 
         // Clear the season index
+        const indexKey = `season:${seasonId}:contests`;
         await kv.del(indexKey);
 
         // Clear leaderboard cache
