@@ -6229,35 +6229,35 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // ===== EVENT LISTENERS =====
     function attachEventListeners() {
-      // Splash audio - create global audio element that persists across re-renders
-      if (!state.isLoggedIn && !window.splashAudioPlayed) {
-        // Create audio element once and store globally
+      // Splash audio - pre-load and play on first user interaction (no autoplay)
+      if (!state.isLoggedIn && !window.splashAudioPlayed && !window.splashAudioSetup) {
+        window.splashAudioSetup = true;
+
+        // Create and pre-load audio element
         if (!window.splashAudioElement) {
           window.splashAudioElement = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
           window.splashAudioElement.volume = 0.5;
+          window.splashAudioElement.preload = 'auto';
+          // Pre-load by loading the audio data
+          window.splashAudioElement.load();
+          console.log('Splash audio pre-loaded');
         }
 
-        const audio = window.splashAudioElement;
-        audio.play().then(() => {
-          window.splashAudioPlayed = true;
-          console.log('Splash audio playing');
-        }).catch(e => {
-          console.log('Autoplay blocked:', e.message);
-          // Set up one-time click handler as fallback
-          if (!window.splashAudioFallbackSet) {
-            window.splashAudioFallbackSet = true;
-            const playOnInteraction = () => {
-              if (window.splashAudioElement && !window.splashAudioPlayed) {
-                window.splashAudioElement.play().then(() => {
-                  window.splashAudioPlayed = true;
-                  console.log('Splash audio playing after interaction');
-                }).catch(() => {});
-              }
-            };
-            document.addEventListener('click', playOnInteraction, { once: true });
-            document.addEventListener('touchstart', playOnInteraction, { once: true });
+        // Play on first user interaction (click or touch)
+        const playOnInteraction = () => {
+          if (window.splashAudioElement && !window.splashAudioPlayed) {
+            window.splashAudioPlayed = true; // Set immediately to prevent double-play
+            window.splashAudioElement.play().then(() => {
+              console.log('Splash audio playing');
+            }).catch(e => {
+              console.log('Audio play failed:', e.message);
+            });
           }
-        });
+        };
+
+        // Capture phase ensures we catch the event before any other handlers
+        document.addEventListener('click', playOnInteraction, { once: true, capture: true });
+        document.addEventListener('touchstart', playOnInteraction, { once: true, capture: true });
       }
 
       // Login page
