@@ -130,17 +130,43 @@ module.exports = async (req, res) => {
     let kvHits = 0;
     let chainFetches = 0;
 
+    // BATCH READ: Read all contest data and social data from KV in batches
+    const BATCH_SIZE = 50;
+    const allContestData = new Map();
+    const allSocialData = new Map();
+
+    // Batch read contest details
+    for (let i = 0; i < allContestKeys.length; i += BATCH_SIZE) {
+      const batch = allContestKeys.slice(i, i + BATCH_SIZE);
+      const contestCacheKeys = batch.map(k => {
+        const [type, id] = k.split('-');
+        return `contest:${type}:${id}`;
+      });
+      const socialCacheKeys = batch.map(k => `contest:social:${k}`);
+
+      // Batch read from KV using mget
+      const [contestResults, socialResults] = await Promise.all([
+        kv.mget(...contestCacheKeys),
+        kv.mget(...socialCacheKeys),
+      ]);
+
+      // Map results to contest keys
+      batch.forEach((contestKey, idx) => {
+        if (contestResults[idx]) allContestData.set(contestKey, contestResults[idx]);
+        if (socialResults[idx]) allSocialData.set(contestKey, socialResults[idx]);
+      });
+    }
+
+    console.log(`Batch read complete: ${allContestData.size} contest details, ${allSocialData.size} social records from KV`);
+
+    // Process each contest
     for (const contestKey of allContestKeys) {
       const [type, idStr] = contestKey.split('-');
       const id = parseInt(idStr);
 
-      // Try KV contest cache first
-      const cacheKey = `contest:${type}:${id}`;
-      let contestDetails = await kv.get(cacheKey);
-
-      // Get social data from KV
-      const socialKey = `contest:social:${contestKey}`;
-      const socialData = await kv.get(socialKey) || { likes: 0, recasts: 0, replies: 0 };
+      // Get from batch read results
+      let contestDetails = allContestData.get(contestKey);
+      const socialData = allSocialData.get(contestKey) || { likes: 0, recasts: 0, replies: 0 };
 
       // If no cache, fetch from chain
       let host = null;
