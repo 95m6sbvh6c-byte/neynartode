@@ -65,7 +65,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'KV storage not configured' });
   }
 
-  const { seasonId = 2, clearAfterArchive = false, dryRun = false, displayName = null, kvOnly = true } = req.body || {};
+  const { seasonId = 2, clearAfterArchive = false, dryRun = false, displayName = null, kvOnly = true, scanAllContracts = false } = req.body || {};
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`ARCHIVE SEASON ${seasonId}${dryRun ? ' (DRY RUN)' : ''}`);
@@ -92,37 +92,46 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: `Season ${seasonId} not found or not started` });
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // COMPREHENSIVE ARCHIVE: Scan ALL contest caches from KV storage
-    // This ensures we archive ALL contests, not just those in season index
-    // ═══════════════════════════════════════════════════════════════════
-
-    // Initialize contracts to get total counts
+    // Initialize contracts
     const contestEscrow = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
     const nftContestEscrow = new ethers.Contract(CONFIG.NFT_CONTEST_ESCROW, NFT_CONTEST_ESCROW_ABI, provider);
     const contestManager = new ethers.Contract(CONFIG.CONTEST_MANAGER_V2, CONTEST_MANAGER_V2_ABI, provider);
 
-    // Get total contest counts from all three contracts
-    const [tokenNextId, nftNextId, v2NextId] = await Promise.all([
-      contestEscrow.nextContestId(),
-      nftContestEscrow.nextContestId().catch(() => 1n),
-      contestManager.nextContestId().catch(() => BigInt(CONFIG.V2_START_ID)),
-    ]);
+    // Build list of contest keys to scan
+    let allContestKeys = [];
 
-    const totalTokenContests = Number(tokenNextId) - 1;
-    const totalNftContests = Number(nftNextId) - 1;
-    const totalV2Contests = Number(v2NextId) - CONFIG.V2_START_ID;
+    if (scanAllContracts) {
+      // ═══════════════════════════════════════════════════════════════════
+      // COMPREHENSIVE SCAN: Enumerate ALL contests from all 3 contracts
+      // ═══════════════════════════════════════════════════════════════════
+      console.log('Scanning ALL contracts for contests...');
 
-    console.log(`\nContract contest counts: Token=${totalTokenContests}, NFT=${totalNftContests}, V2=${totalV2Contests}`);
-    console.log(`Total possible contests: ${totalTokenContests + totalNftContests + totalV2Contests}`);
+      const [tokenNextId, nftNextId, v2NextId] = await Promise.all([
+        contestEscrow.nextContestId(),
+        nftContestEscrow.nextContestId().catch(() => 1n),
+        contestManager.nextContestId().catch(() => BigInt(CONFIG.V2_START_ID)),
+      ]);
 
-    // Build list of ALL contest keys to scan
-    const allContestKeys = [];
-    for (let i = 1; i <= totalTokenContests; i++) allContestKeys.push(`token-${i}`);
-    for (let i = 1; i <= totalNftContests; i++) allContestKeys.push(`nft-${i}`);
-    for (let i = CONFIG.V2_START_ID; i < Number(v2NextId); i++) allContestKeys.push(`v2-${i}`);
+      const totalTokenContests = Number(tokenNextId) - 1;
+      const totalNftContests = Number(nftNextId) - 1;
+      const totalV2Contests = Number(v2NextId) - CONFIG.V2_START_ID;
 
-    console.log(`Scanning ${allContestKeys.length} contest caches from KV...`);
+      console.log(`Contract counts: Token=${totalTokenContests}, NFT=${totalNftContests}, V2=${totalV2Contests}`);
+
+      for (let i = 1; i <= totalTokenContests; i++) allContestKeys.push(`token-${i}`);
+      for (let i = 1; i <= totalNftContests; i++) allContestKeys.push(`nft-${i}`);
+      for (let i = CONFIG.V2_START_ID; i < Number(v2NextId); i++) allContestKeys.push(`v2-${i}`);
+    } else {
+      // ═══════════════════════════════════════════════════════════════════
+      // FAST MODE: Use season index from KV (default, much faster)
+      // ═══════════════════════════════════════════════════════════════════
+      console.log('Using season index from KV (fast mode)...');
+
+      const indexKey = `season:${seasonId}:contests`;
+      allContestKeys = await kv.zrange(indexKey, 0, -1) || [];
+    }
+
+    console.log(`Scanning ${allContestKeys.length} contests...`);
 
     // Collect all contest data
     const contestsData = [];
@@ -231,38 +240,39 @@ module.exports = async (req, res) => {
             contestDetails = {
               type: 'nft',
               id,
-            host,
-            nftType: Number(contest[1]),
-            nftContract: contest[2],
-            tokenId: contest[3].toString(),
-            amount: contest[4].toString(),
-            startTime: Number(contest[5]),
-            endTime: Number(contest[6]),
-            castId: contest[7],
-            status: Number(contest[10]),
-            winner,
-          };
-        } else if (type === 'v2') {
-          const contest = await contestManager.getContest(id);
-          host = contest[0];
-          winners = contest[8] || [];
-          contestDetails = {
-            type: 'v2',
-            id,
-            host,
-            contestType: Number(contest[1]),
-            status: Number(contest[2]),
-            castId: contest[3],
-            endTime: Number(contest[4]),
-            prizeToken: contest[5],
-            prizeAmount: ethers.formatEther(contest[6]),
-            winnerCount: Number(contest[7]),
-            winners: winners.map(w => w.toLowerCase()),
-          };
+              host,
+              nftType: Number(contest[1]),
+              nftContract: contest[2],
+              tokenId: contest[3].toString(),
+              amount: contest[4].toString(),
+              startTime: Number(contest[5]),
+              endTime: Number(contest[6]),
+              castId: contest[7],
+              status: Number(contest[10]),
+              winner,
+            };
+          } else if (type === 'v2') {
+            const contest = await contestManager.getContest(id);
+            host = contest[0];
+            winners = contest[8] || [];
+            contestDetails = {
+              type: 'v2',
+              id,
+              host,
+              contestType: Number(contest[1]),
+              status: Number(contest[2]),
+              castId: contest[3],
+              endTime: Number(contest[4]),
+              prizeToken: contest[5],
+              prizeAmount: ethers.formatEther(contest[6]),
+              winnerCount: Number(contest[7]),
+              winners: winners.map(w => w.toLowerCase()),
+            };
+          }
+        } catch (e) {
+          console.log(`    Error fetching contest: ${e.message}`);
+          continue;
         }
-      } catch (e) {
-        console.log(`    Error fetching contest: ${e.message}`);
-        continue;
       }
 
       if (!contestDetails) continue;
