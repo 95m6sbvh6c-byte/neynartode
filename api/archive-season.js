@@ -28,14 +28,17 @@ const CONFIG = {
 // Contract ABIs
 const CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function nextContestId() external view returns (uint256)',
 ];
 
 const NFT_CONTEST_ESCROW_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+  'function nextContestId() external view returns (uint256)',
 ];
 
 const CONTEST_MANAGER_V2_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
+  'function nextContestId() external view returns (uint256)',
 ];
 
 const PRIZE_NFT_ABI = [
