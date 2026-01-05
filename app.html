@@ -32,14 +32,18 @@
     await sdk.actions.ready();
 
     // Try to play splash audio immediately after ready (within launch gesture context)
+    // Store globally to prevent garbage collection and interruption
     try {
-      const splashAudio = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
-      splashAudio.volume = 0.5;
-      await splashAudio.play();
+      window.splashAudioElement = new Audio('/Splash_Sound_Still%20Hungry_2.mp3');
+      window.splashAudioElement.volume = 0.5;
+      window.splashAudioElement.onended = () => console.log('Splash audio finished playing');
+      window.splashAudioElement.onerror = (e) => console.log('Splash audio error:', e);
+      window.splashAudioElement.onpause = () => console.log('Splash audio paused');
+      await window.splashAudioElement.play();
       window.splashAudioPlayed = true;
-      console.log('Splash audio playing (SDK ready context)');
+      console.log('Splash audio started playing (SDK ready context)');
     } catch (e) {
-      console.log('SDK ready audio attempt:', e.message);
+      console.log('SDK ready audio attempt failed:', e.message);
     }
 
     // Wagmi will be loaded dynamically when needed (to not block app loading)
