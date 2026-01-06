@@ -6958,6 +6958,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const contestPrefix = isTestMode ? CONFIG.TEST_PREFIX : CONFIG.MAIN_PREFIX;
         console.log(`   Mode: ${isTestMode ? 'TEST (T-)' : 'MAIN (M-)'}`);
 
+        // Determine if this is an NFT contest (used for announcement text)
+        const isNftContest = state.prizeType === 'nft';
+
         if (statusDiv) statusDiv.textContent = 'Step 5: Getting wallet provider...';
 
         // Use the stored provider (Farcaster or MetaMask)
