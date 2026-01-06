@@ -140,9 +140,9 @@ module.exports = async (req, res) => {
         try {
           const { prize, hostUsername, hostFid, timeLeft, isNft, nftImage, nftName, contestId: annContestId } = announcement;
 
-          // Extract numeric contest ID for miniapp link
-          const numericContestId = (annContestId || contestId).toString().replace('v2-', '');
-          const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${numericContestId}`;
+          // Use full contest ID (M-1, T-1, etc.) for miniapp link
+          const fullContestId = annContestId || contestId;
+          const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${fullContestId}`;
 
           // Build announcement text with miniapp link
           const prizeText = isNft ? (nftName || 'an NFT') : (prize || 'tokens');

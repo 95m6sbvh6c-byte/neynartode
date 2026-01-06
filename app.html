@@ -184,12 +184,9 @@
               throw new Error('No FID available from Farcaster context');
             }
 
-            // Determine if this is a V2 contest (ID >= 105) and create proper entry key
-            const V2_START_ID = 105;
-            const contestIdNum = parseInt(contestIdParam);
-            const isV2Contest = contestIdNum >= V2_START_ID;
-            const entryKey = isV2Contest ? `v2-${contestIdParam}` : contestIdParam;
-            console.log('Contest ID:', contestIdParam, 'isV2:', isV2Contest, 'entryKey:', entryKey);
+            // Entry key is the contest ID with M- or T- prefix
+            const entryKey = contestIdParam;
+            console.log('Contest ID:', contestIdParam, 'entryKey:', entryKey);
 
             // Check if user has already entered this contest
             try {
@@ -379,7 +376,7 @@
                 if (contestRes.ok) {
                   const contestData = await contestRes.json();
                   contestDetails = contestData.contests?.find(c =>
-                    c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
+                    c.contestId == contestIdParam
                   );
                   if (contestDetails?.castId) {
                     castHash = contestDetails.castId.split('|')[0];
@@ -428,10 +425,10 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   fid: userFid,
-                  contestId: entryKey,  // Use proper entry key (v2-{id} for V2 contests)
+                  contestId: entryKey,
                   castHash: castHash,
                   addresses: [from],
-                  announcement  // Auto-cast in background
+                  announcement
                 })
               });
 
@@ -507,9 +504,8 @@
                 const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
                 if (contestRes.ok) {
                   const contestData = await contestRes.json();
-                  // Find this contest by ID (check both V1 and V2)
                   contestDetails = contestData.contests?.find(c =>
-                    c.contestId == contestIdParam || c.contestId == `v2-${contestIdParam}`
+                    c.contestId == contestIdParam
                   );
                   if (contestDetails?.castId) {
                     // castId format: "0xhash|R1L0P1" - extract just the hash
@@ -561,11 +557,11 @@
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     fid: userFid,
-                    contestId: entryKey,  // Use proper entry key (v2-{id} for V2 contests)
+                    contestId: entryKey,
                     castHash: castHash,
                     addresses: [from],
                     buyAndBurnTx: txHash,
-                    announcement  // Auto-cast in background
+                    announcement
                   })
                 }).then(res => res.json()).then(data => {
                   console.log('Entry recorded:', data);
@@ -1498,10 +1494,8 @@
         }
       }
 
-      // Use proper entry keys - v2-{id} for V2 contests, {id} for V1
-      const contestIds = (state.upcomingContests || []).map(c =>
-        c.isV2 ? `v2-${c.contestId}` : c.contestId
-      ).join(',');
+      // Contest IDs already have M- or T- prefix
+      const contestIds = (state.upcomingContests || []).map(c => c.contestId).join(',');
       if (!contestIds) return;
 
       try {
@@ -1682,7 +1676,6 @@
     async function enterRaffle(button) {
       const contestId = button.dataset.contestId;
       const castId = button.dataset.castId;
-      const isV2 = button.dataset.isV2 === 'true';
 
       // Extract additional data for auto-cast announcement
       const prize = decodeURIComponent(button.dataset.prize || '');
@@ -1698,8 +1691,8 @@
         return;
       }
 
-      // Check if already entered (use v2- prefix for V2 contests)
-      const entryKey = isV2 ? `v2-${contestId}` : contestId;
+      // Check if already entered
+      const entryKey = contestId;
       if (state.contestEntries[entryKey]?.entered) {
         showToast('You have already entered this contest!', 'info');
         return;
@@ -1872,17 +1865,17 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fid: state.userFid,
-            contestId: entryKey,  // Use entryKey (v2-{id} for V2, {id} for V1)
+            contestId: entryKey,
             castHash: castHash,
             addresses: userAddresses.length > 0 ? userAddresses : [state.userAddress],
-            announcement  // Auto-cast in background
+            announcement
           })
         });
 
         if (response.ok) {
           const data = await response.json();
 
-          // Update state (use entryKey for proper V2 tracking)
+          // Update state
           state.contestEntries[entryKey] = {
             entered: true,
             hasReplied: false,
@@ -1933,81 +1926,46 @@
 
     // Cast sharing modal functions - wrapper to read from data attributes (avoids URL escaping issues in onclick)
     function openCastModalFromData(button) {
-      const contestId = parseInt(button.dataset.contestId);
+      const contestId = button.dataset.contestId; // Keep as string for M-1, T-1 format
       const prize = decodeURIComponent(button.dataset.prize || '');
       const hoursLeft = parseInt(button.dataset.hours);
       const minutesLeft = parseInt(button.dataset.minutes);
       const volumeReq = parseFloat(button.dataset.volume) || 0;
       const tokenSymbol = decodeURIComponent(button.dataset.token || '');
       const hostUsername = decodeURIComponent(button.dataset.host || '');
-      const requireRecast = button.dataset.recast === 'true';
-      const requireLike = button.dataset.like === 'true';
-      const requireReply = button.dataset.reply === 'true';
       const castId = button.dataset.castId || '';
       const isNft = button.dataset.isNft === 'true';
       const nftImage = decodeURIComponent(button.dataset.nftImage || '');
       const winnerCount = parseInt(button.dataset.winnerCount) || 1;
       const participantCount = parseInt(button.dataset.participantCount) || 0;
-      const isV2 = button.dataset.isV2 === 'true';
 
-      shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage, winnerCount, participantCount, isV2);
+      shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, castId, isNft, nftImage, winnerCount, participantCount, button);
     }
 
-    async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, requireRecast, requireLike, requireReply, castId, isNft, nftImage, winnerCount = 1, participantCount = 0, isV2 = false) {
-      // Calculate per-winner prize for multi-winner contests
-      let prizeLine;
-      let winnersLine = '';
+    async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, castId, isNft, nftImage, winnerCount = 1, participantCount = 0, buttonEl = null) {
+      // Format prize text - similar to enter-contest autocast
+      const prizeText = isNft ? (prize || 'an NFT') : (prize || 'tokens');
 
-      if (isNft) {
-        prizeLine = `🖼️ NFT Prize: ${prize}`;
-      } else if (winnerCount > 1) {
-        // Parse the prize amount and calculate per-winner share
-        const prizeMatch = prize.match(/^([\d,.]+)\s*(.+)$/);
-        if (prizeMatch) {
-          const totalAmount = parseFloat(prizeMatch[1].replace(/,/g, ''));
-          const symbol = prizeMatch[2];
-          const perWinner = totalAmount / winnerCount;
-          // Format per-winner amount nicely
-          const perWinnerFormatted = perWinner >= 1000
-            ? perWinner.toLocaleString(undefined, { maximumFractionDigits: 2 })
-            : perWinner.toLocaleString(undefined, { maximumFractionDigits: 4 });
-          prizeLine = `🎁 Prize: ${prize} (${perWinnerFormatted} ${symbol} each)`;
-          winnersLine = `👥 ${winnerCount} Winners!`;
-        } else {
-          prizeLine = `🎁 Prize: ${prize}`;
-          winnersLine = `👥 ${winnerCount} Winners!`;
-        }
-      } else {
-        prizeLine = `🎁 Prize: ${prize}`;
-      }
-
-      // Participants line (if we have participant data)
-      const participantsLine = participantCount > 0 ? `🎟️ ${participantCount} entries so far` : '';
-
-      // Time remaining - format nicely
-      let timeLeftText;
+      // Format time remaining
+      let timeLeft;
       if (hoursLeft > 0 && minutesLeft > 0) {
-        timeLeftText = `${hoursLeft}h ${minutesLeft}m left`;
+        timeLeft = `${hoursLeft}h ${minutesLeft}m`;
       } else if (hoursLeft > 0) {
-        timeLeftText = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''} left`;
+        timeLeft = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
       } else {
-        timeLeftText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''} left`;
+        timeLeft = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
       }
 
-      // Mini app URL - Warpcast handles these specially to show mini app card
-      const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
+      // Host tag
+      const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
 
-      // Build the share text with all info
-      let text = `🦎 Contest #${contestId} is LIVE on $NEYNARTODES! 🔥
+      // Mini app URL
+      const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}`;
 
-${prizeLine}
-⏱️ ${timeLeftText}`;
+      // Build the share text - matches enter-contest autocast style
+      let text = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeft} remaining!
 
-      // Add optional lines
-      if (winnersLine) text += `\n${winnersLine}`;
-      if (participantsLine) text += `\n${participantsLine}`;
-
-      text += `\n\n👇 Tap to enter!\n${miniAppUrl}`;
+${miniAppUrl}`;
 
       console.log('Sharing contest with mini app URL:', { contestId, isNft, winnerCount, participantCount, miniAppUrl });
 
@@ -2022,6 +1980,50 @@ ${prizeLine}
         const proxiedImage = `https://frame-opal-eight.vercel.app/api/image-proxy?url=${encodeURIComponent(nftImage)}`;
         embeds.push(proxiedImage);
       }
+
+      // Record share for bonus entry (do this when user clicks Share, even before composing)
+      const recordShare = async () => {
+        if (!state.userFid) {
+          console.log('Cannot record share: no FID');
+          return;
+        }
+
+        try {
+          const response = await fetch('/api/record-share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fid: state.userFid,
+              contestId: contestId
+            })
+          });
+
+          const result = await response.json();
+          if (result.success) {
+            if (result.shared) {
+              // First time sharing - earned bonus
+              showToast('Share recorded! You earned a bonus entry.', 'success');
+              // Update button to show shared status
+              if (buttonEl) {
+                buttonEl.innerHTML = 'Shared ✓';
+                buttonEl.classList.remove('btn-secondary');
+                buttonEl.classList.add('btn-success');
+                buttonEl.style.opacity = '0.8';
+              }
+              // Track in state
+              if (!state.contestShares) state.contestShares = {};
+              state.contestShares[contestId] = true;
+            } else if (result.alreadyShared) {
+              console.log('Already shared this contest');
+            }
+          }
+        } catch (e) {
+          console.error('Failed to record share:', e);
+        }
+      };
+
+      // Record share immediately when button clicked
+      recordShare();
 
       // Use SDK composeCast - embeds as plain string array
       const sdk = window.FarcasterSDK;
@@ -2142,22 +2144,26 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       BASE_RPC_URL: 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
       CHAIN_ID: 8453, // Base chain ID
       CONTRACTS: {
-        // === V1 Contracts (legacy - for existing contests) ===
-        contestEscrow: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-        nftContestEscrow: '0xFD6e84d4396Ecaa144771C65914b2a345305F922', // NFT Contest Escrow V3
+        // === LEGACY V1 Contracts (archived - read-only for historical data) ===
+        contestEscrowLegacy: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
+        nftContestEscrowLegacy: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
+        contestManagerV2Legacy: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
 
-        // === V2 Contracts (new unified system) ===
-        contestManager: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Unified contest manager v2 - deployed 2025-12-17
-        buyAndBurn: '0x8AffD9eB013cfC08143439207E40dd5419b6b78C', // BuyAndBurn_Quoted v2 - burns 1M with sweep refund - deployed 2025-12-23
+        // === NEW Unified ContestManager (M- and T- prefix contests) ===
+        contestManager: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
+        buyAndBurn: '0x8AffD9eB013cfC08143439207E40dd5419b6b78C', // BuyAndBurn_Quoted v2 - burns 1M with sweep refund
 
         // === Shared Contracts ===
-        prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1', // V2 deployed 2025-12-01
-        votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8', // V2 deployed 2025-11-29
-        treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928', // V2 deployed 2025-12-01
+        prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
+        votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
+        treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928',
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
       },
-      // Use V2 for new contests (set to true when ready to switch)
-      USE_V2_CONTESTS: true,
+      // Test mode - creates T- prefix contests with separate counter
+      TEST_MODE: true,  // Set to false for production M- prefix contests
+      // Contest ID prefixes
+      MAIN_PREFIX: 'M-',
+      TEST_PREFIX: 'T-',
       // Banned FIDs - these users cannot create contests (scammers)
       BANNED_FIDS: [
         1990047,  // ropiik - scam token contests
@@ -2801,7 +2807,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           nftType: state.prizeNftType,
           tokenId: tokenId,
           signerAddress: signerAddress,
-          escrowAddress: CONFIG.CONTRACTS.nftContestEscrow
+          escrowAddress: CONFIG.CONTRACTS.contestManager
         });
 
         // Check if already approved
@@ -2815,11 +2821,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         try {
           if (state.prizeNftType === 'ERC721') {
             const approved = await nftContract.getApproved(tokenId);
-            const isApprovedForAll = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
-            console.log('ERC721 approval check:', { approved, isApprovedForAll, escrow: CONFIG.CONTRACTS.nftContestEscrow });
-            isAlreadyApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
+            const isApprovedForAll = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.contestManager);
+            console.log('ERC721 approval check:', { approved, isApprovedForAll, escrow: CONFIG.CONTRACTS.contestManager });
+            isAlreadyApproved = approved.toLowerCase() === CONFIG.CONTRACTS.contestManager.toLowerCase() || isApprovedForAll;
           } else {
-            isAlreadyApproved = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+            isAlreadyApproved = await nftContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.contestManager);
             console.log('ERC1155 approval check:', { isAlreadyApproved });
           }
         } catch (checkErr) {
@@ -2836,7 +2842,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         // Send approval transaction
         const approveIface = new ethers.utils.Interface(state.prizeNftType === 'ERC721' ? ERC721_ABI : ERC1155_ABI);
         const approveData = approveIface.encodeFunctionData('setApprovalForAll', [
-          CONFIG.CONTRACTS.nftContestEscrow,
+          CONFIG.CONTRACTS.contestManager,
           true
         ]);
 
@@ -2914,7 +2920,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         console.log('Checking approval for:');
         console.log('  NFT Contract:', state.prizeNftAddress);
         console.log('  Owner:', signerAddress);
-        console.log('  Operator (escrow):', CONFIG.CONTRACTS.nftContestEscrow);
+        console.log('  Operator (contestManager):', CONFIG.CONTRACTS.contestManager);
 
         // Use shared rpcProvider instead of creating new one each iteration
         const verifyContract = new ethers.Contract(
@@ -2926,7 +2932,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         for (let i = 0; i < 10; i++) {
           await new Promise(r => setTimeout(r, 2000));
 
-          const nowApproved = await verifyContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          const nowApproved = await verifyContract.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.contestManager);
           console.log(`Approval check attempt ${i + 1}: isApprovedForAll =`, nowApproved);
           if (nowApproved) {
             console.log('=== APPROVAL CONFIRMED ===');
@@ -2970,10 +2976,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         if (state.prizeNftType === 'ERC721') {
           const approved = await nftContract.getApproved(tokenId);
-          const isApprovedForAll = await nftContract.isApprovedForAll(state.userAddress, CONFIG.CONTRACTS.nftContestEscrow);
-          isApproved = approved.toLowerCase() === CONFIG.CONTRACTS.nftContestEscrow.toLowerCase() || isApprovedForAll;
+          const isApprovedForAll = await nftContract.isApprovedForAll(state.userAddress, CONFIG.CONTRACTS.contestManager);
+          isApproved = approved.toLowerCase() === CONFIG.CONTRACTS.contestManager.toLowerCase() || isApprovedForAll;
         } else {
-          isApproved = await nftContract.isApprovedForAll(state.userAddress, CONFIG.CONTRACTS.nftContestEscrow);
+          isApproved = await nftContract.isApprovedForAll(state.userAddress, CONFIG.CONTRACTS.contestManager);
         }
 
         state.nftApprovalStatus = isApproved ? 'approved' : 'none';
@@ -3840,9 +3846,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               nftName: c.nftName || '',
               nftCollection: c.nftCollection || '',
               nftType: c.nftType || '',
-              // V2 multi-winner fields
               winnerCount: c.winnerCount || 1,
-              isV2: c.isV2 || false,
             }));
           console.log(`Loaded ${state.upcomingContests.length} active/pending contests`);
           // Debug NFT contests
@@ -3851,7 +3855,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           });
           // Debug multi-winner contests
           state.upcomingContests.filter(c => c.winnerCount > 1).forEach(c => {
-            console.log('Multi-winner Contest:', c.contestId, 'winnerCount:', c.winnerCount, 'isV2:', c.isV2);
+            console.log('Multi-winner Contest:', c.contestId, 'winnerCount:', c.winnerCount);
           });
           // Cache contests for faster subsequent loads
           try {
@@ -5140,11 +5144,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (activeContests.length > 0) {
         contestsHtml = activeContests.map(contest => {
           const now = new Date();
-          // V2 contests don't have startTime on-chain (it's estimated), so just check endTime and status
-          // V1 contests have accurate startTime
-          const isLive = contest.isV2
-            ? (contest.status === 0 && new Date(contest.endTime) > now)
-            : (new Date(contest.startTime) <= now && new Date(contest.endTime) > now);
+          const isLive = contest.status === 0 && new Date(contest.endTime) > now;
           const isPending = contest.status === 1;
           const timeLeft = Math.max(0, Math.floor((new Date(contest.endTime) - now) / 1000));
           const hoursLeft = Math.floor(timeLeft / 3600);
@@ -5218,7 +5218,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     <button
                       data-contest-id="${contest.contestId}"
                       data-cast-id="${contest.castId || ''}"
-                      data-is-v2="${contest.isV2 || false}"
                       data-prize="${encodeURIComponent(contest.prize)}"
                       data-hours="${hoursLeft}"
                       data-minutes="${minutesLeft}"
@@ -5228,10 +5227,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       data-nft-name="${encodeURIComponent(contest.nftName || '')}"
                       onclick="enterRaffle(this)"
                       class="btn-primary text-sm py-2 px-4 enter-raffle-btn"
-                      id="enter-btn-${contest.contestId}${contest.isV2 ? '-v2' : ''}"
-                      ${state.contestEntries?.[contest.isV2 ? `v2-${contest.contestId}` : contest.contestId]?.entered ? 'disabled style="opacity: 0.6; cursor: default;"' : ''}
+                      id="enter-btn-${contest.contestId}"
+                      ${state.contestEntries?.[contest.contestId]?.entered ? 'disabled style="opacity: 0.6; cursor: default;"' : ''}
                     >
-                      ${state.contestEntries?.[contest.isV2 ? `v2-${contest.contestId}` : contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
+                      ${state.contestEntries?.[contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
                     </button>
                     <button
                       onclick="viewCast('${(contest.castId || '').split('|')[0]}')"
@@ -5251,19 +5250,17 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       data-volume="${contest.volumeRequirement || 0}"
                       data-token="${encodeURIComponent(contest.tokenRequirementSymbol || '')}"
                       data-host="${encodeURIComponent(contest.hostUser?.username || '')}"
-                      data-recast="${contest.requireRecast || false}"
-                      data-like="${contest.requireLike || false}"
-                      data-reply="${contest.requireReply || false}"
                       data-cast-id="${contest.castId || ''}"
                       data-is-nft="${contest.isNft || false}"
                       data-nft-image="${encodeURIComponent(contest.nftImage || '')}"
                       data-winner-count="${contest.winnerCount || 1}"
                       data-participant-count="${contest.participantCount || 0}"
-                      data-is-v2="${contest.isV2 || false}"
                       onclick="openCastModalFromData(this)"
-                      class="btn-secondary text-sm py-2 px-4"
+                      class="${state.contestShares?.[contest.contestId] ? 'btn-success' : 'btn-secondary'} text-sm py-2 px-4"
+                      id="share-btn-${contest.contestId}"
+                      ${state.contestShares?.[contest.contestId] ? 'style="opacity: 0.8;"' : ''}
                     >
-                      Share
+                      ${state.contestShares?.[contest.contestId] ? 'Shared ✓' : 'Share'}
                     </button>
                   </div>
                 </div>
@@ -5978,8 +5975,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     <p class="text-xs text-[var(--text-muted)] mt-2">Post your contest on Farcaster first, then paste the URL here</p>
                   </div>
 
-                  <!-- Winner Count (V2 only) -->
-                  ${CONFIG.USE_V2_CONTESTS && state.prizeType !== 'nft' ? `
+                  <!-- Winner Count (for non-NFT prizes) -->
+                  ${state.prizeType !== 'nft' ? `
                   <div class="p-3 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border-subtle)]">
                     <div class="flex items-center justify-between">
                       <div>
@@ -6837,7 +6834,43 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       });
     }
 
-    // ContestEscrow ABI for creating contests
+    // ===== UNIFIED CONTEST MANAGER ABI (New System - M- and T- prefixes) =====
+    const UNIFIED_CONTEST_MANAGER_ABI = [
+      // Main contest creation (M- prefix)
+      'function createContestETH(uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement, uint8 _winnerCount) external payable returns (uint256 contestId)',
+      'function createContestERC20(address _prizeToken, uint256 _prizeAmount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement, uint8 _winnerCount) external payable returns (uint256 contestId)',
+      'function registerContest(uint256 depositId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+
+      // Test contest creation (T- prefix)
+      'function createTestContestETH(uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement, uint8 _winnerCount) external payable returns (uint256 contestId)',
+      'function createTestContestERC20(address _prizeToken, uint256 _prizeAmount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement, uint8 _winnerCount) external payable returns (uint256 contestId)',
+      'function registerTestContest(uint256 depositId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
+
+      // NFT deposit functions
+      'function withdrawDeposit(uint256 depositId) external',
+      'function nftToDepositId(address nftContract, uint256 tokenId) external view returns (uint256)',
+      'function getPendingDeposit(uint256 depositId) external view returns (address depositor, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 depositTime, bool claimed)',
+
+      // View functions
+      'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
+      'function getTestContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
+      'function mainNextContestId() external view returns (uint256)',
+      'function testNextContestId() external view returns (uint256)',
+      'function canFinalize(uint256 _contestId) external view returns (bool)',
+
+      // Config
+      'function contestFee() external view returns (uint256)',
+      'function customTokenFee() external view returns (uint256)',
+      'function defaultToken() external view returns (address)',
+
+      // Events
+      'event ContestCreated(uint256 indexed contestId, address indexed host, uint8 contestType, uint256 endTime, string castId, bool isTest)',
+      'event NFTDeposited(uint256 indexed depositId, address indexed depositor, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType)',
+      'event WinnersSelected(uint256 indexed contestId, address[] winners, uint256 prizePerWinner, bool isTest)'
+    ];
+
+    // ===== LEGACY ABIs (for reading historical contest data only) =====
+    // ContestEscrow ABI (Legacy V1 - token contests 1-65)
     const CONTEST_ESCROW_ABI = [
       'function createContestETH(uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
       'function createContestERC20(address _prizeToken, uint256 _prizeAmount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
@@ -6907,7 +6940,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // ERC721_ABI and ERC1155_ABI are defined at the top of the file near CONFIG
 
-    // Launch contest on ContestEscrow contract
+    // Launch contest on Unified ContestManager contract
     async function launchContestOnChain(contest, durationSeconds) {
       const statusDiv = document.getElementById('launchStatus');
       try {
@@ -6919,6 +6952,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           if (statusDiv) statusDiv.textContent = '❌ Account suspended';
           return;
         }
+
+        // Determine if we're in test mode (T- prefix) or main mode (M- prefix)
+        const isTestMode = CONFIG.TEST_MODE;
+        const contestPrefix = isTestMode ? CONFIG.TEST_PREFIX : CONFIG.MAIN_PREFIX;
+        console.log(`   Mode: ${isTestMode ? 'TEST (T-)' : 'MAIN (M-)'}`);
 
         if (statusDiv) statusDiv.textContent = 'Step 5: Getting wallet provider...';
 
@@ -6949,26 +6987,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         if (statusDiv) statusDiv.textContent = 'Step 7c: Creating contract...';
 
-        // Use shared rpcProvider for reading contract data (avoids smart wallet issues)
-        const contestEscrowRead = new ethers.Contract(
-          CONFIG.CONTRACTS.contestEscrow,
-          CONTEST_ESCROW_ABI,
+        // Use Unified ContestManager for all new contests
+        const contestManagerRead = new ethers.Contract(
+          CONFIG.CONTRACTS.contestManager,
+          UNIFIED_CONTEST_MANAGER_ABI,
           rpcProvider
         );
-
-        // Contract with signer for transactions
-        const contestEscrow = new ethers.Contract(
-          CONFIG.CONTRACTS.contestEscrow,
-          CONTEST_ESCROW_ABI,
-          signer
-        );
-        console.log('   ContestEscrow contract:', CONFIG.CONTRACTS.contestEscrow);
+        console.log('   ContestManager contract:', CONFIG.CONTRACTS.contestManager);
 
         if (statusDiv) statusDiv.textContent = 'Step 7d: Reading contract config...';
 
-        // Get custom token fee and default token (use read-only provider)
-        const customTokenFee = await contestEscrowRead.customTokenFee();
-        const defaultToken = await contestEscrowRead.defaultToken();
+        // Get fees and default token from unified ContestManager
+        const contestFee = await contestManagerRead.contestFee();
+        const customTokenFee = await contestManagerRead.customTokenFee();
+        const defaultToken = await contestManagerRead.defaultToken();
+        console.log('   Contest fee:', ethers.utils.formatEther(contestFee), 'ETH');
         console.log('   Custom token fee:', ethers.utils.formatEther(customTokenFee), 'ETH');
         console.log('   Default token:', defaultToken);
 
@@ -7033,7 +7066,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           console.log('   Prize token ticker:', state.prizeTokenTicker);
 
           if (isETHPrize || state.prizeTokenTicker === 'ETH') {
-            // ETH prize - call createContestETH
+            // ETH prize - call createContestETH or createTestContestETH
             // Sanitize prize amount
             const cleanPrize = parseFloat(state.prizeTokenAmount).toFixed(18).replace(/\.?0+$/, '');
             if (!cleanPrize || isNaN(parseFloat(cleanPrize))) {
@@ -7041,31 +7074,31 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               return;
             }
             const prizeAmount = ethers.utils.parseEther(cleanPrize);
-            const totalValue = isCustomToken ? prizeAmount.add(customTokenFee) : prizeAmount;
+            // Test mode has no fees, main mode adds contest fee + optional custom token fee
+            const totalFee = isTestMode ? ethers.BigNumber.from(0) : (isCustomToken ? contestFee.add(customTokenFee) : contestFee);
+            const totalValue = prizeAmount.add(totalFee);
 
-            // Determine which contract to use (V2 ContestManager or V1 Escrow)
-            const useV2 = CONFIG.USE_V2_CONTESTS;
-            const contractAddress = useV2 ? CONFIG.CONTRACTS.contestManager : CONFIG.CONTRACTS.contestEscrow;
-            const contractABI = useV2 ? CONTEST_MANAGER_ABI : CONTEST_ESCROW_ABI;
-            const winnerCount = useV2 ? Math.min(5, Math.max(1, parseInt(state.winnerCount) || 1)) : null;
+            // Use unified ContestManager for all contests
+            const contractAddress = CONFIG.CONTRACTS.contestManager;
+            const contractABI = UNIFIED_CONTEST_MANAGER_ABI;
+            const winnerCount = Math.min(5, Math.max(1, parseInt(state.winnerCount) || 1));
+            const functionName = isTestMode ? 'createTestContestETH' : 'createContestETH';
 
-            console.log('📝 Calling createContestETH with:');
-            console.log('   Using V2 ContestManager:', useV2);
+            console.log('📝 Calling ' + functionName + ' with:');
+            console.log('   Test Mode:', isTestMode);
             console.log('   Contract:', contractAddress);
             console.log('   _duration:', durationSeconds);
             console.log('   _castId:', castId);
             console.log('   _tokenRequirement:', tokenRequirement);
             console.log('   _volumeRequirement:', volumeRequirement.toString());
-            if (useV2) console.log('   _winnerCount:', winnerCount);
+            console.log('   _winnerCount:', winnerCount);
             console.log('   value (ETH):', ethers.utils.formatEther(totalValue));
 
             if (statusDiv) statusDiv.textContent = 'Step 8: Building transaction...';
 
-            // Encode the function call (V2 includes winnerCount, V1 does not)
+            // Encode the function call
             const iface = new ethers.utils.Interface(contractABI);
-            const txData = useV2
-              ? iface.encodeFunctionData('createContestETH', [durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount])
-              : iface.encodeFunctionData('createContestETH', [durationSeconds, castId, tokenRequirement, volumeRequirement]);
+            const txData = iface.encodeFunctionData(functionName, [durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount]);
 
             if (statusDiv) statusDiv.textContent = 'Step 8b: Sending transaction...';
             console.log('⏳ Waiting for wallet confirmation...');
@@ -7091,9 +7124,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 if (statusDiv) statusDiv.textContent = 'Step 8c: Trying EOA signer...';
                 try {
                   const contractSigner = new ethers.Contract(contractAddress, contractABI, signer);
-                  tx = useV2
-                    ? await contractSigner.createContestETH(durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount, { value: totalValue })
-                    : await contractSigner.createContestETH(durationSeconds, castId, tokenRequirement, volumeRequirement, { value: totalValue });
+                  tx = isTestMode
+                    ? await contractSigner.createTestContestETH(durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount, { value: totalValue })
+                    : await contractSigner.createContestETH(durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount, { value: totalValue });
                   if (statusDiv) statusDiv.textContent = 'Step 9: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
                   console.log('✅ Wallet confirmed (EOA)! TX:', tx.hash);
                 } catch (eoaError) {
@@ -7128,8 +7161,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             }
             const prizeAmount = ethers.utils.parseUnits(cleanPrize, decimals);
 
-            // Determine which contract needs approval (V2 ContestManager or V1 Escrow)
-            const approvalContract = CONFIG.USE_V2_CONTESTS ? CONFIG.CONTRACTS.contestManager : CONFIG.CONTRACTS.contestEscrow;
+            // Use unified ContestManager for approval
+            const approvalContract = CONFIG.CONTRACTS.contestManager;
 
             // Check allowance using read-only provider
             if (statusDiv) statusDiv.textContent = 'Step 8b: Checking allowance...';
@@ -7187,16 +7220,17 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               if (statusDiv) statusDiv.textContent = 'Step 8e: Approval confirmed!';
             }
 
-            const ethValue = isCustomToken ? customTokenFee : ethers.BigNumber.from(0);
+            // Test mode has no fees, main mode adds contest fee + optional custom token fee
+            const ethValue = isTestMode ? ethers.BigNumber.from(0) : (isCustomToken ? contestFee.add(customTokenFee) : contestFee);
 
-            // Determine which contract to use (V2 ContestManager or V1 Escrow)
-            const useV2 = CONFIG.USE_V2_CONTESTS;
-            const contractAddress = useV2 ? CONFIG.CONTRACTS.contestManager : CONFIG.CONTRACTS.contestEscrow;
-            const contractABI = useV2 ? CONTEST_MANAGER_ABI : CONTEST_ESCROW_ABI;
-            const winnerCount = useV2 ? Math.min(5, Math.max(1, parseInt(state.winnerCount) || 1)) : null;
+            // Use unified ContestManager for all contests
+            const contractAddress = CONFIG.CONTRACTS.contestManager;
+            const contractABI = UNIFIED_CONTEST_MANAGER_ABI;
+            const winnerCount = Math.min(5, Math.max(1, parseInt(state.winnerCount) || 1));
+            const functionName = isTestMode ? 'createTestContestERC20' : 'createContestERC20';
 
-            console.log('📝 Calling createContestERC20 with:');
-            console.log('   Using V2 ContestManager:', useV2);
+            console.log('📝 Calling ' + functionName + ' with:');
+            console.log('   Test Mode:', isTestMode);
             console.log('   Contract:', contractAddress);
             console.log('   _prizeToken:', state.prizeTokenAddress);
             console.log('   _prizeAmount:', prizeAmount.toString());
@@ -7204,16 +7238,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             console.log('   _castId:', castId);
             console.log('   _tokenRequirement:', tokenRequirement);
             console.log('   _volumeRequirement:', volumeRequirement.toString());
-            if (useV2) console.log('   _winnerCount:', winnerCount);
+            console.log('   _winnerCount:', winnerCount);
             console.log('   value (ETH for fee):', ethers.utils.formatEther(ethValue));
 
             if (statusDiv) statusDiv.textContent = 'Step 9: Sending ERC20 contest tx... Check wallet!';
 
-            // Encode createContestERC20 function call (V2 includes winnerCount)
+            // Encode function call
             const createIface = new ethers.utils.Interface(contractABI);
-            const createData = useV2
-              ? createIface.encodeFunctionData('createContestERC20', [state.prizeTokenAddress, prizeAmount, durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount])
-              : createIface.encodeFunctionData('createContestERC20', [state.prizeTokenAddress, prizeAmount, durationSeconds, castId, tokenRequirement, volumeRequirement]);
+            const createData = createIface.encodeFunctionData(functionName, [state.prizeTokenAddress, prizeAmount, durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount]);
 
             // Try eth_sendTransaction first (smart wallets), fall back to ethers signer (EOA)
             try {
@@ -7232,12 +7264,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             } catch (txError) {
               // If eth_sendTransaction fails with "unsupported", try ethers.js signer (EOA wallets)
               if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
-                console.log('Smart wallet createContestERC20 failed, trying EOA signer...');
+                console.log('Smart wallet ' + functionName + ' failed, trying EOA signer...');
                 if (statusDiv) statusDiv.textContent = 'Step 9b: Trying EOA signer...';
                 const contractSigner = new ethers.Contract(contractAddress, contractABI, signer);
-                tx = useV2
-                  ? await contractSigner.createContestERC20(state.prizeTokenAddress, prizeAmount, durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount, { value: ethValue })
-                  : await contractSigner.createContestERC20(state.prizeTokenAddress, prizeAmount, durationSeconds, castId, tokenRequirement, volumeRequirement, { value: ethValue });
+                tx = isTestMode
+                  ? await contractSigner.createTestContestERC20(state.prizeTokenAddress, prizeAmount, durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount, { value: ethValue })
+                  : await contractSigner.createContestERC20(state.prizeTokenAddress, prizeAmount, durationSeconds, castId, tokenRequirement, volumeRequirement, winnerCount, { value: ethValue });
                 if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
                 console.log('✅ EOA wallet confirmed! TX:', tx.hash);
               } else {
@@ -7248,7 +7280,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             }
           }
         } else {
-          // NFT prize - use NFTContestEscrow contract
+          // NFT prize - use Unified ContestManager with 2-step deposit flow
           // Approval should already be done via the separate "Approve NFT" button
           if (statusDiv) statusDiv.textContent = 'Step 8: Preparing NFT prize...';
 
@@ -7263,19 +7295,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             return;
           }
 
-          // Use NFT Contest Escrow contract
-          const nftEscrowRead = new ethers.Contract(
-            CONFIG.CONTRACTS.nftContestEscrow,
-            NFT_CONTEST_ESCROW_ABI,
-            rpcProvider
-          );
-
-          // Get contest fee
-          const contestFee = await nftEscrowRead.contestFee();
-          console.log('NFT Contest Fee:', ethers.utils.formatEther(contestFee), 'ETH');
-
           // Use BigInt for large token IDs (e.g., Basenames)
           const tokenId = state.prizeNftTokenId ? BigInt(state.prizeNftTokenId) : 0n;
+
+          // Get contest fee - test mode has no fees
+          const nftContestFee = isTestMode ? ethers.BigNumber.from(0) : contestFee;
+          console.log('NFT Contest Fee:', ethers.utils.formatEther(nftContestFee), 'ETH');
+          console.log('Test Mode:', isTestMode);
 
           if (state.prizeNftType === 'ERC721') {
             // ERC721 NFT - V3 uses two-step flow for restricted NFTs
@@ -7294,26 +7320,27 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               duration: durationSeconds,
               castId: castId,
               volumeReq: volumeRequirement.toString(),
-              fee: ethers.utils.formatEther(contestFee),
-              signerAddress: signerAddress
+              fee: ethers.utils.formatEther(nftContestFee),
+              signerAddress: signerAddress,
+              isTestMode: isTestMode
             });
 
-            // V3 Two-Step Flow: Transfer NFT directly, then register contest
+            // Two-Step Flow: Transfer NFT directly to ContestManager, then register contest
             // This works with NFTs that have transfer restrictions
             showToast('NFT Contest requires 2 transactions: Transfer + Register', 'info');
-            if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Transfer NFT to escrow... Check wallet!';
+            if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Transfer NFT to ContestManager... Check wallet!';
 
-            // Step 1: User transfers NFT directly to escrow
+            // Step 1: User transfers NFT directly to ContestManager
             const nftIface = new ethers.utils.Interface(ERC721_ABI);
             const transferData = nftIface.encodeFunctionData('safeTransferFrom(address,address,uint256)', [
               signerAddress,
-              CONFIG.CONTRACTS.nftContestEscrow,
+              CONFIG.CONTRACTS.contestManager,
               tokenId
             ]);
 
-            console.log('Step 1: Transferring NFT directly to escrow...');
+            console.log('Step 1: Transferring NFT directly to ContestManager...');
             console.log('From:', signerAddress);
-            console.log('To:', CONFIG.CONTRACTS.nftContestEscrow);
+            console.log('To:', CONFIG.CONTRACTS.contestManager);
             console.log('TokenId:', tokenId);
 
             const transferTxParams = {
@@ -7364,13 +7391,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               return;
             }
 
-            // Step 2: Get the deposit ID from the escrow contract
+            // Step 2: Get the deposit ID from the ContestManager
             showToast('NFT transferred! Now registering contest...', 'success');
             if (statusDiv) statusDiv.textContent = 'TX 1 complete! Preparing TX 2...';
             await new Promise(r => setTimeout(r, 2000)); // Wait for state to update
 
-            const escrowRead = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, rpcProvider);
-            const depositId = await escrowRead.nftToDepositId(state.prizeNftAddress, tokenId);
+            const depositId = await contestManagerRead.nftToDepositId(state.prizeNftAddress, tokenId);
             console.log('Deposit ID:', depositId.toString());
 
             if (depositId.eq(0)) {
@@ -7379,11 +7405,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               return;
             }
 
-            // Step 3: Register the contest
+            // Step 3: Register the contest (test or main)
+            const registerFunctionName = isTestMode ? 'registerTestContest' : 'registerContest';
             if (statusDiv) statusDiv.textContent = 'TX 2 of 2: Register contest... Check wallet!';
 
-            const registerIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
-            const registerData = registerIface.encodeFunctionData('registerContest', [
+            const registerIface = new ethers.utils.Interface(UNIFIED_CONTEST_MANAGER_ABI);
+            const registerData = registerIface.encodeFunctionData(registerFunctionName, [
               depositId,
               durationSeconds,
               castId,
@@ -7393,12 +7420,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
             const registerTxParams = {
               from: signerAddress,
-              to: CONFIG.CONTRACTS.nftContestEscrow,
+              to: CONFIG.CONTRACTS.contestManager,
               data: registerData,
               gas: '0x7A120' // 500,000 gas
             };
-            if (contestFee.gt(0)) {
-              registerTxParams.value = contestFee.toHexString();
+            if (nftContestFee.gt(0)) {
+              registerTxParams.value = nftContestFee.toHexString();
             }
 
             try {
@@ -7417,7 +7444,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             }
 
           } else if (state.prizeNftType === 'ERC1155') {
-            // ERC1155 NFT
+            // ERC1155 NFT - uses same 2-step flow as ERC721
             if (statusDiv) statusDiv.textContent = 'Step 8b: Checking NFT balance...';
 
             const nft1155Read = new ethers.Contract(state.prizeNftAddress, ERC1155_ABI, rpcProvider);
@@ -7430,7 +7457,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
             // Verify approval is still valid (double check - should be done in separate step)
             if (statusDiv) statusDiv.textContent = 'Step 8c: Verifying approval...';
-            const isApproved = await nft1155Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.nftContestEscrow);
+            const isApproved = await nft1155Read.isApprovedForAll(signerAddress, CONFIG.CONTRACTS.contestManager);
             if (!isApproved) {
               showToast('NFT approval expired. Please approve again.', 'error');
               state.nftApprovalStatus = 'none';
@@ -7438,57 +7465,119 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               return;
             }
 
-            if (statusDiv) statusDiv.textContent = 'Step 9: Creating NFT contest... Check wallet!';
+            // ERC1155 also uses 2-step flow for unified contract
+            showToast('NFT Contest requires 2 transactions: Transfer + Register', 'info');
+            if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Transfer NFT to ContestManager... Check wallet!';
 
-            // Encode createContestERC1155
-            const createIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
-            const createData = createIface.encodeFunctionData('createContestERC1155', [
-              state.prizeNftAddress,
+            // Step 1: Transfer ERC1155 to ContestManager
+            const erc1155Iface = new ethers.utils.Interface([
+              'function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data) external'
+            ]);
+            const transferData1155 = erc1155Iface.encodeFunctionData('safeTransferFrom', [
+              signerAddress,
+              CONFIG.CONTRACTS.contestManager,
               tokenId,
               amount,
+              '0x' // empty data
+            ]);
+
+            const transferTxParams1155 = {
+              from: signerAddress,
+              to: state.prizeNftAddress,
+              data: transferData1155,
+              gas: '0x493E0' // 300,000 gas
+            };
+
+            let transferTxHash1155;
+            try {
+              transferTxHash1155 = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [transferTxParams1155]
+              });
+              console.log('ERC1155 Transfer TX sent:', transferTxHash1155);
+              if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Transfer sent! Confirming...';
+            } catch (transferErr1155) {
+              console.error('ERC1155 transfer failed:', transferErr1155);
+              showToast('NFT transfer failed: ' + (transferErr1155.message || transferErr1155), 'error');
+              if (statusDiv) statusDiv.textContent = 'FAILED: ' + (transferErr1155.message || 'Transfer rejected');
+              return;
+            }
+
+            // Wait for transfer confirmation
+            if (statusDiv) statusDiv.textContent = 'TX 1 of 2: Waiting for blockchain confirmation...';
+            let transferConfirmed1155 = false;
+            for (let i = 0; i < 60; i++) {
+              try {
+                const receipt1155 = await rpcProvider.getTransactionReceipt(transferTxHash1155);
+                if (receipt1155 && receipt1155.blockNumber) {
+                  if (receipt1155.status === 0) {
+                    showToast('NFT transfer failed on-chain', 'error');
+                    if (statusDiv) statusDiv.textContent = 'FAILED: NFT transfer reverted';
+                    return;
+                  }
+                  console.log('ERC1155 Transfer confirmed in block:', receipt1155.blockNumber);
+                  transferConfirmed1155 = true;
+                  break;
+                }
+              } catch (e) { }
+              await new Promise(r => setTimeout(r, 2000));
+            }
+
+            if (!transferConfirmed1155) {
+              showToast('NFT transfer not confirmed in time. Check your wallet.', 'warning');
+              if (statusDiv) statusDiv.textContent = 'WARNING: Transfer not confirmed yet';
+              return;
+            }
+
+            // Step 2: Get deposit ID and register contest
+            showToast('NFT transferred! Now registering contest...', 'success');
+            if (statusDiv) statusDiv.textContent = 'TX 1 complete! Preparing TX 2...';
+            await new Promise(r => setTimeout(r, 2000));
+
+            const depositId1155 = await contestManagerRead.nftToDepositId(state.prizeNftAddress, tokenId);
+            console.log('Deposit ID:', depositId1155.toString());
+
+            if (depositId1155.eq(0)) {
+              showToast('Deposit not found. NFT may not have been received properly.', 'error');
+              if (statusDiv) statusDiv.textContent = 'FAILED: Deposit not found';
+              return;
+            }
+
+            // Step 3: Register the contest (test or main)
+            const registerFunctionName1155 = isTestMode ? 'registerTestContest' : 'registerContest';
+            if (statusDiv) statusDiv.textContent = 'TX 2 of 2: Register contest... Check wallet!';
+
+            const registerIface1155 = new ethers.utils.Interface(UNIFIED_CONTEST_MANAGER_ABI);
+            const registerData1155 = registerIface1155.encodeFunctionData(registerFunctionName1155, [
+              depositId1155,
               durationSeconds,
               castId,
               tokenRequirement,
               volumeRequirement
             ]);
 
-            // Build transaction params - only include value if fee > 0
-            const txParams1155 = {
+            const registerTxParams1155 = {
               from: signerAddress,
-              to: CONFIG.CONTRACTS.nftContestEscrow,
-              data: createData,
-              gas: '0x4C4B40' // 5,000,000 gas limit for NFT transfer + contest creation
+              to: CONFIG.CONTRACTS.contestManager,
+              data: registerData1155,
+              gas: '0x7A120' // 500,000 gas
             };
-            if (contestFee.gt(0)) {
-              txParams1155.value = contestFee.toHexString();
+            if (nftContestFee.gt(0)) {
+              registerTxParams1155.value = nftContestFee.toHexString();
             }
 
             try {
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
-                params: [txParams1155]
+                params: [registerTxParams1155]
               });
               tx = { hash: txHash };
-              if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + txHash.slice(0,15) + '...';
-            } catch (txError) {
-              if (txError.message?.includes('unsupported') || txError.message?.includes('not supported')) {
-                const nftEscrow = new ethers.Contract(CONFIG.CONTRACTS.nftContestEscrow, NFT_CONTEST_ESCROW_ABI, signer);
-                const txOptions1155 = { gasLimit: 5000000 };
-                if (contestFee.gt(0)) txOptions1155.value = contestFee;
-                tx = await nftEscrow.createContestERC1155(
-                  state.prizeNftAddress,
-                  tokenId,
-                  amount,
-                  durationSeconds,
-                  castId,
-                  tokenRequirement,
-                  volumeRequirement,
-                  txOptions1155
-                );
-                if (statusDiv) statusDiv.textContent = 'Step 10: TX sent! Hash: ' + tx.hash.slice(0,15) + '...';
-              } else {
-                throw txError;
-              }
+              if (statusDiv) statusDiv.textContent = 'TX 2 of 2: Registration sent! Confirming...';
+            } catch (regError1155) {
+              console.error('ERC1155 Contest registration failed:', regError1155);
+              showToast('Contest registration failed. Your NFT is safe - you can withdraw it.', 'error');
+              if (statusDiv) statusDiv.textContent = 'FAILED: ' + (regError1155.message || 'Registration rejected');
+              return;
             }
 
           } else {
@@ -7522,32 +7611,20 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // Parse contest ID from event
         let contestId = 'Unknown';
-        const isNftContest = state.prizeType === 'nft';
-        const isV2Contest = CONFIG.USE_V2_CONTESTS && !isNftContest;
 
         if (receipt?.logs) {
-          // Parse from raw logs using appropriate contract interface
-          // V2 uses ContestManager, V1 uses escrow contracts
-          let parseIface;
-          let eventName;
-
-          if (isV2Contest) {
-            parseIface = new ethers.utils.Interface(CONTEST_MANAGER_ABI);
-            eventName = 'ContestCreated';
-          } else if (isNftContest) {
-            parseIface = new ethers.utils.Interface(NFT_CONTEST_ESCROW_ABI);
-            eventName = 'NFTContestCreated';
-          } else {
-            parseIface = new ethers.utils.Interface(CONTEST_ESCROW_ABI);
-            eventName = 'ContestCreated';
-          }
+          // Parse from raw logs using unified ContestManager interface
+          const parseIface = new ethers.utils.Interface(UNIFIED_CONTEST_MANAGER_ABI);
+          const eventName = 'ContestCreated';
 
           for (const log of receipt.logs) {
             try {
               const parsed = parseIface.parseLog(log);
               if (parsed.name === eventName) {
-                contestId = parsed.args.contestId.toString();
-                console.log(`✅ Found contestId via interface.parseLog (${eventName}, V2=${isV2Contest}):`, contestId);
+                // contestId from event is the numeric ID, we need to prefix it
+                const numericId = parsed.args.contestId.toString();
+                contestId = contestPrefix + numericId;
+                console.log(`✅ Found contestId via interface.parseLog (${eventName}, isTest=${isTestMode}):`, contestId);
                 break;
               }
             } catch (e) {
@@ -7557,21 +7634,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           // Method 2: Direct topic parsing as last resort
           if (contestId === 'Unknown' && receipt.logs.length > 0) {
-            // Try all event signatures (V1 Escrow, V2 ContestManager, NFT Escrow)
-            const v1ContestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,address,uint256,uint256,string)');
-            const v2ContestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,uint8,uint256,string)');
-            const nftContestCreatedTopic = ethers.utils.id('NFTContestCreated(uint256,address,uint8,address,uint256,uint256,uint256,string)');
+            // New unified event signature: ContestCreated(uint256,address,uint8,uint256,string,bool)
+            const unifiedContestCreatedTopic = ethers.utils.id('ContestCreated(uint256,address,uint8,uint256,string,bool)');
 
             const eventLog = receipt.logs.find(log =>
-              log.topics[0] === v1ContestCreatedTopic ||
-              log.topics[0] === v2ContestCreatedTopic ||
-              log.topics[0] === nftContestCreatedTopic
+              log.topics[0] === unifiedContestCreatedTopic
             );
             if (eventLog && eventLog.topics[1]) {
-              contestId = ethers.BigNumber.from(eventLog.topics[1]).toString();
+              const numericId = ethers.BigNumber.from(eventLog.topics[1]).toString();
+              contestId = contestPrefix + numericId;
               console.log('✅ Found contestId from raw topic:', contestId);
             } else {
-              console.log('⚠️ Could not find ContestCreated or NFTContestCreated event');
+              console.log('⚠️ Could not find ContestCreated event');
               console.log('   Available logs:', receipt.logs.map(l => l.topics[0]));
             }
           }
