@@ -158,6 +158,9 @@ function buildNotificationContent(type, data) {
   };
 }
 
+// Set to true to disable all notifications (for testing)
+const NOTIFICATIONS_DISABLED = true;
+
 /**
  * Send notification to all subscribers
  * @param {string} type - Notification type
@@ -165,6 +168,11 @@ function buildNotificationContent(type, data) {
  * @param {number[]} targetFids - Optional: Only send to specific FIDs
  */
 async function sendNotification(type, data, targetFids = null) {
+  if (NOTIFICATIONS_DISABLED) {
+    console.log(`[NOTIFICATIONS DISABLED] Would have sent: ${type}`);
+    return { sent: 0, failed: 0, disabled: true };
+  }
+
   const subscribers = await getSubscribers();
 
   if (subscribers.length === 0) {
