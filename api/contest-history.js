@@ -1052,10 +1052,16 @@ module.exports = async (req, res) => {
     const v2RecentLimit = isActiveFilter ? 100 : null;
     const nftRecentLimit = isActiveFilter ? 20 : null;
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // SKIP LEGACY CONTRACTS - Only show new M-/T- prefix contests
+    // Set to false to include V1 token, V1 NFT, and V2 legacy contests
+    // ═══════════════════════════════════════════════════════════════════════
+    const SKIP_LEGACY_CONTRACTS = true;
+
     // Create fetcher functions for V1 token contests (most recent first)
     // SKIP for active filter: All new token contests use ContestManager V2 now
     // V1 ContestEscrow only has completed/cancelled contests (legacy)
-    if (!isActiveFilter) {
+    if (!SKIP_LEGACY_CONTRACTS && !isActiveFilter) {
       // For history/all, fetch all V1 token contests
       for (let i = totalTokenContests; i >= 1; i--) {
         const contestId = i; // Capture in closure
@@ -1071,42 +1077,49 @@ module.exports = async (req, res) => {
             .catch(() => null)
         );
       }
+    } else if (SKIP_LEGACY_CONTRACTS) {
+      console.log('Skipping V1 token contests (SKIP_LEGACY_CONTRACTS=true)');
     } else {
       console.log('Skipping V1 token contests for active filter (all new contests use V2)');
     }
 
     // Create fetcher functions for V1 NFT contests (most recent first)
     // Note: V1 NFT contests may still have active contests, so we check them
-    const nftStartId = nftRecentLimit ? Math.max(1, totalNftContests - nftRecentLimit + 1) : 1;
-    for (let i = totalNftContests; i >= nftStartId; i--) {
-      const contestId = i;
-      nftFetchers.push(() =>
-        getNftContestDetails(provider, nftContract, contestId)
-          .then(contest => {
-            if (contest) {
-              contest.contractType = 'nft';
-              contest.contestIdDisplay = `NFT-${contestId}`;
-              return contest;
-            }
-            return null;
-          })
-          .catch(() => null)
-      );
+    if (!SKIP_LEGACY_CONTRACTS) {
+      const nftStartId = nftRecentLimit ? Math.max(1, totalNftContests - nftRecentLimit + 1) : 1;
+      for (let i = totalNftContests; i >= nftStartId; i--) {
+        const contestId = i;
+        nftFetchers.push(() =>
+          getNftContestDetails(provider, nftContract, contestId)
+            .then(contest => {
+              if (contest) {
+                contest.contractType = 'nft';
+                contest.contestIdDisplay = `NFT-${contestId}`;
+                return contest;
+              }
+              return null;
+            })
+            .catch(() => null)
+        );
+      }
+    } else {
+      console.log('Skipping V1 NFT contests (SKIP_LEGACY_CONTRACTS=true)');
     }
 
     // Create fetcher functions for V2 contests (most recent first) - LEGACY
-    const v2StartId = v2RecentLimit ? Math.max(V2_START_CONTEST_ID, v2HighestId - v2RecentLimit + 1) : V2_START_CONTEST_ID;
-    const actualV2Count = v2HighestId >= v2StartId ? v2HighestId - v2StartId + 1 : 0;
-    console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${actualV2Count} contests${isActiveFilter ? ' - active filter optimization' : ''})`);
-    for (let i = v2HighestId; i >= v2StartId; i--) {
-      const contestId = i;
-      v2Fetchers.push(() =>
-        getV2ContestDetails(provider, v2Contract, contestId)
-          .then(contest => {
-            if (contest) {
-              contest.contractType = 'v2';
-              contest.contestIdDisplay = `V2-${contestId}`;
-              return contest;
+    if (!SKIP_LEGACY_CONTRACTS) {
+      const v2StartId = v2RecentLimit ? Math.max(V2_START_CONTEST_ID, v2HighestId - v2RecentLimit + 1) : V2_START_CONTEST_ID;
+      const actualV2Count = v2HighestId >= v2StartId ? v2HighestId - v2StartId + 1 : 0;
+      console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${actualV2Count} contests${isActiveFilter ? ' - active filter optimization' : ''})`);
+      for (let i = v2HighestId; i >= v2StartId; i--) {
+        const contestId = i;
+        v2Fetchers.push(() =>
+          getV2ContestDetails(provider, v2Contract, contestId)
+            .then(contest => {
+              if (contest) {
+                contest.contractType = 'v2';
+                contest.contestIdDisplay = `V2-${contestId}`;
+                return contest;
             }
             return null;
           })
@@ -1115,6 +1128,9 @@ module.exports = async (req, res) => {
             return null;
           })
       );
+      }
+    } else {
+      console.log('Skipping V2 contests (SKIP_LEGACY_CONTRACTS=true)');
     }
 
     // Create fetcher functions for Unified ContestManager M- prefix contests (main)
