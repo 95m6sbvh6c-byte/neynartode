@@ -229,9 +229,11 @@ async function getContestDetails(provider, contract, contestId, isTest = false) 
   if (cached) return cached;
 
   try {
+    console.log(`Fetching ${prefix}-${contestId}...`);
     const contestData = isTest
       ? await contract.getTestContest(contestId)
       : await contract.getContest(contestId);
+    console.log(`Got ${prefix}-${contestId} data:`, contestData ? 'success' : 'null');
 
     const {
       host, prizeType, prizeToken, prizeAmount, nftContract, nftTokenId, nftAmount,
@@ -332,7 +334,8 @@ async function getContestDetails(provider, contract, contestId, isTest = false) 
     await setCachedContest(cacheKey, contest);
     return contest;
   } catch (e) {
-    console.error(`Error fetching contest ${prefix}-${contestId}:`, e.message);
+    console.error(`Error fetching contest ${prefix}-${contestId}:`, e.message, e.code);
+    console.error(`Full error:`, JSON.stringify(e, Object.getOwnPropertyNames(e)));
     return null;
   }
 }
