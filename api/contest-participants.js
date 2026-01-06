@@ -22,25 +22,14 @@ const NEYNARTODES_TOKEN = '0x8dE1622fE07f56cda2e2273e615A513F1d828B07';
 const HOLDER_THRESHOLD = ethers.parseUnits('100000000', 18); // 100M tokens
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
 
-// Contract ABIs for fetching castId
-const CONTEST_ESCROW_ABI = [
-  'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
+// Unified ContestManager ABI
+const CONTEST_MANAGER_ABI = [
+  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
 ];
 
-const NFT_CONTEST_ESCROW_ABI = [
-  'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
-];
-
-const CONTEST_MANAGER_V2_ABI = [
-  'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
-];
-
-// Contract addresses
-const CONTEST_ESCROW_ADDRESS = '0xfe9CC44e275d61f2D0DF9e3C1d6D6f72C46257a3';
-const NFT_CONTEST_ESCROW_ADDRESS = '0xF36dc2A66f5Fd29c51C1e68920B5E4cbDbC19F65';
-const CONTEST_MANAGER_V2_ADDRESS = '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06'; // Legacy V2
-const CONTEST_MANAGER_ADDRESS = '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944'; // NEW Unified (M-/T- prefix)
-const V2_START_ID = 105;
+// Unified ContestManager address
+const CONTEST_MANAGER_ADDRESS = '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944';
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -99,31 +88,9 @@ module.exports = async (req, res) => {
     }
 
     // Get all FIDs who entered this contest
-    // Check both key formats and COMBINE results for V2 contests
-    const contestIdNum = parseInt(contestId);
-    const isV2 = contestIdNum >= V2_START_ID;
-
-    let entryFids = [];
-
-    if (isV2) {
-      // For V2 contests, check BOTH key formats and combine (entries may exist in either)
-      const v2Key = `contest_entries:v2-${contestId}`;
-      const legacyKey = `contest_entries:${contestId}`;
-
-      let v2Fids = await kv.smembers(v2Key);
-      let legacyFids = await kv.smembers(legacyKey);
-
-      // Handle null/undefined
-      v2Fids = Array.isArray(v2Fids) ? v2Fids : [];
-      legacyFids = Array.isArray(legacyFids) ? legacyFids : [];
-
-      // Combine and dedupe
-      const allFids = new Set([...v2Fids, ...legacyFids]);
-      entryFids = Array.from(allFids);
-    } else {
-      let fids = await kv.smembers(`contest_entries:${contestId}`);
-      entryFids = Array.isArray(fids) ? fids : [];
-    }
+    // Contest ID format: M-1, T-1, etc.
+    let entryFids = await kv.smembers(`contest_entries:${contestId}`);
+    entryFids = Array.isArray(entryFids) ? entryFids : [];
 
     if (!entryFids || entryFids.length === 0) {
       return res.status(200).json({ participants: [], count: 0 });
@@ -157,25 +124,17 @@ module.exports = async (req, res) => {
     const provider = new ethers.JsonRpcProvider(RPC_URL);
 
     try {
-      // Get the cast hash from the contract
-      let castId = null;
+      // Get the cast hash from the unified ContestManager
+      // Contest ID format: M-1, T-1, etc.
+      const isTestContest = contestId.startsWith('T-');
+      const numericId = parseInt(contestId.replace(/^[MT]-/, ''));
 
-      if (isV2) {
-        // V2 contest - use ContestManager V2
-        const contract = new ethers.Contract(CONTEST_MANAGER_V2_ADDRESS, CONTEST_MANAGER_V2_ABI, provider);
-        const contestData = await contract.getContest(contestIdNum);
-        castId = contestData[3]; // castId is 4th element
-      } else if (contestIdNum >= 66) {
-        // NFT contest escrow
-        const contract = new ethers.Contract(NFT_CONTEST_ESCROW_ADDRESS, NFT_CONTEST_ESCROW_ABI, provider);
-        const contestData = await contract.getContest(contestIdNum);
-        castId = contestData[7]; // castId is 8th element
-      } else {
-        // Original contest escrow
-        const contract = new ethers.Contract(CONTEST_ESCROW_ADDRESS, CONTEST_ESCROW_ABI, provider);
-        const contestData = await contract.getContest(contestIdNum);
-        castId = contestData[5]; // castId is 6th element
-      }
+      const contract = new ethers.Contract(CONTEST_MANAGER_ADDRESS, CONTEST_MANAGER_ABI, provider);
+      const contestData = isTestContest
+        ? await contract.getTestContest(numericId)
+        : await contract.getContest(numericId);
+
+      const castId = contestData.castId;
 
       // Extract actual cast hash (remove requirements suffix if present)
       const actualCastHash = castId && castId.includes('|') ? castId.split('|')[0] : castId;

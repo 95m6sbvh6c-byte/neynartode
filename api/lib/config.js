@@ -1,19 +1,14 @@
 /**
  * Centralized configuration for all API endpoints
- * Eliminates duplicate CONFIG definitions across files
+ * Unified ContestManager only - legacy contracts removed
  */
 
 const CONFIG = {
   // Contract Addresses
   NEYNARTODES: '0x8dE1622fE07f56cda2e2273e615A513F1d828B07',
 
-  // NEW Unified ContestManager (M- and T- prefix contests)
+  // Unified ContestManager (M- and T- prefix contests)
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
-
-  // LEGACY Contracts (archived - read-only for historical data)
-  CONTEST_ESCROW_LEGACY: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-  NFT_CONTEST_ESCROW_LEGACY: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
-  CONTEST_MANAGER_V2_LEGACY: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
 
   // Uniswap V4 Pool
   V4_STATE_VIEW: '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71',
@@ -39,9 +34,9 @@ const CONFIG = {
   API_RATE_LIMIT_MS: 100,
 };
 
-// Contract ABIs - centralized to avoid duplication
+// Contract ABIs
 const ABIS = {
-  // NEW Unified ContestManager ABI
+  // Unified ContestManager ABI
   CONTEST_MANAGER: [
     // View functions
     'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
@@ -73,23 +68,6 @@ const ABIS = {
     'event ContestFinalized(uint256 indexed contestId, address[] winners, bool isTest)',
     'event NFTDeposited(uint256 indexed depositId, address indexed depositor, address nftContract, uint256 tokenId)',
     'event MinPrizeValueUpdated(uint256 oldValue, uint256 newValue)',
-  ],
-
-  // LEGACY ABIs (for historical data)
-  CONTEST_ESCROW: [
-    'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
-    'function getQualifiedEntries(uint256 _contestId) external view returns (address[] memory)',
-    'function nextContestId() external view returns (uint256)',
-    'function finalizeContest(uint256 _contestId, address[] calldata _qualifiedAddresses) external',
-    'function cancelContest(uint256 _contestId, string calldata _reason) external',
-  ],
-
-  NFT_CONTEST_ESCROW: [
-    'function getContest(uint256 _contestId) external view returns (address host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
-    'function getQualifiedEntries(uint256 _contestId) external view returns (address[] memory)',
-    'function nextContestId() external view returns (uint256)',
-    'function finalizeContest(uint256 _contestId, address[] calldata _qualifiedAddresses) external',
-    'function cancelContest(uint256 _contestId, string calldata _reason) external',
   ],
 
   ERC20: [
@@ -169,8 +147,8 @@ const PRIZE_TYPE = {
 
 /**
  * Parse a contest ID string to determine its type and numeric ID
- * @param {string} contestIdStr - Contest ID like "M-1", "T-5", "v2-105", or "42"
- * @returns {{ id: number, type: 'main' | 'test' | 'v2-legacy' | 'v1-legacy', prefix: string }}
+ * @param {string} contestIdStr - Contest ID like "M-1", "T-5"
+ * @returns {{ id: number, type: 'main' | 'test', prefix: string }}
  */
 function parseContestId(contestIdStr) {
   if (!contestIdStr) return null;
@@ -183,20 +161,18 @@ function parseContestId(contestIdStr) {
   if (str.startsWith('T-')) {
     return { id: parseInt(str.slice(2)), type: 'test', prefix: 'T-' };
   }
-  if (str.startsWith('v2-')) {
-    return { id: parseInt(str.slice(3)), type: 'v2-legacy', prefix: 'v2-' };
-  }
-  // Numeric only = V1 legacy
+
+  // Default to main if just a number
   const numId = parseInt(str);
   if (!isNaN(numId)) {
-    return { id: numId, type: 'v1-legacy', prefix: '' };
+    return { id: numId, type: 'main', prefix: 'M-' };
   }
 
   return null;
 }
 
 /**
- * Check if a contest ID is from the new unified ContestManager
+ * Check if a contest ID is from the unified ContestManager
  * @param {string} contestIdStr - Contest ID string
  * @returns {boolean}
  */
