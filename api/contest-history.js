@@ -28,9 +28,10 @@ const CONFIG = {
 };
 
 // Unified ContestManager ABI (M- and T- prefix contests)
+// Using getContestFull/getTestContestFull for full struct data
 const UNIFIED_CONTEST_MANAGER_ABI = [
-  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
-  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
+  'function getTestContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
   'function mainNextContestId() view returns (uint256)',
   'function testNextContestId() view returns (uint256)',
 ];
@@ -231,16 +232,17 @@ async function getContestDetails(provider, contract, contestId, isTest = false) 
   try {
     console.log(`Fetching ${prefix}-${contestId}...`);
     const contestData = isTest
-      ? await contract.getTestContest(contestId)
-      : await contract.getContest(contestId);
+      ? await contract.getTestContestFull(contestId)
+      : await contract.getContestFull(contestId);
     console.log(`Got ${prefix}-${contestId} data:`, contestData ? 'success' : 'null');
 
+    // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
     const {
-      host, prizeType, prizeToken, prizeAmount, nftContract, nftTokenId, nftAmount,
-      startTime, endTime, castId, tokenRequirement, volumeRequirement, status, winnerCount, winners
+      host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount,
+      tokenRequirement, volumeRequirement, winnerCount, winners
     } = contestData;
 
-    const prizeTypeNum = Number(prizeType);
+    const prizeTypeNum = Number(contestType);
     const isNft = prizeTypeNum === 2 || prizeTypeNum === 3;
     const isEth = prizeTypeNum === 0;
 
@@ -271,15 +273,19 @@ async function getContestDetails(provider, contract, contestId, isTest = false) 
       if (replyMatch) requireReply = replyMatch[1] !== '0';
     }
 
+    // For NFT contests: prizeToken = NFT contract, prizeAmount = tokenId
+    const nftContractAddr = isNft ? prizeToken : '';
+    const nftTokenId = isNft ? prizeAmount : 0n;
+
     let nftImage = '';
     let nftName = '';
     if (isNft && castParts[2]) {
       nftImage = castParts[2];
     }
-    if (isNft && nftContract !== '0x0000000000000000000000000000000000000000') {
+    if (isNft && nftContractAddr !== '0x0000000000000000000000000000000000000000') {
       try {
         const nftType = prizeTypeNum === 2 ? 0 : 1;
-        const metadata = await getNftMetadata(provider, nftContract, nftTokenId, nftType);
+        const metadata = await getNftMetadata(provider, nftContractAddr, nftTokenId, nftType);
         nftName = metadata.name || `NFT #${nftTokenId}`;
         if (!nftImage && metadata.image) nftImage = metadata.image;
       } catch (e) {
@@ -319,7 +325,7 @@ async function getContestDetails(provider, contract, contestId, isTest = false) 
       requireLike,
       requireReply,
       isNft,
-      nftAddress: isNft ? nftContract : '',
+      nftAddress: nftContractAddr,
       nftTokenId: isNft ? nftTokenId.toString() : '',
       nftAmount: isNft ? Number(nftAmount) : 0,
       nftImage,
