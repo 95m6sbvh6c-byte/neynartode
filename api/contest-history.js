@@ -44,12 +44,28 @@ const NFT_CONTEST_ESCROW_ABI = [
   'function nextContestId() external view returns (uint256)',
 ];
 
-// ContestManager V2 ABI - unified contest manager for ETH/ERC20/NFT contests
+// ContestManager V2 ABI - unified contest manager for ETH/ERC20/NFT contests (LEGACY)
 const CONTEST_MANAGER_V2_ABI = [
   'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
   'function getWinners(uint256 _contestId) external view returns (address[] memory)',
   'function nextContestId() external view returns (uint256)',
 ];
+
+// NEW Unified ContestManager ABI (M- and T- prefix contests)
+const UNIFIED_CONTEST_MANAGER_ABI = [
+  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function mainNextContestId() view returns (uint256)',
+  'function testNextContestId() view returns (uint256)',
+];
+
+// Unified ContestManager prize types
+const UNIFIED_PRIZE_TYPES = {
+  0: 'ETH',
+  1: 'ERC20',
+  2: 'ERC721',
+  3: 'ERC1155'
+};
 
 // V2 contest types
 const V2_CONTEST_TYPES = {
@@ -605,6 +621,158 @@ async function getV2ContestDetails(provider, contract, contestId) {
 }
 
 /**
+ * Fetch Unified ContestManager contest details (M- and T- prefix contests)
+ * Supports ETH, ERC20, ERC721, and ERC1155 prizes with multi-winner support
+ * @param {object} provider - ethers provider
+ * @param {object} contract - unified ContestManager contract
+ * @param {number} contestId - numeric contest ID
+ * @param {boolean} isTest - true for T- prefix (test), false for M- prefix (main)
+ */
+async function getUnifiedContestDetails(provider, contract, contestId, isTest = false) {
+  const prefix = isTest ? 'T' : 'M';
+  const cacheKey = `contest:unified:${prefix}-${contestId}`;
+
+  // Check cache first
+  const cached = await getCachedContest(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // Call getTestContest for T- prefix, getContest for M- prefix
+    const contestData = isTest
+      ? await contract.getTestContest(contestId)
+      : await contract.getContest(contestId);
+
+    const {
+      host,
+      prizeType,
+      prizeToken,
+      prizeAmount,
+      nftContract,
+      nftTokenId,
+      nftAmount,
+      startTime,
+      endTime,
+      castId,
+      tokenRequirement,
+      volumeRequirement,
+      status,
+      winnerCount,
+      winners
+    } = contestData;
+
+    // Determine prize type
+    const prizeTypeNum = Number(prizeType);
+    const isNft = prizeTypeNum === 2 || prizeTypeNum === 3; // ERC721 or ERC1155
+    const isEth = prizeTypeNum === 0;
+
+    // Get token info for prize (ETH or ERC20)
+    let prizeTokenInfo = { symbol: 'ETH', decimals: 18, name: 'Ether' };
+    if (!isNft && !isEth && prizeToken !== '0x0000000000000000000000000000000000000000') {
+      prizeTokenInfo = await getTokenInfo(provider, prizeToken);
+    }
+
+    // Format prize amount
+    const formattedPrize = Number(prizeAmount) / Math.pow(10, prizeTokenInfo.decimals);
+
+    // Get token requirement info if set
+    let tokenRequirementSymbol = null;
+    if (tokenRequirement !== '0x0000000000000000000000000000000000000000') {
+      const reqTokenInfo = await getTokenInfo(provider, tokenRequirement);
+      tokenRequirementSymbol = reqTokenInfo.symbol;
+    }
+
+    // Extract actual cast hash and parse requirements suffix if present
+    const castParts = castId.split('|');
+    const actualCastHash = castParts[0];
+
+    // Parse social requirements from castId (format: "hash|R1L0P1")
+    let requireRecast = false, requireLike = false, requireReply = false;
+    if (castParts[1]) {
+      const reqCode = castParts[1];
+      const recastMatch = reqCode.match(/R(\d)/);
+      const likeMatch = reqCode.match(/L(\d)/);
+      const replyMatch = reqCode.match(/P(\d)/);
+      if (recastMatch) requireRecast = recastMatch[1] !== '0';
+      if (likeMatch) requireLike = likeMatch[1] !== '0';
+      if (replyMatch) requireReply = replyMatch[1] !== '0';
+    }
+
+    // Parse NFT image URL from castId if present (format: "hash|R1L0P1|imageUrl")
+    let nftImage = '';
+    let nftName = '';
+    if (isNft && castParts[2]) {
+      nftImage = castParts[2];
+    }
+    if (isNft && nftContract !== '0x0000000000000000000000000000000000000000') {
+      // Try to get NFT metadata
+      try {
+        const nftType = prizeTypeNum === 2 ? 0 : 1; // 0 = ERC721, 1 = ERC1155
+        const metadata = await getNftMetadata(provider, nftContract, nftTokenId, nftType);
+        nftName = metadata.name || `NFT #${nftTokenId}`;
+        if (!nftImage && metadata.image) nftImage = metadata.image;
+      } catch (e) {
+        nftName = `NFT #${nftTokenId}`;
+      }
+    }
+
+    // Calculate duration
+    const durationSeconds = Number(endTime) - Number(startTime);
+    const durationHours = Math.floor(durationSeconds / 3600);
+    const durationMinutes = Math.floor((durationSeconds % 3600) / 60);
+
+    const contest = {
+      contestId: `${prefix}-${contestId}`,
+      contestIdNumeric: Number(contestId),
+      host: host,
+      prizeToken: prizeToken,
+      prizeTokenSymbol: prizeTokenInfo.symbol,
+      prizeTokenName: prizeTokenInfo.name,
+      prizeAmount: formattedPrize,
+      prizeAmountRaw: prizeAmount.toString(),
+      startTime: Number(startTime),
+      endTime: Number(endTime),
+      durationHours,
+      durationMinutes,
+      castId: actualCastHash,
+      tokenRequirement: tokenRequirement,
+      tokenRequirementSymbol,
+      volumeRequirement: Number(volumeRequirement) / 1e18, // Convert from wei
+      status: Number(status),
+      statusText: STATUS_MAP[Number(status)] || 'Unknown',
+      winner: winners.length > 0 ? winners[0] : '0x0000000000000000000000000000000000000000',
+      winners: winners,
+      winnerCount: Number(winnerCount),
+      participantCount: 0,
+      qualifiedEntries: [],
+      // Social requirements
+      requireRecast,
+      requireLike,
+      requireReply,
+      // NFT fields
+      isNft,
+      nftAddress: isNft ? nftContract : '',
+      nftTokenId: isNft ? nftTokenId.toString() : '',
+      nftAmount: isNft ? Number(nftAmount) : 0,
+      nftImage,
+      nftName,
+      nftCollection: '',
+      nftType: prizeTypeNum === 2 ? 'ERC721' : (prizeTypeNum === 3 ? 'ERC1155' : ''),
+      // Contest type info
+      contestType: UNIFIED_PRIZE_TYPES[prizeTypeNum] || 'Unknown',
+      isUnified: true,
+      isTest,
+    };
+
+    // Cache the result
+    await setCachedContest(cacheKey, contest);
+    return contest;
+  } catch (e) {
+    console.error(`Error fetching unified contest ${prefix}-${contestId}:`, e.message);
+    return null;
+  }
+}
+
+/**
  * Main handler
  */
 module.exports = async (req, res) => {
@@ -628,8 +796,10 @@ module.exports = async (req, res) => {
     // V1 contracts (legacy)
     const tokenContract = new ethers.Contract(CONFIG.CONTEST_ESCROW, CONTEST_ESCROW_ABI, provider);
     const nftContract = new ethers.Contract(CONFIG.NFT_CONTEST_ESCROW, NFT_CONTEST_ESCROW_ABI, provider);
-    // V2 contract (new unified system)
+    // V2 contract (legacy unified system)
     const v2Contract = new ethers.Contract(CONFIG.CONTEST_MANAGER_V2, CONTEST_MANAGER_V2_ABI, provider);
+    // NEW Unified ContestManager (M- and T- prefix contests)
+    const unifiedContract = new ethers.Contract(CONFIG.CONTEST_MANAGER, UNIFIED_CONTEST_MANAGER_ABI, provider);
 
     // Parse query params
     const limit = Math.min(parseInt(req.query.limit) || 20, 50); // Max 50
@@ -839,15 +1009,24 @@ module.exports = async (req, res) => {
     const nftNextId = await fetchWithRetry(() => nftContract.nextContestId()).catch(() => 1);
     await new Promise(r => setTimeout(r, 100));
     const v2NextId = await fetchWithRetry(() => v2Contract.nextContestId()).catch(() => 105);
+    await new Promise(r => setTimeout(r, 100));
+    // NEW: Fetch unified ContestManager counts (M- and T- prefixes)
+    const unifiedMainNextId = await fetchWithRetry(() => unifiedContract.mainNextContestId()).catch(() => 1);
+    await new Promise(r => setTimeout(r, 100));
+    const unifiedTestNextId = await fetchWithRetry(() => unifiedContract.testNextContestId()).catch(() => 1);
+
     const totalTokenContests = Number(tokenNextId) - 1;
     const totalNftContests = Number(nftNextId) - 1;
     // V2 contests start at ID 105, so highest ID is v2NextId - 1
     const v2HighestId = Number(v2NextId) - 1;
     const V2_START_CONTEST_ID = 105;
     const totalV2Contests = v2HighestId >= V2_START_CONTEST_ID ? v2HighestId - V2_START_CONTEST_ID + 1 : 0;
-    const totalContests = totalTokenContests + totalNftContests + totalV2Contests;
+    // Unified ContestManager counts (M- and T- prefixes start at 1)
+    const totalMainContests = Number(unifiedMainNextId) - 1;
+    const totalTestContests = Number(unifiedTestNextId) - 1;
+    const totalContests = totalTokenContests + totalNftContests + totalV2Contests + totalMainContests + totalTestContests;
 
-    console.log(`Contest counts: token=${totalTokenContests}, nft=${totalNftContests}, v2=${totalV2Contests} (IDs ${V2_START_CONTEST_ID}-${v2HighestId})`);
+    console.log(`Contest counts: token=${totalTokenContests}, nft=${totalNftContests}, v2=${totalV2Contests} (IDs ${V2_START_CONTEST_ID}-${v2HighestId}), M-=${totalMainContests}, T-=${totalTestContests}`);
 
     if (totalContests <= 0) {
       return res.status(200).json({
@@ -863,6 +1042,8 @@ module.exports = async (req, res) => {
     const tokenFetchers = [];
     const nftFetchers = [];
     const v2Fetchers = [];
+    const unifiedMainFetchers = [];
+    const unifiedTestFetchers = [];
 
     // OPTIMIZATION: For status=active, only check recent contests (active contests are always new)
     // This dramatically reduces RPC calls when loading the active contests tab
@@ -913,7 +1094,7 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Create fetcher functions for V2 contests (most recent first)
+    // Create fetcher functions for V2 contests (most recent first) - LEGACY
     const v2StartId = v2RecentLimit ? Math.max(V2_START_CONTEST_ID, v2HighestId - v2RecentLimit + 1) : V2_START_CONTEST_ID;
     const actualV2Count = v2HighestId >= v2StartId ? v2HighestId - v2StartId + 1 : 0;
     console.log(`V2 fetch: from ${v2HighestId} down to ${v2StartId} (${actualV2Count} contests${isActiveFilter ? ' - active filter optimization' : ''})`);
@@ -931,6 +1112,48 @@ module.exports = async (req, res) => {
           })
           .catch((e) => {
             console.error(`V2 contest ${contestId} fetch error:`, e.message);
+            return null;
+          })
+      );
+    }
+
+    // Create fetcher functions for Unified ContestManager M- prefix contests (main)
+    console.log(`Unified M- fetch: ${totalMainContests} contests (IDs 1-${totalMainContests})`);
+    for (let i = totalMainContests; i >= 1; i--) {
+      const contestId = i;
+      unifiedMainFetchers.push(() =>
+        getUnifiedContestDetails(provider, unifiedContract, contestId, false)
+          .then(contest => {
+            if (contest) {
+              contest.contractType = 'unified-main';
+              contest.contestIdDisplay = `M-${contestId}`;
+              return contest;
+            }
+            return null;
+          })
+          .catch((e) => {
+            console.error(`Unified M-${contestId} fetch error:`, e.message);
+            return null;
+          })
+      );
+    }
+
+    // Create fetcher functions for Unified ContestManager T- prefix contests (test)
+    console.log(`Unified T- fetch: ${totalTestContests} contests (IDs 1-${totalTestContests})`);
+    for (let i = totalTestContests; i >= 1; i--) {
+      const contestId = i;
+      unifiedTestFetchers.push(() =>
+        getUnifiedContestDetails(provider, unifiedContract, contestId, true)
+          .then(contest => {
+            if (contest) {
+              contest.contractType = 'unified-test';
+              contest.contestIdDisplay = `T-${contestId}`;
+              return contest;
+            }
+            return null;
+          })
+          .catch((e) => {
+            console.error(`Unified T-${contestId} fetch error:`, e.message);
             return null;
           })
       );
@@ -963,7 +1186,7 @@ module.exports = async (req, res) => {
       return results;
     };
 
-    console.log(`Fetching ${tokenFetchers.length} token, ${nftFetchers.length} NFT, ${v2Fetchers.length} V2 contests...`);
+    console.log(`Fetching ${tokenFetchers.length} token, ${nftFetchers.length} NFT, ${v2Fetchers.length} V2, ${unifiedMainFetchers.length} M-, ${unifiedTestFetchers.length} T- contests...`);
 
     // Process each contract type sequentially to avoid rate limits
     const tokenResults = await processBatch(tokenFetchers);
@@ -971,14 +1194,20 @@ module.exports = async (req, res) => {
     const nftResults = await processBatch(nftFetchers);
     await new Promise(resolve => setTimeout(resolve, delayMs));
     const v2Results = await processBatch(v2Fetchers);
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    const unifiedMainResults = await processBatch(unifiedMainFetchers);
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    const unifiedTestResults = await processBatch(unifiedTestFetchers);
 
-    console.log(`Fetched: ${tokenResults.filter(c => c !== null).length} token, ${nftResults.filter(c => c !== null).length} NFT, ${v2Results.filter(c => c !== null).length} V2`);
+    console.log(`Fetched: ${tokenResults.filter(c => c !== null).length} token, ${nftResults.filter(c => c !== null).length} NFT, ${v2Results.filter(c => c !== null).length} V2, ${unifiedMainResults.filter(c => c !== null).length} M-, ${unifiedTestResults.filter(c => c !== null).length} T-`);
 
     // Filter out nulls, combine all contests
     const allContests = [
       ...tokenResults.filter(c => c !== null),
       ...nftResults.filter(c => c !== null),
       ...v2Results.filter(c => c !== null),
+      ...unifiedMainResults.filter(c => c !== null),
+      ...unifiedTestResults.filter(c => c !== null),
     ];
 
     // Sort by endTime descending (newest first)
