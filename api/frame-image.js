@@ -14,24 +14,33 @@ const { ethers } = require('ethers');
 
 const CONFIG = {
   BASE_RPC_URL: 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
-  CONTEST_ESCROW: '0xEDE1Af4abfD069FFB14b5D3C0BBFf681Ec56BDF5'
+  CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
 };
 
-const ESCROW_ABI = [
-  'function getContest(uint256) view returns (address host, uint256 prizeAmount, uint256 endTime, bool finalized, bytes32 requirements, address tokenAddress, uint256 minTradeVolume, uint256 tokenRequirement)'
+const CONTEST_MANAGER_ABI = [
+  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
 ];
 
-async function getContestInfo(contestId) {
+const CONTEST_STATUS = { Completed: 2 };
+
+async function getContestInfo(contestIdStr) {
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-    const escrow = new ethers.Contract(CONFIG.CONTEST_ESCROW, ESCROW_ABI, provider);
+    const contestManager = new ethers.Contract(CONFIG.CONTEST_MANAGER, CONTEST_MANAGER_ABI, provider);
 
-    const contest = await escrow.getContest(contestId);
+    // Parse contest ID (M-1, T-1, etc.)
+    const isTestContest = contestIdStr.startsWith('T-');
+    const numericId = parseInt(contestIdStr.replace(/^[MT]-/, ''));
+
+    const contest = isTestContest
+      ? await contestManager.getTestContest(numericId)
+      : await contestManager.getContest(numericId);
 
     return {
-      prizeAmount: ethers.formatUnits(contest.prizeAmount, 18),
+      prizeAmount: ethers.formatEther(contest.prizeAmount),
       endTime: Number(contest.endTime),
-      finalized: contest.finalized
+      finalized: Number(contest.status) === CONTEST_STATUS.Completed,
     };
   } catch (e) {
     console.error('Error fetching contest:', e.message);
