@@ -24,14 +24,19 @@ const { ethers } = require('ethers');
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════
 
+const { parseContestId } = require('./lib/config');
+
 const CONFIG = {
-  // V1 contracts (legacy)
+  // V1 contracts (legacy - read-only)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
 
-  // V2 contract (multi-winner support)
-  CONTEST_MANAGER: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
+  // V2 contract (legacy - read-only)
+  CONTEST_MANAGER_V2_LEGACY: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
   V2_START_CONTEST_ID: 105,
+
+  // NEW Unified ContestManager (M- and T- prefix contests)
+  CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
 
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
@@ -686,7 +691,7 @@ async function announceNftWinner(contestId) {
 async function announceV2Winners(contestId) {
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
   const contestManager = new ethers.Contract(
-    CONFIG.CONTEST_MANAGER,
+    CONFIG.CONTEST_MANAGER_V2_LEGACY,
     CONTEST_MANAGER_ABI,
     provider
   );
@@ -990,9 +995,9 @@ async function checkAndAnnounceAll() {
     }
   }
 
-  // Check V2 ContestManager contests
+  // Check V2 ContestManager contests (legacy)
   const contestManager = new ethers.Contract(
-    CONFIG.CONTEST_MANAGER,
+    CONFIG.CONTEST_MANAGER_V2_LEGACY,
     CONTEST_MANAGER_ABI,
     provider
   );

@@ -13,12 +13,15 @@
 const { ethers } = require('ethers');
 
 const CONFIG = {
-  // Contract addresses
+  // V1 Contracts (legacy - read-only)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
+  // V2 Contract (legacy - read-only)
   CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
-  PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
   V2_START_ID: 105,
+  // NEW Unified ContestManager (M- and T- prefix contests)
+  CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
+  PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
 
   // RPC & API
   BASE_RPC: process.env.BASE_RPC_URL || 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
@@ -26,7 +29,7 @@ const CONFIG = {
 
   // Rate limiting
   API_DELAY_MS: 100,
-  RPC_DELAY_MS: 150, // Delay between blockchain calls to avoid 50/second limit
+  RPC_DELAY_MS: 150,
 };
 
 // Contract ABIs

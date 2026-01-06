@@ -23,16 +23,20 @@ const { ethers } = require('ethers');
 const { getUserByWallet: getCachedUserByWallet, getCached, setCache } = require('./lib/utils');
 
 const CONFIG = {
+  // V1 Contracts (legacy - read-only)
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   NFT_CONTEST_ESCROW: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
-  CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06', // Deployed 2025-12-17
-  V2_START_ID: 105, // V2 contests start at ID 105
+  // V2 Contract (legacy - read-only)
+  CONTEST_MANAGER_V2: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
+  V2_START_ID: 105,
+  // NEW Unified ContestManager (M- and T- prefix contests)
+  CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
   PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
   VOTING_MANAGER: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
-  CURRENT_SEASON: 2, // Default active season
+  CURRENT_SEASON: 2,
 };
 
 // Excluded from leaderboard and season prizes (devs/admins who shouldn't compete)
