@@ -4,7 +4,6 @@
  * Handles the "Enter Raffle" button action:
  * 1. Posts like to contest cast via Neynar
  * 2. Records entry in KV storage
- * 3. Posts announcement cast with quote of original cast (auto-cast in background)
  *
  * Called AFTER wallet transaction succeeds (for non-holders)
  * or directly (for holders who don't need wash trade).
@@ -14,16 +13,7 @@
  *   fid: 12345,
  *   contestId: "30",
  *   castHash: "0xabc123...",
- *   addresses: ["0x..."],
- *   // Optional fields for announcement cast:
- *   announcement: {
- *     prize: "1000 NEYNARTODES",
- *     hostUsername: "username",
- *     timeLeft: "2h 30m",
- *     isNft: false,
- *     nftImage: "https://...",
- *     nftName: "Cool NFT"
- *   }
+ *   addresses: ["0x..."]
  * }
  *
  * Returns: { success: true, entry: { ... } }
@@ -43,7 +33,7 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { fid, contestId, castHash, addresses, announcement } = req.body;
+  const { fid, contestId, castHash, addresses } = req.body;
 
   if (!fid) {
     return res.status(400).json({ error: 'Missing fid' });
@@ -133,65 +123,6 @@ module.exports = async (req, res) => {
     await kv.sadd(`contest_entries:${contestId}`, fid.toString());
 
     console.log(`Entry recorded for FID ${fid} in contest ${contestId}`);
-
-    // Post announcement cast in background (don't block the response)
-    if (announcement) {
-      (async () => {
-        try {
-          const { prize, hostUsername, hostFid, timeLeft, isNft, nftImage, nftName, contestId: annContestId } = announcement;
-
-          // Use full contest ID (M-1, T-1, etc.) for miniapp link
-          const fullContestId = annContestId || contestId;
-          const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${fullContestId}`;
-
-          // Build announcement text with miniapp link
-          const prizeText = isNft ? (nftName || 'an NFT') : (prize || 'tokens');
-          const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
-
-          const castText = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeft} remaining!
-
-${miniAppUrl}`;
-
-          // Build embeds array - quote the original contest cast using cast_id format
-          const embeds = [];
-
-          // Add quote cast embed using cast_id format (prevents duplicate link issue)
-          if (hostFid && castHash) {
-            embeds.push({ cast_id: { fid: parseInt(hostFid), hash: castHash } });
-          }
-
-          // Add NFT image if applicable
-          if (isNft && nftImage) {
-            // Use proxied URL for IPFS images to avoid rendering issues in Farcaster
-            const proxiedImage = `https://frame-opal-eight.vercel.app/api/image-proxy?url=${encodeURIComponent(nftImage)}`;
-            embeds.push({ url: proxiedImage });
-          }
-
-          // Post cast via Neynar API
-          const castResponse = await fetch('https://api.neynar.com/v2/farcaster/cast', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': NEYNAR_API_KEY
-            },
-            body: JSON.stringify({
-              signer_uuid,
-              text: castText,
-              embeds: embeds.length > 0 ? embeds : undefined
-            })
-          });
-
-          if (castResponse.ok) {
-            console.log(`Announcement cast posted for FID ${fid}`);
-          } else {
-            const errorData = await castResponse.json().catch(() => ({}));
-            console.error('Announcement cast failed:', errorData);
-          }
-        } catch (castError) {
-          console.error('Announcement cast error:', castError.message);
-        }
-      })();
-    }
 
     return res.status(200).json({
       success: true,

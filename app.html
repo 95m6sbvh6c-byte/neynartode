@@ -408,35 +408,6 @@
                 throw new Error('Could not get contest cast hash. Contest may have ended or not exist.');
               }
 
-              // Build announcement data for auto-cast
-              let announcement = null;
-              if (contestDetails) {
-                const now = new Date();
-                const endTime = new Date(contestDetails.endTime * 1000);
-                const diffMs = endTime - now;
-                const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
-                const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                let timeLeft;
-                if (hoursLeft > 0 && minutesLeft > 0) {
-                  timeLeft = `${hoursLeft}h ${minutesLeft}m`;
-                } else if (hoursLeft > 0) {
-                  timeLeft = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
-                } else {
-                  timeLeft = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
-                }
-
-                announcement = {
-                  prize: contestDetails.prize || 'tokens',
-                  hostUsername: contestDetails.hostUser?.username || '',
-                  hostFid: contestDetails.hostUser?.fid || null,
-                  timeLeft,
-                  isNft: contestDetails.isNft || false,
-                  nftImage: contestDetails.nftImage || '',
-                  nftName: contestDetails.nftName || ''
-                };
-              }
-
               const response = await fetch('/api/enter-contest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -444,8 +415,7 @@
                   fid: userFid,
                   contestId: entryKey,
                   castHash: castHash,
-                  addresses: [from],
-                  announcement
+                  addresses: [from]
                 })
               });
 
@@ -553,35 +523,6 @@
               // Show celebration animation with cast hash for reply link
               showCelebration(castHash);
 
-              // Build announcement data for auto-cast
-              let announcement = null;
-              if (contestDetails) {
-                const now = new Date();
-                const endTime = new Date(contestDetails.endTime * 1000);
-                const diffMs = endTime - now;
-                const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
-                const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                let timeLeft;
-                if (hoursLeft > 0 && minutesLeft > 0) {
-                  timeLeft = `${hoursLeft}h ${minutesLeft}m`;
-                } else if (hoursLeft > 0) {
-                  timeLeft = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
-                } else {
-                  timeLeft = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
-                }
-
-                announcement = {
-                  prize: contestDetails.prize || 'tokens',
-                  hostUsername: contestDetails.hostUser?.username || '',
-                  hostFid: contestDetails.hostUser?.fid || null,
-                  timeLeft,
-                  isNft: contestDetails.isNft || false,
-                  nftImage: contestDetails.nftImage || '',
-                  nftName: contestDetails.nftName || ''
-                };
-              }
-
               // Record the entry - include castHash which is required by the API
               const userFid = window.FarcasterContext?.user?.fid;
               if (userFid && castHash) {
@@ -593,8 +534,7 @@
                     contestId: entryKey,
                     castHash: castHash,
                     addresses: [from],
-                    buyAndBurnTx: txHash,
-                    announcement
+                    buyAndBurnTx: txHash
                   })
                 }).then(res => res.json()).then(data => {
                   console.log('Entry recorded:', data);
@@ -1873,29 +1813,9 @@
           }
         }
 
-        // Step 3: Call enter-contest API (auto like + recast)
+        // Step 3: Call enter-contest API (auto like)
         const castHash = castId?.split('|')[0] || '';
         const userAddresses = state.userProfile?.verifiedAddresses?.ethAddresses || [];
-
-        // Build time remaining text for announcement
-        let timeLeft;
-        if (hoursLeft > 0 && minutesLeft > 0) {
-          timeLeft = `${hoursLeft}h ${minutesLeft}m`;
-        } else if (hoursLeft > 0) {
-          timeLeft = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
-        } else {
-          timeLeft = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
-        }
-
-        // Build announcement data for auto-cast in background
-        const announcement = {
-          prize: prize,
-          hostUsername: hostUsername,
-          timeLeft,
-          isNft: isNft,
-          nftImage: nftImage,
-          nftName: nftName
-        };
 
         const response = await fetch('/api/enter-contest', {
           method: 'POST',
@@ -1904,8 +1824,7 @@
             fid: state.userFid,
             contestId: entryKey,
             castHash: castHash,
-            addresses: userAddresses.length > 0 ? userAddresses : [state.userAddress],
-            announcement
+            addresses: userAddresses.length > 0 ? userAddresses : [state.userAddress]
           })
         });
 
