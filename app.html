@@ -1753,9 +1753,11 @@
       // Mini app URL
       const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}`;
 
-      // Build the share text - matches enter-contest autocast style
-      let text = `🦎 I just entered ${hostTag} raffle on $NEYNARTODES for ${prizeText}! Only ${timeLeft} remaining!
+      // Build the share text
+      let text = `I just entered ${hostTag} raffle for ${prizeText}!!! ⏱️ ${timeLeft} left
 
+powered by $NEYNARTODES 🦎
+👇 Head to the app to enter!
 ${miniAppUrl}`;
 
       console.log('Sharing contest with mini app URL:', { contestId, isNft, winnerCount, participantCount, miniAppUrl });
