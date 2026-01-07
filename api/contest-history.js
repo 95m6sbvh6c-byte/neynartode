@@ -247,11 +247,31 @@ async function getContestDetails(provider, contract, contestId, isTest = false) 
     const isEth = prizeTypeNum === 0;
 
     let prizeTokenInfo = { symbol: 'ETH', decimals: 18, name: 'Ether' };
-    if (!isNft && !isEth && prizeToken !== '0x0000000000000000000000000000000000000000') {
-      prizeTokenInfo = await getTokenInfo(provider, prizeToken);
-    }
+    let formattedPrize = 0;
 
-    const formattedPrize = Number(prizeAmount) / Math.pow(10, prizeTokenInfo.decimals);
+    if (isNft) {
+      // For NFT contests: prizeAmount is the tokenId, not an amount
+      // Get NFT collection name for display
+      const nftContractAddr = prizeToken;
+      let collectionName = 'NFT';
+      if (nftContractAddr !== '0x0000000000000000000000000000000000000000') {
+        try {
+          const nftContract = new ethers.Contract(nftContractAddr, NFT_ABI, provider);
+          collectionName = await nftContract.name();
+        } catch (e) {
+          collectionName = 'NFT';
+        }
+      }
+      // For ERC1155, use nftAmount; for ERC721, it's always 1
+      formattedPrize = prizeTypeNum === 3 ? Number(nftAmount) : 1;
+      prizeTokenInfo = { symbol: collectionName, decimals: 0, name: collectionName };
+    } else if (!isEth && prizeToken !== '0x0000000000000000000000000000000000000000') {
+      prizeTokenInfo = await getTokenInfo(provider, prizeToken);
+      formattedPrize = Number(prizeAmount) / Math.pow(10, prizeTokenInfo.decimals);
+    } else {
+      // ETH
+      formattedPrize = Number(prizeAmount) / Math.pow(10, prizeTokenInfo.decimals);
+    }
 
     let tokenRequirementSymbol = null;
     if (tokenRequirement !== '0x0000000000000000000000000000000000000000') {
