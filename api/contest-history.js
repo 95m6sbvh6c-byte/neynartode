@@ -362,7 +362,15 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300, max-age=30');
+  // Set cache headers based on status filter
+  const statusFilter = req.query.status || 'history';
+  if (statusFilter === 'active') {
+    // Active contests: very short cache so users see new contests quickly
+    res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=30, max-age=10');
+  } else {
+    // History: longer cache since completed contests don't change
+    res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300, max-age=30');
+  }
 
   try {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
@@ -371,7 +379,6 @@ module.exports = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
     const hostFilter = req.query.host?.toLowerCase();
     const includeUsers = req.query.includeUsers !== 'false';
-    const statusFilter = req.query.status || 'history';
 
     // Fetch contest counts
     const mainNextId = await contract.mainNextContestId().catch(() => 1);

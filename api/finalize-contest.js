@@ -58,17 +58,18 @@ const CONFIG = {
 };
 
 // Unified ContestManager ABI
+// Struct order: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
 const CONTEST_MANAGER_ABI = [
-  // View functions
-  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
-  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  // View functions - use getContestFull/getTestContestFull for full struct data
+  'function getContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
+  'function getTestContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
   'function mainNextContestId() view returns (uint256)',
   'function testNextContestId() view returns (uint256)',
   'function canFinalize(uint256 contestId) view returns (bool)',
   'function canFinalizeTest(uint256 contestId) view returns (bool)',
   // Finalization
-  'function finalizeContest(uint256 contestId, address[] calldata qualifiedAddresses) external',
-  'function finalizeTestContest(uint256 contestId, address[] calldata qualifiedAddresses) external',
+  'function finalizeContest(uint256 contestId, address[] calldata qualifiedAddresses, uint256 randomSeed) external',
+  'function finalizeTestContest(uint256 contestId, address[] calldata qualifiedAddresses, uint256 randomSeed) external',
   // Cancel
   'function cancelContest(uint256 contestId, string calldata reason) external',
   'function cancelTestContest(uint256 contestId, string calldata reason) external',
@@ -229,15 +230,16 @@ async function finalizeUnifiedContest(contestIdStr) {
   const contestManager = new ethers.Contract(CONFIG.CONTEST_MANAGER, CONTEST_MANAGER_ABI, wallet);
 
   // Get contest details
-  const getContestFn = isTest ? 'getTestContest' : 'getContest';
+  const getContestFn = isTest ? 'getTestContestFull' : 'getContestFull';
   const contest = await contestManager[getContestFn](numericId);
 
+  // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
   const {
     host,
-    prizeType,
-    endTime,
-    castId,
+    contestType,
     status,
+    castId,
+    endTime,
     winnerCount
   } = contest;
 
@@ -257,7 +259,7 @@ async function finalizeUnifiedContest(contestIdStr) {
   }
 
   console.log(`   Host: ${host}`);
-  console.log(`   Prize Type: ${prizeType} (0=ETH, 1=ERC20, 2=ERC721, 3=ERC1155)`);
+  console.log(`   Contest Type: ${contestType} (0=ETH, 1=ERC20, 2=ERC721, 3=ERC1155)`);
   console.log(`   Winner Count: ${winnerCount}`);
 
   // Extract cast hash from castId (format: "0xhash" or "0xhash|R1L0P1")
@@ -509,7 +511,9 @@ async function finalizeUnifiedContest(contestIdStr) {
 
   try {
     const finalizeFn = isTest ? 'finalizeTestContest' : 'finalizeContest';
-    const tx = await contestManager[finalizeFn](numericId, finalEntries);
+    // Generate random seed for Fisher-Yates shuffle
+    const randomSeed = BigInt('0x' + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join(''));
+    const tx = await contestManager[finalizeFn](numericId, finalEntries, randomSeed);
     console.log(`   TX: ${tx.hash}`);
 
     const receipt = await tx.wait();

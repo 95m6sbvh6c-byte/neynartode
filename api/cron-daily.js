@@ -13,9 +13,10 @@ const CONFIG = {
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
 
+// Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
 const CONTEST_MANAGER_ABI = [
-  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
-  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
+  'function getTestContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
   'function mainNextContestId() view returns (uint256)',
   'function testNextContestId() view returns (uint256)',
 ];
@@ -35,7 +36,7 @@ async function countActiveContests(provider) {
     const mainNextId = await contestManager.mainNextContestId();
     for (let i = 1n; i < mainNextId; i++) {
       try {
-        const contest = await contestManager.getContest(i);
+        const contest = await contestManager.getContestFull(i);
         const { endTime, status } = contest;
         if (Number(status) === CONTEST_STATUS.Active && Number(endTime) > now) {
           activeCount++;
@@ -51,7 +52,7 @@ async function countActiveContests(provider) {
     const testNextId = await contestManager.testNextContestId();
     for (let i = 1n; i < testNextId; i++) {
       try {
-        const contest = await contestManager.getTestContest(i);
+        const contest = await contestManager.getTestContestFull(i);
         const { endTime, status } = contest;
         if (Number(status) === CONTEST_STATUS.Active && Number(endTime) > now) {
           activeCount++;

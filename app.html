@@ -372,7 +372,8 @@
               let castHash = null;
               let contestDetails = null;
               try {
-                const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
+                // First try without cache buster
+                let contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
                 if (contestRes.ok) {
                   const contestData = await contestRes.json();
                   contestDetails = contestData.contests?.find(c =>
@@ -383,12 +384,28 @@
                     console.log('Got cast hash for entry:', castHash);
                   }
                 }
+
+                // If not found, retry with cache-buster to bypass CDN cache
+                if (!castHash) {
+                  console.log('Contest not found in cache, fetching fresh data...');
+                  contestRes = await fetch(`/api/contest-history?limit=100&status=active&_t=${Date.now()}`);
+                  if (contestRes.ok) {
+                    const contestData = await contestRes.json();
+                    contestDetails = contestData.contests?.find(c =>
+                      c.contestId == contestIdParam
+                    );
+                    if (contestDetails?.castId) {
+                      castHash = contestDetails.castId.split('|')[0];
+                      console.log('Got cast hash after fresh fetch:', castHash);
+                    }
+                  }
+                }
               } catch (e) {
                 console.log('Could not fetch cast hash:', e);
               }
 
               if (!castHash) {
-                throw new Error('Could not get contest cast hash');
+                throw new Error('Could not get contest cast hash. Contest may have ended or not exist.');
               }
 
               // Build announcement data for auto-cast
@@ -501,16 +518,32 @@
               let castHash = null;
               let contestDetails = null;
               try {
-                const contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
+                // First try without cache buster
+                let contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
                 if (contestRes.ok) {
                   const contestData = await contestRes.json();
                   contestDetails = contestData.contests?.find(c =>
                     c.contestId == contestIdParam
                   );
                   if (contestDetails?.castId) {
-                    // castId format: "0xhash|R1L0P1" - extract just the hash
                     castHash = contestDetails.castId.split('|')[0];
                     console.log('Got cast hash for celebration:', castHash);
+                  }
+                }
+
+                // If not found, retry with cache-buster
+                if (!castHash) {
+                  console.log('Contest not found, fetching fresh data for celebration...');
+                  contestRes = await fetch(`/api/contest-history?limit=100&status=active&_t=${Date.now()}`);
+                  if (contestRes.ok) {
+                    const contestData = await contestRes.json();
+                    contestDetails = contestData.contests?.find(c =>
+                      c.contestId == contestIdParam
+                    );
+                    if (contestDetails?.castId) {
+                      castHash = contestDetails.castId.split('|')[0];
+                      console.log('Got cast hash after fresh fetch:', castHash);
+                    }
                   }
                 }
               } catch (e) {
@@ -1450,8 +1483,12 @@
       // Wait for all checks to complete
       const checkResults = await Promise.all(checkPromises);
 
-      // Sort by contest ID for consistent display
-      checkResults.sort((a, b) => a.contestId - b.contestId);
+      // Sort by contest ID for consistent display (handles M-1, T-1 format)
+      checkResults.sort((a, b) => {
+        const aNum = parseInt(String(a.contestId).replace(/^[MT]-/, '')) || 0;
+        const bNum = parseInt(String(b.contestId).replace(/^[MT]-/, '')) || 0;
+        return aNum - bNum;
+      });
 
       const results = checkResults.map(r => r.line);
       const qualifiedCount = checkResults.filter(r => r.qualified).length;
@@ -3792,13 +3829,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     // Load active contests - called first for faster perceived loading
-    async function loadActiveContests() {
+    async function loadActiveContests(forceRefresh = false) {
       // Check for cached contests first (for faster initial load)
       const cachedContests = sessionStorage.getItem('neynartodes_active_contests');
       const cachedTime = sessionStorage.getItem('neynartodes_contests_time');
-      const cacheMaxAge = 30000; // 30 seconds
+      const cacheMaxAge = 15000; // 15 seconds (matches API cache)
 
-      if (cachedContests && cachedTime && (Date.now() - parseInt(cachedTime)) < cacheMaxAge) {
+      if (!forceRefresh && cachedContests && cachedTime && (Date.now() - parseInt(cachedTime)) < cacheMaxAge) {
         try {
           state.upcomingContests = JSON.parse(cachedContests);
           state.contestsLoading = false;
@@ -3812,7 +3849,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       state.contestsLoading = !cachedContests;
       try {
         const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
-        const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=50&includeUsers=true&status=active`);
+        // Add cache-buster timestamp when force refreshing to bypass CDN cache
+        const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : '';
+        const historyResponse = await fetch(`${baseUrl}/api/contest-history?limit=50&includeUsers=true&status=active${cacheBuster}`);
         if (historyResponse.ok) {
           const historyData = await historyResponse.json();
           // API already filters to active/pending contests when status=active
@@ -3880,9 +3919,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       render();
     }
 
+    // Force refresh contests (bypasses all caches)
+    async function refreshContests() {
+      showToast('Refreshing contests...', 'info', 2000);
+      // Clear sessionStorage cache
+      sessionStorage.removeItem('neynartodes_active_contests');
+      sessionStorage.removeItem('neynartodes_contests_time');
+      // Force fresh fetch with cache-buster
+      await loadActiveContests(true);
+      showToast('Contests refreshed!', 'success', 2000);
+    }
+
     // Fetch participant PFPs for all active contests (for floating avatars)
     async function loadContestParticipants() {
-      const activeContests = state.upcomingContests.filter(c => new Date(c.endTime * 1000) > new Date());
+      // Note: c.endTime is already a Date object from loadActiveContests()
+      const activeContests = state.upcomingContests.filter(c => new Date(c.endTime) > new Date());
       if (activeContests.length === 0) return;
 
       // Fetch participants for each contest in parallel
@@ -5346,9 +5397,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     <h2 class="text-xl font-bold"><span class="text-[var(--text-primary)]">Active</span> <span class="text-gradient">Contests</span></h2>
                     <p class="text-sm text-[var(--text-muted)]">${state.upcomingContests.length} live now</p>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse"></div>
-                    <span class="text-sm text-[var(--text-muted)]">Live</span>
+                  <div class="flex items-center gap-3">
+                    <button onclick="refreshContests()" class="p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors" title="Refresh contests">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--text-muted)]"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+                    </button>
+                    <div class="flex items-center gap-2">
+                      <div class="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse"></div>
+                      <span class="text-sm text-[var(--text-muted)]">Live</span>
+                    </div>
                   </div>
                 </div>
                 <div class="space-y-3">${contestsHtml}</div>
@@ -7849,8 +7905,9 @@ ${miniAppUrl}`;
         }
 
         // Add contest to state ONLY after successful on-chain tx
+        // Keep contestId as string (M-1, T-1 format) for API calls
         contest.onChainId = contestId;
-        contest.contestId = contestId !== 'Unknown' ? parseInt(contestId) : null;
+        contest.contestId = contestId !== 'Unknown' ? contestId : null;
         state.upcomingContests.push(contest);
         state.upcomingContests.sort((a, b) => a.startTime - b.startTime);
 

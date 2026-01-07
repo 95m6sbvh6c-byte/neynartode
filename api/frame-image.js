@@ -17,9 +17,11 @@ const CONFIG = {
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
 };
 
+// Use getContestFull/getTestContestFull for full struct data
+// Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
 const CONTEST_MANAGER_ABI = [
-  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
-  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
+  'function getTestContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
 ];
 
 const CONTEST_STATUS = { Completed: 2 };
@@ -34,8 +36,8 @@ async function getContestInfo(contestIdStr) {
     const numericId = parseInt(contestIdStr.replace(/^[MT]-/, ''));
 
     const contest = isTestContest
-      ? await contestManager.getTestContest(numericId)
-      : await contestManager.getContest(numericId);
+      ? await contestManager.getTestContestFull(numericId)
+      : await contestManager.getContestFull(numericId);
 
     return {
       prizeAmount: ethers.formatEther(contest.prizeAmount),

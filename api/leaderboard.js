@@ -38,9 +38,10 @@ const EXCLUDED_ADDRESSES = [
   '0x64cb30c6d5e1dc5e675296cf13d547150c71c2b1',
 ];
 
+// Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
 const CONTEST_MANAGER_ABI = [
-  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
-  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
+  'function getTestContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
   'function mainNextContestId() view returns (uint256)',
   'function testNextContestId() view returns (uint256)',
 ];
@@ -296,7 +297,7 @@ module.exports = async (req, res) => {
       }
 
       const contestPromises = batch.map(id =>
-        contestManager.getContest(id).catch(() => null)
+        contestManager.getContestFull(id).catch(() => null)
       );
       const contestResults = await Promise.all(contestPromises);
 
@@ -350,7 +351,7 @@ module.exports = async (req, res) => {
       }
 
       const contestPromises = batch.map(id =>
-        contestManager.getTestContest(id).catch(() => null)
+        contestManager.getTestContestFull(id).catch(() => null)
       );
       const contestResults = await Promise.all(contestPromises);
 

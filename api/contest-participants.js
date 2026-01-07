@@ -23,9 +23,10 @@ const HOLDER_THRESHOLD = ethers.parseUnits('100000000', 18); // 100M tokens
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
 
 // Unified ContestManager ABI
+// Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
 const CONTEST_MANAGER_ABI = [
-  'function getContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
-  'function getTestContest(uint256 contestId) view returns (tuple(address host, uint8 prizeType, address prizeToken, uint256 prizeAmount, address nftContract, uint256 nftTokenId, uint256 nftAmount, uint256 startTime, uint256 endTime, string castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, uint8 winnerCount, address[] winners))',
+  'function getContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
+  'function getTestContestFull(uint256 contestId) view returns (tuple(address host, uint8 contestType, uint8 status, string castId, uint256 startTime, uint256 endTime, address prizeToken, uint256 prizeAmount, uint256 nftAmount, address tokenRequirement, uint256 volumeRequirement, uint8 winnerCount, address[] winners, bool isTestContest))',
 ];
 
 // Unified ContestManager address
@@ -131,9 +132,10 @@ module.exports = async (req, res) => {
 
       const contract = new ethers.Contract(CONTEST_MANAGER_ADDRESS, CONTEST_MANAGER_ABI, provider);
       const contestData = isTestContest
-        ? await contract.getTestContest(numericId)
-        : await contract.getContest(numericId);
+        ? await contract.getTestContestFull(numericId)
+        : await contract.getContestFull(numericId);
 
+      // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
       const castId = contestData.castId;
 
       // Extract actual cast hash (remove requirements suffix if present)
