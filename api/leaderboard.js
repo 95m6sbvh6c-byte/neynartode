@@ -30,7 +30,8 @@ const CONFIG = {
 };
 
 // Excluded from leaderboard (devs/admins)
-const EXCLUDED_FIDS = [1188162];
+// Note: FID 1188162 (app owner) removed for test mode
+const EXCLUDED_FIDS = [];
 const EXCLUDED_ADDRESSES = [
   '0x78eeaa6f014667a339fcf8b4ecd74743366603fb',
   '0x6b814f71712ad9e5b2299676490ce530797f9ec7',
