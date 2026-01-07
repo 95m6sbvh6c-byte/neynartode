@@ -667,7 +667,8 @@ async function finalizeUnifiedContest(contestIdStr) {
       bonuses: {
         holder: holderBonusCount,
         reply: replyBonusCount,
-        share: shareBonusCount
+        share: shareBonusCount,
+        volume: volumeBonusCount
       },
       txHash: receipt.hash,
       winners: selectedWinners.length > 0 ? selectedWinners : null,

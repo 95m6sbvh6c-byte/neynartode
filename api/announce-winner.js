@@ -310,6 +310,10 @@ async function announceContestWinners(contestIdStr) {
 
   const isNftPrize = Number(prizeType) === PRIZE_TYPES.ERC721 || Number(prizeType) === PRIZE_TYPES.ERC1155;
 
+  // For NFT contests: prizeToken = NFT contract, prizeAmount = tokenId
+  const nftContract = isNftPrize ? prizeToken : null;
+  const nftTokenId = isNftPrize ? prizeAmount : null;
+
   console.log(`\nAnnouncing ${winners.length} winner(s) for Contest ${fullContestId}`);
   console.log(`   Host: ${host}`);
   console.log(`   Winners: ${winners.join(', ')}`);
