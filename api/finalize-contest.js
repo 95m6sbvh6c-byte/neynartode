@@ -7,6 +7,7 @@
  *    - 100M+ NEYNARTODES holder = +1 bonus entry
  *    - 3+ word reply on contest cast = +1 bonus entry
  *    - Clicked Share button = +1 bonus entry
+ *    - $20+ trading volume during contest = +1 bonus entry
  * 3. Calling finalizeContest() on the unified ContestManager
  *
  * NO LONGER REQUIRES: likes, recasts
@@ -19,6 +20,7 @@
 
 const { ethers } = require('ethers');
 const { parseContestId } = require('./lib/config');
+const { getUniswapVolumes } = require('./lib/uniswap-volume');
 
 // ═══════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -46,9 +48,12 @@ const CONFIG = {
   // Minimum words for reply bonus
   MIN_REPLY_WORDS: 3,
 
+  // Volume threshold for bonus entry ($20 USD)
+  VOLUME_THRESHOLD_USD: 20,
+
   // Blocked FIDs - these users cannot win contests
+  // Note: FID 1188162 (app owner) removed for test mode
   BLOCKED_FIDS: [
-    1188162,  // App owner - excluded from winning
     1990047,  // ropiik - scam token contests
     892902,   // liadavid - suspected multi-account abuse
     533329,   // ayeshawaqas - suspected multi-account abuse
@@ -200,6 +205,77 @@ async function getSharers(contestId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// VOLUME CHECK - $20+ trading volume during contest = bonus entry
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Check trading volume for all users during the contest period
+ * @param {Map} users - Map of FID -> user data (with addresses)
+ * @param {number} startTime - Contest start timestamp (unix)
+ * @param {number} endTime - Contest end timestamp (unix)
+ * @returns {Promise<Map<number, {volumeUSD: number, passed: boolean}>>} Map of FID -> volume data
+ */
+async function checkVolumeBonus(users, startTime, endTime) {
+  const volumeByFid = new Map();
+
+  try {
+    // Collect all addresses from all users
+    const allAddresses = [];
+    const addressToFid = new Map();
+
+    for (const user of users.values()) {
+      for (const addr of user.addresses) {
+        allAddresses.push(addr.toLowerCase());
+        addressToFid.set(addr.toLowerCase(), user.fid);
+      }
+    }
+
+    if (allAddresses.length === 0) {
+      console.log('   No addresses to check for volume');
+      return volumeByFid;
+    }
+
+    console.log(`\n📈 Checking trading volume for ${allAddresses.length} addresses...`);
+
+    // Use getUniswapVolumes to check all addresses at once
+    const volumeResults = await getUniswapVolumes(
+      CONFIG.NEYNARTODES_TOKEN,
+      allAddresses,
+      CONFIG.VOLUME_THRESHOLD_USD,
+      startTime,
+      endTime
+    );
+
+    // Aggregate volume by FID (sum across all user addresses)
+    for (const result of volumeResults) {
+      const fid = addressToFid.get(result.address.toLowerCase());
+      if (!fid) continue;
+
+      const existing = volumeByFid.get(fid) || { volumeUSD: 0, passed: false };
+      existing.volumeUSD += result.volumeUSD;
+      existing.passed = existing.volumeUSD >= CONFIG.VOLUME_THRESHOLD_USD;
+      volumeByFid.set(fid, existing);
+    }
+
+    // Log results
+    let passedCount = 0;
+    for (const [fid, data] of volumeByFid) {
+      if (data.passed) {
+        passedCount++;
+        const user = users.get(fid);
+        console.log(`   📈 @${user?.username || fid} traded $${data.volumeUSD.toFixed(2)} (bonus!)`);
+      }
+    }
+    console.log(`   Found ${passedCount} users with $${CONFIG.VOLUME_THRESHOLD_USD}+ volume`);
+
+  } catch (error) {
+    console.error('Error checking volume:', error.message);
+  }
+
+  return volumeByFid;
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // MAIN FINALIZATION LOGIC
 // ═══════════════════════════════════════════════════════════════════
 
@@ -239,6 +315,7 @@ async function finalizeUnifiedContest(contestIdStr) {
     contestType,
     status,
     castId,
+    startTime,
     endTime,
     winnerCount
   } = contest;
@@ -449,6 +526,9 @@ async function finalizeUnifiedContest(contestIdStr) {
     });
   }
 
+  // Check trading volume for bonus entries
+  const volumeByFid = await checkVolumeBonus(users, Number(startTime), Number(endTime));
+
   // ═══════════════════════════════════════════════════════════════════
   // STEP 4: Build final entries with bonuses
   // ═══════════════════════════════════════════════════════════════════
@@ -458,6 +538,7 @@ async function finalizeUnifiedContest(contestIdStr) {
   let holderBonusCount = 0;
   let replyBonusCount = 0;
   let shareBonusCount = 0;
+  let volumeBonusCount = 0;
 
   for (const user of users.values()) {
     // Base entry (everyone who clicked Enter gets 1 entry)
@@ -484,6 +565,14 @@ async function finalizeUnifiedContest(contestIdStr) {
       shareBonusCount++;
       console.log(`   📤 Share bonus: @${user.username}`);
     }
+
+    // Bonus 4: $20+ trading volume during contest
+    const volumeData = volumeByFid.get(user.fid);
+    if (volumeData && volumeData.passed) {
+      qualifiedAddresses.push(user.primaryAddress);
+      volumeBonusCount++;
+      console.log(`   📈 Volume bonus: @${user.username} ($${volumeData.volumeUSD.toFixed(2)})`);
+    }
   }
 
   console.log(`\n📊 Entry Summary:`);
@@ -491,6 +580,7 @@ async function finalizeUnifiedContest(contestIdStr) {
   console.log(`   Holder bonuses: ${holderBonusCount}`);
   console.log(`   Reply bonuses: ${replyBonusCount}`);
   console.log(`   Share bonuses: ${shareBonusCount}`);
+  console.log(`   Volume bonuses: ${volumeBonusCount}`);
   console.log(`   Total entries: ${qualifiedAddresses.length}`);
 
   // ═══════════════════════════════════════════════════════════════════
