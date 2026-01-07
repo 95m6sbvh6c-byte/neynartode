@@ -5,13 +5,15 @@
  * Used to display floating PFPs in the active contests section.
  *
  * GET /api/contest-participants?contestId=112
- * Returns: { participants: [{ fid, pfpUrl, username, hasReplied, isHolder, entryCount }] }
+ * Returns: { participants: [{ fid, pfpUrl, username, hasReplied, isHolder, hasShared, entryCount }] }
  *
  * Entry counts:
  * - Base entry: 1 (everyone who enters)
  * - Holder bonus: +1 (100M+ NEYNARTODES)
- * - Reply bonus: +1 (replied with 2+ words)
- * - Max entries: 3
+ * - Reply bonus: +1 (replied with 3+ words)
+ * - Share bonus: +1 (clicked Share button)
+ * - Volume bonus: +1 (checked at finalization only)
+ * - Max visible entries: 4 (volume checked only at finalization)
  */
 
 const { ethers } = require('ethers');
@@ -228,15 +230,30 @@ module.exports = async (req, res) => {
       }))
     } : null;
 
-    // Map to participant objects with hasReplied, isHolder, and entryCount
+    // Check who has shared this contest
+    const hasSharedSet = new Set();
+    try {
+      const shareFids = await kv.smembers(`contest_shares:${contestId}`);
+      if (Array.isArray(shareFids)) {
+        shareFids.forEach(fid => hasSharedSet.add(parseInt(fid)));
+      }
+      console.log(`Contest ${contestId}: Found ${hasSharedSet.size} users who shared`);
+    } catch (shareError) {
+      console.error('Error fetching sharers:', shareError.message);
+    }
+
+    // Map to participant objects with hasReplied, isHolder, hasShared, and entryCount
     const participants = users.map(user => {
       const hasReplied = hasRepliedSet.has(user.fid);
       const isHolder = holderStatusMap.get(user.fid) || false;
+      const hasShared = hasSharedSet.has(user.fid);
 
-      // Calculate entry count: base (1) + holder bonus (1) + reply bonus (1)
+      // Calculate entry count: base (1) + holder bonus (1) + reply bonus (1) + share bonus (1)
+      // Note: Volume bonus is only checked at finalization time
       let entryCount = 1; // Base entry
       if (isHolder) entryCount++;
       if (hasReplied) entryCount++;
+      if (hasShared) entryCount++;
 
       return {
         fid: user.fid,
@@ -244,6 +261,7 @@ module.exports = async (req, res) => {
         username: user.username,
         hasReplied,
         isHolder,
+        hasShared,
         entryCount
       };
     }).filter(p => p.pfpUrl); // Only include users with PFPs
