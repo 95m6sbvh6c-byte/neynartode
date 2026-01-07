@@ -1734,8 +1734,17 @@
     }
 
     async function shareContest(contestId, prize, hoursLeft, minutesLeft, volumeReq, tokenSymbol, hostUsername, castId, isNft, nftImage, winnerCount = 1, participantCount = 0, buttonEl = null) {
-      // Format prize text - similar to enter-contest autocast
-      const prizeText = isNft ? (prize || 'an NFT') : (prize || 'tokens');
+      // Format prize text with $ for cashtag highlighting
+      let prizeText;
+      if (isNft) {
+        prizeText = prize || 'an NFT';
+      } else if (prize && tokenSymbol) {
+        // Extract amount from prize (e.g., "0.01 ETH" -> "0.01")
+        const amount = prize.replace(tokenSymbol, '').trim();
+        prizeText = `${amount} $${tokenSymbol}`;
+      } else {
+        prizeText = prize || 'tokens';
+      }
 
       // Format time remaining
       let timeLeft;
