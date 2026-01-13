@@ -6923,9 +6923,22 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             if (statusDiv) statusDiv.textContent = 'Step 8b: Verifying NFT ownership...';
 
             const nft721Read = new ethers.Contract(state.prizeNftAddress, ERC721_ABI, rpcProvider);
-            const owner = await nft721Read.ownerOf(tokenId);
+            let owner;
+            try {
+              owner = await nft721Read.ownerOf(tokenId);
+              console.log('NFT Owner:', owner);
+              console.log('Connected wallet:', signerAddress);
+            } catch (ownerError) {
+              console.error('Error checking NFT ownership:', ownerError);
+              showToast('Could not verify NFT ownership. Check if token ID is correct.', 'error');
+              if (statusDiv) statusDiv.textContent = 'Error: Could not read NFT owner';
+              return;
+            }
+
             if (owner.toLowerCase() !== signerAddress.toLowerCase()) {
-              showToast('You do not own this NFT!', 'error');
+              console.log('Ownership mismatch! NFT owned by:', owner, 'Connected wallet:', signerAddress);
+              showToast(`NFT owned by ${owner.slice(0,6)}...${owner.slice(-4)}, but connected wallet is ${signerAddress.slice(0,6)}...${signerAddress.slice(-4)}`, 'error');
+              if (statusDiv) statusDiv.textContent = 'Ownership mismatch - connect correct wallet';
               return;
             }
 
@@ -7064,9 +7077,20 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
             const nft1155Read = new ethers.Contract(state.prizeNftAddress, ERC1155_ABI, rpcProvider);
             const amount = parseInt(state.prizeNftAmount) || 1;
-            const balance = await nft1155Read.balanceOf(signerAddress, tokenId);
+            let balance;
+            try {
+              balance = await nft1155Read.balanceOf(signerAddress, tokenId);
+              console.log('ERC1155 Balance check - Wallet:', signerAddress, 'TokenId:', tokenId, 'Balance:', balance.toString());
+            } catch (balanceError) {
+              console.error('Error checking ERC1155 balance:', balanceError);
+              showToast('Could not verify NFT balance. Check contract address and token ID.', 'error');
+              if (statusDiv) statusDiv.textContent = 'Error: Could not read NFT balance';
+              return;
+            }
+
             if (balance.lt(amount)) {
-              showToast(`You don't have enough of this NFT (need ${amount}, have ${balance})`, 'error');
+              showToast(`Wallet ${signerAddress.slice(0,6)}...${signerAddress.slice(-4)} doesn't have enough (need ${amount}, have ${balance})`, 'error');
+              if (statusDiv) statusDiv.textContent = 'Insufficient NFT balance';
               return;
             }
 
