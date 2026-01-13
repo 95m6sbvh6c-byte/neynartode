@@ -51,6 +51,10 @@ const CONFIG = {
   // Volume threshold for bonus entry ($20 USD)
   VOLUME_THRESHOLD_USD: 20,
 
+  // Transfer cooldown for holder bonus (hours)
+  // Prevents gaming by transferring tokens between accounts
+  TRANSFER_COOLDOWN_HOURS: 36,
+
   // Blocked FIDs - these users cannot win contests
   // Note: FID 1188162 (app owner) removed for test mode
   BLOCKED_FIDS: [
@@ -61,6 +65,21 @@ const CONFIG = {
     874752,   // lunamarsh - suspected multi-account abuse
   ],
 };
+
+// DEX addresses - transfers FROM these addresses are purchases (no cooldown)
+// Transfers from regular wallets trigger the 36-hour cooldown
+const DEX_ADDRESSES = new Set([
+  // Uniswap V3 - NEYNARTODES/WETH pool on Base
+  '0x5d7f0d6c17a245b62e6a08280f580c59631e8136',
+  // Uniswap Universal Router (Base)
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad',
+  // Uniswap V3 SwapRouter02 (Base)
+  '0x2626664c2603336e57b271c5c0b26f421741e481',
+  // Zero address (minting)
+  '0x0000000000000000000000000000000000000000',
+  // Clanker deployer
+  '0x75a2c417b9e2f00d47ad94f8c0894066e31e38d9',
+].map(a => a.toLowerCase()));
 
 // Unified ContestManager ABI
 // Struct order: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
@@ -85,10 +104,75 @@ const CONTEST_MANAGER_ABI = [
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Check if user holds 100M+ NEYNARTODES across all addresses
+ * Check if any address received tokens from a non-DEX address in the cooldown period
+ * This prevents gaming by transferring tokens between accounts for multiple bonuses
  * @param {string[]} addresses - User's wallet addresses
  * @param {object} provider - Ethers provider
- * @returns {Promise<{isHolder: boolean, balance: bigint}>}
+ * @returns {Promise<{inCooldown: boolean, recentTransfer: object|null}>}
+ */
+async function checkTransferCooldown(addresses, provider) {
+  const cooldownMs = CONFIG.TRANSFER_COOLDOWN_HOURS * 60 * 60 * 1000;
+  const cooldownStart = Date.now() - cooldownMs;
+
+  // ERC20 Transfer event signature
+  const transferEventAbi = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
+  const neynartodes = new ethers.Contract(CONFIG.NEYNARTODES_TOKEN, transferEventAbi, provider);
+
+  // Calculate block range for cooldown period (~2 sec blocks on Base)
+  const blocksPerHour = 1800; // 3600 sec / 2 sec per block
+  const cooldownBlocks = CONFIG.TRANSFER_COOLDOWN_HOURS * blocksPerHour;
+
+  try {
+    const currentBlock = await provider.getBlockNumber();
+    const fromBlock = Math.max(0, currentBlock - cooldownBlocks);
+
+    // Query transfers TO each user address
+    for (const addr of addresses) {
+      const filter = neynartodes.filters.Transfer(null, addr);
+      const events = await neynartodes.queryFilter(filter, fromBlock, currentBlock);
+
+      for (const event of events) {
+        const fromAddr = event.args.from.toLowerCase();
+
+        // Skip if transfer is from a DEX (this is a purchase, not a transfer)
+        if (DEX_ADDRESSES.has(fromAddr)) {
+          continue;
+        }
+
+        // Check if this transfer is within the cooldown window
+        const block = await event.getBlock();
+        const transferTime = block.timestamp * 1000;
+
+        if (transferTime >= cooldownStart) {
+          const hoursAgo = ((Date.now() - transferTime) / (1000 * 60 * 60)).toFixed(1);
+          return {
+            inCooldown: true,
+            recentTransfer: {
+              from: fromAddr,
+              to: addr,
+              value: event.args.value.toString(),
+              hoursAgo: parseFloat(hoursAgo),
+              block: event.blockNumber
+            }
+          };
+        }
+      }
+    }
+
+    return { inCooldown: false, recentTransfer: null };
+  } catch (e) {
+    console.error('Error checking transfer cooldown:', e.message);
+    // On error, don't penalize the user - allow holder bonus
+    return { inCooldown: false, recentTransfer: null };
+  }
+}
+
+/**
+ * Check if user holds 100M+ NEYNARTODES across all addresses
+ * Also checks for transfer cooldown to prevent gaming
+ * @param {string[]} addresses - User's wallet addresses
+ * @param {object} provider - Ethers provider
+ * @returns {Promise<{isHolder: boolean, balance: bigint, inCooldown: boolean, cooldownReason: string|null}>}
  */
 async function checkHolderStatus(addresses, provider) {
   const neynartodes = new ethers.Contract(
@@ -105,9 +189,28 @@ async function checkHolderStatus(addresses, provider) {
   const balances = await Promise.all(balancePromises);
   const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
 
+  const meetsThreshold = totalBalance >= CONFIG.HOLDER_THRESHOLD;
+
+  // Only check cooldown if they meet the balance threshold
+  if (meetsThreshold) {
+    const cooldownCheck = await checkTransferCooldown(addresses, provider);
+
+    if (cooldownCheck.inCooldown) {
+      const transfer = cooldownCheck.recentTransfer;
+      return {
+        isHolder: false, // Disqualified due to cooldown
+        balance: totalBalance,
+        inCooldown: true,
+        cooldownReason: `Received tokens from wallet ${transfer.from.slice(0, 10)}... ${transfer.hoursAgo}h ago (${CONFIG.TRANSFER_COOLDOWN_HOURS}h cooldown)`
+      };
+    }
+  }
+
   return {
-    isHolder: totalBalance >= CONFIG.HOLDER_THRESHOLD,
-    balance: totalBalance
+    isHolder: meetsThreshold,
+    balance: totalBalance,
+    inCooldown: false,
+    cooldownReason: null
   };
 }
 
@@ -510,7 +613,8 @@ async function finalizeUnifiedContest(contestIdStr) {
   const userArray = [...users.values()];
   const HOLDER_BATCH_SIZE = 10;
 
-  console.log('\n💎 Checking 100M holder status...');
+  console.log('\n💎 Checking 100M holder status (with 36h transfer cooldown)...');
+  let cooldownCount = 0;
   for (let i = 0; i < userArray.length; i += HOLDER_BATCH_SIZE) {
     const batch = userArray.slice(i, i + HOLDER_BATCH_SIZE);
     const holderChecks = await Promise.all(
@@ -522,8 +626,14 @@ async function finalizeUnifiedContest(contestIdStr) {
       holderStatus.set(user.fid, result.isHolder);
       if (result.isHolder) {
         console.log(`   💎 @${user.username} is a HOLDER (${ethers.formatEther(result.balance)} tokens)`);
+      } else if (result.inCooldown) {
+        cooldownCount++;
+        console.log(`   ⏳ @${user.username} COOLDOWN: ${result.cooldownReason}`);
       }
     });
+  }
+  if (cooldownCount > 0) {
+    console.log(`   ⚠️  ${cooldownCount} user(s) denied holder bonus due to transfer cooldown`);
   }
 
   // Check trading volume for bonus entries

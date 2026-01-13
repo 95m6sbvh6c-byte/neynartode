@@ -24,6 +24,18 @@ const NEYNARTODES_TOKEN = '0x8dE1622fE07f56cda2e2273e615A513F1d828B07';
 const HOLDER_THRESHOLD = ethers.parseUnits('100000000', 18); // 100M tokens
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
 
+// Transfer cooldown to prevent gaming (36 hours)
+const TRANSFER_COOLDOWN_HOURS = 36;
+
+// DEX addresses - transfers FROM these are purchases (no cooldown)
+const DEX_ADDRESSES = new Set([
+  '0x5d7f0d6c17a245b62e6a08280f580c59631e8136', // Uniswap V3 NEYNARTODES/WETH pool
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal Router
+  '0x2626664c2603336e57b271c5c0b26f421741e481', // Uniswap V3 SwapRouter02
+  '0x0000000000000000000000000000000000000000', // Zero address (minting)
+  '0x75a2c417b9e2f00d47ad94f8c0894066e31e38d9', // Clanker deployer
+]);
+
 // Unified ContestManager ABI
 // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
 const CONTEST_MANAGER_ABI = [
@@ -161,6 +173,38 @@ module.exports = async (req, res) => {
     // Check holder status for all users - do in small batches to avoid RPC rate limits
     const holderStatusMap = new Map();
     const token = new ethers.Contract(NEYNARTODES_TOKEN, ERC20_ABI, provider);
+    const transferEventAbi = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
+    const tokenWithEvents = new ethers.Contract(NEYNARTODES_TOKEN, transferEventAbi, provider);
+
+    // Calculate block range for cooldown period (~2 sec blocks on Base)
+    const blocksPerHour = 1800;
+    const cooldownBlocks = TRANSFER_COOLDOWN_HOURS * blocksPerHour;
+    const currentBlock = await provider.getBlockNumber();
+    const cooldownFromBlock = Math.max(0, currentBlock - cooldownBlocks);
+    const cooldownStart = Date.now() - (TRANSFER_COOLDOWN_HOURS * 60 * 60 * 1000);
+
+    // Helper to check transfer cooldown for an address
+    async function checkCooldown(addresses) {
+      try {
+        for (const addr of addresses) {
+          const filter = tokenWithEvents.filters.Transfer(null, addr);
+          const events = await tokenWithEvents.queryFilter(filter, cooldownFromBlock, currentBlock);
+
+          for (const event of events) {
+            const fromAddr = event.args.from.toLowerCase();
+            if (DEX_ADDRESSES.has(fromAddr)) continue; // Purchase, not transfer
+
+            const block = await event.getBlock();
+            if (block.timestamp * 1000 >= cooldownStart) {
+              return true; // In cooldown
+            }
+          }
+        }
+        return false;
+      } catch (e) {
+        return false; // On error, don't penalize
+      }
+    }
 
     // Process holder checks in batches of 5 to avoid rate limiting
     const holderChecks = [];
@@ -187,13 +231,24 @@ module.exports = async (req, res) => {
               }))
             );
             const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
-            const isHolder = totalBalance >= HOLDER_THRESHOLD;
+            const meetsThreshold = totalBalance >= HOLDER_THRESHOLD;
+
+            // Check cooldown if they meet the threshold
+            let isHolder = meetsThreshold;
+            let inCooldown = false;
+            if (meetsThreshold) {
+              inCooldown = await checkCooldown(addresses);
+              if (inCooldown) {
+                isHolder = false;
+                console.log(`Contest ${contestId}: User ${user.fid} (${user.username}) has 100M+ but IN COOLDOWN`);
+              }
+            }
 
             if (isHolder) {
               console.log(`Contest ${contestId}: User ${user.fid} (${user.username}) is a holder with ${ethers.formatUnits(totalBalance, 18)} tokens`);
             }
 
-            return { fid: user.fid, isHolder, balance: totalBalance.toString() };
+            return { fid: user.fid, isHolder, inCooldown, balance: totalBalance.toString() };
           } catch (e) {
             console.error(`Holder check failed for user ${user.fid}:`, e.message);
             return { fid: user.fid, isHolder: false, error: e.message };
@@ -210,8 +265,9 @@ module.exports = async (req, res) => {
 
     // Log holder summary
     const holders = holderChecks.filter(c => c.isHolder);
+    const cooldowns = holderChecks.filter(c => c.inCooldown);
     const repliers = Array.from(hasRepliedSet).length;
-    console.log(`Contest ${contestId}: ${holders.length}/${holderChecks.length} users are holders, ${repliers} have replied`);
+    console.log(`Contest ${contestId}: ${holders.length}/${holderChecks.length} users are holders, ${cooldowns.length} in cooldown, ${repliers} have replied`);
 
     // Build holder status map
     holderChecks.forEach(check => holderStatusMap.set(check.fid, check.isHolder));
