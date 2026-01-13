@@ -6530,18 +6530,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           // Store the validated hash (use resolved full hash if available)
           state.castHash = castValidation.hash || extractedHash;
 
-          // Volume requirement validation - only check if tokenomics is enabled
-          if (state.tokenomicsEnabled && state.tokenEnabled) {
-            const volumeReq = parseFloat(state.minTradeVolume) || 0;
-            if (volumeReq < 20) {
-              showToast('Volume requirement must be at least $20!', 'error');
-              return;
-            }
-            if (volumeReq > 100) {
-              showToast('Volume requirement cannot exceed $100!', 'error');
-              return;
-            }
-          }
+          // Volume requirement is optional - $20 trading volume gives bonus entry, not a requirement
+          // No minimum validation needed since volume bonus is handled in finalization
 
           // Ensure token address defaults to NEYNARTODES if not set
           if (!state.tokenAddress) {
