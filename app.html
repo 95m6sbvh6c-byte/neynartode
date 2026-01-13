@@ -2123,15 +2123,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       nftApprovalStatus: 'none', // 'none', 'pending', 'approved'
       nftApprovalTxHash: '',
 
-      // Social Dynamics
-      socialEnabled: true,
+      // Cast for contest
       castHash: '',
-      minLikes: '0',
       showRecentCasts: false, // Toggle for recent casts dropdown
       recentCasts: [], // User's last 3 casts
       loadingRecentCasts: false,
-      minRecasts: '0',
-      minReplies: '0',
 
       // Free Entries - when enabled, anyone can enter (no holder requirement)
       freeEntriesEnabled: false, // Default: require NEYNARTODES to enter
@@ -5804,7 +5800,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   <div class="p-4 bg-[var(--bg-secondary)] rounded-xl">
                     <div class="flex items-center justify-between">
                       <div>
-                        <h3 class="text-sm font-medium text-[var(--text-primary)]">Enable Free Entries</h3>
+                        <div class="flex items-center gap-2">
+                          <h3 class="text-sm font-medium text-[var(--text-primary)]">Enable Free Entries</h3>
+                          ${!state.freeEntriesEnabled ? '<span class="text-xs text-[var(--warning)]">(0.001 ETH)</span>' : ''}
+                        </div>
                         <p class="text-xs text-[var(--text-secondary)] mt-1">
                           ${state.freeEntriesEnabled
                             ? 'Anyone can enter this contest'
@@ -6173,13 +6172,72 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (startNow) startNow.onclick = () => { state.startMode = 'now'; render(); };
       if (startScheduled) startScheduled.onclick = () => { state.startMode = 'scheduled'; render(); };
 
-      // Free Entries toggle handler
+      // Free Entries toggle handler - charges 0.001 ETH to enable
       const freeEntriesToggle = document.getElementById('freeEntriesToggle');
       if (freeEntriesToggle) {
-        freeEntriesToggle.onchange = (e) => {
-          state.freeEntriesEnabled = e.target.checked;
-          console.log('Free entries:', state.freeEntriesEnabled ? 'enabled' : 'disabled');
-          render();
+        freeEntriesToggle.onchange = async (e) => {
+          const wantsEnable = e.target.checked;
+
+          // Disabling is always free
+          if (!wantsEnable) {
+            state.freeEntriesEnabled = false;
+            console.log('Free entries: disabled');
+            render();
+            return;
+          }
+
+          // Dev wallet can enable freely
+          if (isDevWallet(state.userAddress)) {
+            state.freeEntriesEnabled = true;
+            console.log('Free entries: enabled (dev mode)');
+            render();
+            return;
+          }
+
+          // Regular users must pay 0.001 ETH to enable
+          const confirmed = confirm('💰 Enable Free Entries?\n\nThis allows anyone to enter (no token requirement).\n\nCost: 0.001 ETH\n\nProceed?');
+          if (!confirmed) {
+            e.target.checked = false; // Revert toggle
+            return;
+          }
+
+          try {
+            const ethProvider = window.activeEthProvider || window.ethereum;
+            if (!ethProvider) {
+              showToast('No wallet connected!', 'error');
+              e.target.checked = false;
+              return;
+            }
+
+            const fee = ethers.utils.parseEther('0.001');
+            showToast('Sending 0.001 ETH fee... Confirm in wallet!', 'info');
+
+            const txHash = await ethProvider.request({
+              method: 'eth_sendTransaction',
+              params: [{
+                from: state.userAddress,
+                to: CONFIG.CONTRACTS.treasury,
+                value: '0x' + fee.toBigInt().toString(16)
+              }]
+            });
+
+            showToast('Transaction submitted! Waiting for confirmation...', 'info', 10000);
+
+            const provider = new ethers.providers.Web3Provider(ethProvider);
+            const receipt = await provider.waitForTransaction(txHash, 1, 60000);
+
+            if (receipt && receipt.status === 1) {
+              state.freeEntriesEnabled = true;
+              showToast('Free entries enabled! Anyone can now enter this contest.', 'success');
+              render();
+            } else {
+              throw new Error('Transaction failed on-chain');
+            }
+          } catch (error) {
+            console.error('Fee payment error:', error);
+            showToast('Fee payment failed: ' + error.message, 'error');
+            e.target.checked = false; // Revert toggle
+          }
         };
       }
 
@@ -6205,12 +6263,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const durationHours = document.getElementById('durationHours');
       const durationMinutes = document.getElementById('durationMinutes');
       const castHash = document.getElementById('castHash');
-      const minLikes = document.getElementById('minLikes');
-      const minRecasts = document.getElementById('minRecasts');
-      const minReplies = document.getElementById('minReplies');
       const customMessage = document.getElementById('customMessage');
       const prizeTokenAmount = document.getElementById('prizeTokenAmount');
-      const minTradeVolume = document.getElementById('minTradeVolume');
 
       if (startDate) startDate.onchange = (e) => { state.startDate = e.target.value; render(); };
       if (endDate) endDate.onchange = (e) => { state.endDate = e.target.value; };
@@ -6235,14 +6289,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         durationMinutes.onblur = () => { render(); };
       }
       if (castHash) castHash.oninput = (e) => { state.castHash = e.target.value; };
-      if (minLikes) minLikes.oninput = (e) => { state.minLikes = e.target.value; };
-      if (minRecasts) minRecasts.oninput = (e) => { state.minRecasts = e.target.value; };
-      if (minReplies) minReplies.oninput = (e) => { state.minReplies = e.target.value; };
       const winnerCountInput = document.getElementById('winnerCount');
       if (winnerCountInput) winnerCountInput.oninput = (e) => { state.winnerCount = Math.min(5, Math.max(1, parseInt(e.target.value) || 1)); };
       if (customMessage) customMessage.oninput = (e) => { state.customMessage = e.target.value; };
       if (prizeTokenAmount) prizeTokenAmount.oninput = (e) => { state.prizeTokenAmount = e.target.value; };
-      if (minTradeVolume) minTradeVolume.oninput = (e) => { state.minTradeVolume = e.target.value; };
 
       // NFT Prize inputs
       const prizeNftAddress = document.getElementById('prizeNftAddress');
@@ -6366,15 +6416,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             startTime: startTime,
             endTime: endTime,
             duration: `${hours}h ${minutes}m`,
-            socialEnabled: state.socialEnabled,
             // Token requirement: enabled unless free entries is on
             tokenEnabled: !state.freeEntriesEnabled,
-            // Entry requirements
-            requireRecast: parseInt(state.minRecasts) > 0,
-            requireLike: parseInt(state.minLikes) > 0,
-            requireReply: parseInt(state.minReplies) > 0,
-            // Volume requirement is always 0 - volume bonus is handled separately at finalization
-            volumeRequirement: 0,
             tokenRequirementSymbol: !state.freeEntriesEnabled ? 'NEYNARTODES' : null,
             status: 0, // Active
             participantCount: 0
@@ -6609,15 +6652,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         console.log('   Volume requirement:', ethers.utils.formatEther(volumeRequirement));
 
         // Cast ID - validated cast hash from user input (REQUIRED)
-        // Encode social requirements into castId: "castHash|R1L0P1" format
-        // R = recast required (1 if minRecasts > 0), L = like required, P = reply required
-        const reqRecast = parseInt(state.minRecasts) > 0 ? '1' : '0';
-        const reqLike = parseInt(state.minLikes) > 0 ? '1' : '0';
-        const reqReply = parseInt(state.minReplies) > 0 ? '1' : '0';
-
-        const requirementsCode = `R${reqRecast}L${reqLike}P${reqReply}`;
-        // For NFT contests, also encode the image URL in castId for caching
-        // Format: castHash|R1L0P1|imageUrl (image URL is optional, only for NFT)
+        // No social requirements - users enter via the Enter button
+        // Format: castHash|R0L0P0|imageUrl (image URL is optional, only for NFT)
+        const requirementsCode = 'R0L0P0';
         let castId = `${state.castHash}|${requirementsCode}`;
         if (state.prizeType === 'nft' && state.prizeNftImage) {
           // Encode image URL (truncate if too long to fit in string storage)
@@ -6625,8 +6662,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           castId = `${state.castHash}|${requirementsCode}|${imageUrl}`;
           console.log('   NFT image URL cached in castId');
         }
-        console.log('   Cast ID to send (with requirements):', castId);
-        console.log('   Requirements encoded: Recast=' + reqRecast + ', Like=' + reqLike + ', Reply=' + reqReply);
+        console.log('   Cast ID to send:', castId);
         if (!state.castHash || !state.castHash.startsWith('0x')) {
           console.error('❌ Invalid cast hash - empty or doesnt start with 0x');
           showToast('Invalid cast hash. Please start over and enter a valid cast URL/hash.', 'error');
@@ -7478,16 +7514,9 @@ ${miniAppUrl}`;
         state.prizeTokenTicker = '';
         state.prizeTokenImage = '';
         state.prizeTokenSearch = '';
-        state.tokenAddress = '';
-        state.tokenTicker = '';
-        state.tokenImage = '';
-        state.tokenSearch = '';
         state.castHash = '';
         state.customMessage = '';
-        state.minLikes = '0';
-        state.minRecasts = '0';
-        state.minReplies = '0';
-        state.minTradeVolume = '';
+        state.freeEntriesEnabled = false;
 
         render();
       } catch (error) {
