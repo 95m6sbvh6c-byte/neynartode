@@ -2133,23 +2133,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       minRecasts: '0',
       minReplies: '0',
 
-      // Tokenomics (can be toggled off for 0.001 ETH, free for dev)
-      tokenomicsEnabled: true, // Main toggle for tokenomics section
-      tokenEnabled: true,
-      useCustomTokenMode: false, // Whether user has checked "Custom token" checkbox
-      tokenAddress: '0x8de1622fe07f56cda2e2273e615a513f1d828b07', // Default to NEYNARTODES
+      // Free Entries - when enabled, anyone can enter (no holder requirement)
+      freeEntriesEnabled: false, // Default: require NEYNARTODES to enter
+      tokenAddress: '0x8de1622fe07f56cda2e2273e615a513f1d828b07', // Always NEYNARTODES
       tokenTicker: 'NEYNARTODES',
-      tokenImage: '',
-      tokenMcap: 0,
-      tokenSearch: '',
-      showTokenSuggestions: false,
-      minTradeVolume: '20', // Default to $20 for NEYNARTODES
       winnerCount: 1, // Number of winners (1-5 for ETH/ERC20, always 1 for NFT)
-
-      // Custom Token Modal
-      showCustomTokenModal: false,
-      customTokenInput: '',
-      customTokenTickerInput: '',
 
       // Winner announcement
       customMessage: '',
@@ -5811,78 +5799,26 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
                 <div class="divider"></div>
 
-                <!-- Tokenomics -->
+                <!-- Free Entries Toggle -->
                 <div class="space-y-4">
-                  <div class="flex items-center justify-between">
-                    <h3 class="text-sm font-medium text-[var(--accent-light)] uppercase tracking-wider">Tokenomics</h3>
-                    <label for="tokenomicsToggle" class="flex items-center gap-2 cursor-pointer">
-                      <span class="text-sm text-[var(--text-secondary)]">Enable</span>
-                      <div class="relative pointer-events-none">
-                        <input type="checkbox" id="tokenomicsToggle" ${state.tokenomicsEnabled ? 'checked' : ''} class="sr-only peer" />
-                        <div class="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--accent)]"></div>
+                  <div class="p-4 bg-[var(--bg-secondary)] rounded-xl">
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <h3 class="text-sm font-medium text-[var(--text-primary)]">Enable Free Entries</h3>
+                        <p class="text-xs text-[var(--text-secondary)] mt-1">
+                          ${state.freeEntriesEnabled
+                            ? 'Anyone can enter this contest'
+                            : 'Only $NEYNARTODES holders can enter'}
+                        </p>
                       </div>
-                    </label>
-                  </div>
-
-                  ${state.tokenomicsEnabled ? `
-                  <div class="space-y-4">
-                    <!-- Custom Token Toggle -->
-                    <div class="p-4 bg-[var(--bg-secondary)] rounded-xl">
-                      <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                          <span class="text-sm text-[var(--text-secondary)]">Custom Token</span>
-                          <span class="text-xs text-[var(--warning)]">(+0.01 ETH)</span>
-                        </div>
-                        <label for="useCustomToken" class="flex items-center gap-2 cursor-pointer">
-                          <div class="relative pointer-events-none">
-                            <input type="checkbox" id="useCustomToken" ${state.useCustomTokenMode ? 'checked' : ''} class="sr-only peer" />
-                            <div class="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--accent)]"></div>
-                          </div>
-                        </label>
-                      </div>
-
-                      ${state.useCustomTokenMode ? `
-                      <div class="mt-4 space-y-3">
+                      <label for="freeEntriesToggle" class="flex items-center gap-2 cursor-pointer">
                         <div class="relative">
-                          <input type="text" id="tokenSearch" value="${state.tokenSearch}" placeholder="Search token..." class="input-modern" />
-                          ${state.showTokenSuggestions ? `
-                            <div class="absolute z-10 w-full mt-1 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-lg max-h-64 overflow-y-auto">
-                              ${searchTokens(state.tokenSearch).map((token, idx) => `
-                                <button onclick="selectToken(${idx})" class="w-full text-left px-4 py-3 hover:bg-[var(--bg-tertiary)] border-b border-[var(--border-subtle)] transition-colors flex items-center gap-3">
-                                  <img src="${token.image}" alt="${token.ticker}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://via.placeholder.com/32/8b5cf6/ffffff?text=${token.ticker[0]}'" />
-                                  <div class="flex-1 min-w-0">
-                                    <div class="font-medium text-[var(--text-primary)]">${token.ticker}</div>
-                                  </div>
-                                  <div class="text-sm text-[var(--success)]">$${(token.mcap / 1000000).toFixed(1)}M</div>
-                                </button>
-                              `).join('')}
-                            </div>
-                          ` : ''}
+                          <input type="checkbox" id="freeEntriesToggle" ${state.freeEntriesEnabled ? 'checked' : ''} class="sr-only peer" />
+                          <div class="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--success)]"></div>
                         </div>
-
-                        <!-- Custom Token Address Button -->
-                        <button onclick="showCustomTokenModal()" class="w-full px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-dark)] transition-colors text-sm font-medium flex items-center justify-center gap-2">
-                          <span>➕</span> Enter Token Address
-                        </button>
-
-                        ${state.tokenAddress && state.tokenAddress.toLowerCase() !== CONFIG.CONTRACTS.neynartodes.toLowerCase() ? `
-                          <div class="p-3 bg-[var(--bg-tertiary)] rounded-lg flex items-center gap-3">
-                            <img src="${state.tokenImage}" alt="${state.tokenTicker}" class="w-8 h-8 rounded-full" onerror="this.style.display='none'" />
-                            <div class="flex-1">
-                              <div class="text-xs text-[var(--warning)] mb-0.5">Custom (+0.01 ETH)</div>
-                              <div class="font-medium text-[var(--text-primary)]">${state.tokenTicker}</div>
-                            </div>
-                          </div>
-                        ` : ''}
-                      </div>
-                      ` : ''}
+                      </label>
                     </div>
                   </div>
-                  ` : `
-                  <div class="p-4 bg-[var(--bg-secondary)] rounded-xl text-center">
-                    <p class="text-[var(--text-secondary)] text-sm">No tokenomics requirements</p>
-                  </div>
-                  `}
                 </div>
 
                 <div class="divider"></div>
@@ -6237,130 +6173,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (startNow) startNow.onclick = () => { state.startMode = 'now'; render(); };
       if (startScheduled) startScheduled.onclick = () => { state.startMode = 'scheduled'; render(); };
 
-      // Tokenomics toggle handler
-      const tokenomicsToggle = document.getElementById('tokenomicsToggle');
-      if (tokenomicsToggle) {
-        tokenomicsToggle.onchange = async (e) => {
-          console.log('Tokenomics toggle changed:', e.target.checked);
-          const wantsDisable = !e.target.checked;
-
-          // Dev wallet can toggle freely
-          if (isDevWallet(state.userAddress)) {
-            state.tokenomicsEnabled = e.target.checked;
-            if (!state.tokenomicsEnabled) {
-              state.minTradeVolume = '0';
-            } else {
-              state.minTradeVolume = '20'; // Reset to default
-            }
-            render();
-            return;
-          }
-
-          // Regular users must pay 0.001 ETH to disable
-          if (wantsDisable) {
-            const confirmed = confirm('💰 Disable Tokenomics?\n\nThis will remove all trading volume requirements.\n\nCost: 0.001 ETH\n\nProceed?');
-            if (!confirmed) {
-              e.target.checked = true; // Revert toggle
-              return;
-            }
-
-            try {
-              // Send 0.001 ETH to treasury
-              const ethProvider = window.activeEthProvider || window.ethereum;
-              if (!ethProvider) {
-                showToast('No wallet connected!', 'error');
-                e.target.checked = true;
-                return;
-              }
-
-              const fee = ethers.utils.parseEther('0.001');
-              showToast('Sending 0.001 ETH fee... Confirm in wallet!', 'info');
-
-              // Use eth_sendTransaction for smart wallet compatibility
-              const txHash = await ethProvider.request({
-                method: 'eth_sendTransaction',
-                params: [{
-                  from: state.userAddress,
-                  to: CONFIG.CONTRACTS.treasury,
-                  value: '0x' + fee.toBigInt().toString(16)
-                }]
-              });
-
-              showToast('Transaction submitted! Waiting for confirmation...', 'info', 10000);
-
-              // Wait for confirmation with better error handling
-              try {
-                const provider = new ethers.providers.Web3Provider(ethProvider);
-                const receipt = await provider.waitForTransaction(txHash, 1, 60000); // 1 confirmation, 60s timeout
-
-                if (receipt && receipt.status === 1) {
-                  state.tokenomicsEnabled = false;
-                  state.minTradeVolume = '0';
-                  showToast('Tokenomics disabled! You can now create contests without volume requirements.', 'success');
-                  render();
-                } else {
-                  throw new Error('Transaction failed on-chain');
-                }
-              } catch (waitError) {
-                // Transaction was sent - check if it actually succeeded
-                console.log('waitForTransaction error, checking tx status directly...', waitError);
-                try {
-                  const checkProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-                  const receipt = await checkProvider.getTransactionReceipt(txHash);
-
-                  if (receipt && receipt.status === 1) {
-                    // Transaction succeeded despite the wait error
-                    state.tokenomicsEnabled = false;
-                    state.minTradeVolume = '0';
-                    showToast('Tokenomics disabled! You can now create contests without volume requirements.', 'success');
-                    render();
-                    return;
-                  }
-                } catch (checkError) {
-                  console.log('Could not verify tx status:', checkError);
-                }
-
-                // If we can't confirm success, show tx hash so user can verify
-                showToast(`Transaction sent (${txHash.slice(0, 10)}...). Check BaseScan if not confirmed.`, 'warning', 0);
-                state.tokenomicsEnabled = false;
-                state.minTradeVolume = '0';
-                render();
-              }
-            } catch (error) {
-              console.error('Fee payment error:', error);
-              showToast('Fee payment failed: ' + error.message, 'error');
-              e.target.checked = true; // Revert toggle
-            }
-          } else {
-            // Enabling is free
-            state.tokenomicsEnabled = true;
-            state.minTradeVolume = '20'; // Reset to default
-            render();
-          }
-        };
-      }
-
-      // Custom token checkbox handler
-      const useCustomToken = document.getElementById('useCustomToken');
-      if (useCustomToken) {
-        useCustomToken.onchange = (e) => {
-          if (e.target.checked) {
-            // Set state to show we want custom token mode
-            state.useCustomTokenMode = true;
-            // Clear the current token to trigger custom section display
-            state.tokenAddress = '';
-            state.tokenTicker = '';
-            state.tokenImage = '';
-            state.tokenSearch = '';
-          } else {
-            // Reset to default NEYNARTODES
-            state.useCustomTokenMode = false;
-            state.tokenAddress = CONFIG.CONTRACTS.neynartodes;
-            state.tokenTicker = 'NEYNARTODES';
-            state.tokenImage = '';
-            state.tokenSearch = '';
-            state.minTradeVolume = '20'; // Reset volume
-          }
+      // Free Entries toggle handler
+      const freeEntriesToggle = document.getElementById('freeEntriesToggle');
+      if (freeEntriesToggle) {
+        freeEntriesToggle.onchange = (e) => {
+          state.freeEntriesEnabled = e.target.checked;
+          console.log('Free entries:', state.freeEntriesEnabled ? 'enabled' : 'disabled');
           render();
         };
       }
@@ -6377,22 +6195,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           if (e.target.value.length >= 2) {
             state.showPrizeTokenSuggestions = true;
             updatePrizeTokenDropdown();
-          }
-        };
-      }
-
-      const tokenSearch = document.getElementById('tokenSearch');
-      if (tokenSearch) {
-        tokenSearch.oninput = (e) => {
-          state.tokenSearch = e.target.value;
-          state.showTokenSuggestions = e.target.value.length >= 2;
-          // Don't call render() - let dropdown stay open and update via direct DOM manipulation
-          updateTokenDropdown();
-        };
-        tokenSearch.onfocus = (e) => {
-          if (e.target.value.length >= 2) {
-            state.showTokenSuggestions = true;
-            updateTokenDropdown();
           }
         };
       }
@@ -6565,15 +6367,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             endTime: endTime,
             duration: `${hours}h ${minutes}m`,
             socialEnabled: state.socialEnabled,
-            // Token is only enabled if tokenomics is enabled AND tokenEnabled is true
-            tokenEnabled: state.tokenomicsEnabled && state.tokenEnabled,
+            // Token requirement: enabled unless free entries is on
+            tokenEnabled: !state.freeEntriesEnabled,
             // Entry requirements
             requireRecast: parseInt(state.minRecasts) > 0,
             requireLike: parseInt(state.minLikes) > 0,
             requireReply: parseInt(state.minReplies) > 0,
-            // Volume requirement from user input, capped at $100
-            volumeRequirement: state.tokenomicsEnabled && state.tokenEnabled ? (parseFloat(state.minTradeVolume) || 0) : 0,
-            tokenRequirementSymbol: state.tokenomicsEnabled && state.tokenEnabled ? state.tokenTicker : null,
+            // Volume requirement is always 0 - volume bonus is handled separately at finalization
+            volumeRequirement: 0,
+            tokenRequirementSymbol: !state.freeEntriesEnabled ? 'NEYNARTODES' : null,
             status: 0, // Active
             participantCount: 0
           };
@@ -6792,29 +6594,19 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         console.log('   Custom token fee:', ethers.utils.formatEther(customTokenFee), 'ETH');
         console.log('   Default token:', defaultToken);
 
-        // Determine if we need to pay custom token fee
-        const tokenRequirement = state.tokenEnabled ? state.tokenAddress : defaultToken;
-        const isCustomToken = tokenRequirement.toLowerCase() !== defaultToken.toLowerCase();
+        // Determine token requirement based on free entries toggle
+        // If free entries enabled: no token requirement (zero address)
+        // If free entries disabled: require NEYNARTODES (default token)
+        const tokenRequirement = state.freeEntriesEnabled
+          ? '0x0000000000000000000000000000000000000000'
+          : defaultToken;
+        const isCustomToken = false; // No custom tokens anymore
         console.log('   Token requirement:', tokenRequirement);
-        console.log('   Is custom token:', isCustomToken);
+        console.log('   Free entries:', state.freeEntriesEnabled);
 
-        // Sanitize volume requirement - ensure valid number
-        let volumeRequirement = ethers.BigNumber.from(0);
-        if (state.tokenomicsEnabled && state.tokenEnabled && state.minTradeVolume) {
-          try {
-            // Use user's input value with $20 minimum
-            const userVolume = parseFloat(state.minTradeVolume) || 20;
-            const cleanVolume = Math.max(20, userVolume).toFixed(18).replace(/\.?0+$/, '');
-            if (cleanVolume && !isNaN(parseFloat(cleanVolume))) {
-              volumeRequirement = ethers.utils.parseEther(cleanVolume);
-            }
-          } catch (e) {
-            console.error('Invalid volume format:', e);
-            volumeRequirement = ethers.BigNumber.from(0);
-          }
-        }
+        // Volume requirement is always 0 - volume bonus is handled at finalization
+        const volumeRequirement = ethers.BigNumber.from(0);
         console.log('   Volume requirement:', ethers.utils.formatEther(volumeRequirement));
-        console.log('   Tokenomics enabled:', state.tokenomicsEnabled);
 
         // Cast ID - validated cast hash from user input (REQUIRED)
         // Encode social requirements into castId: "castHash|R1L0P1" format
