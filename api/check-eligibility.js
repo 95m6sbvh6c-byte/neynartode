@@ -37,6 +37,7 @@ const DEX_ADDRESSES = new Set([
   '0x2626664c2603336e57b271c5c0b26f421741e481', // Uniswap V3 SwapRouter02
   '0x0000000000000000000000000000000000000000', // Zero address (minting)
   '0x75a2c417b9e2f00d47ad94f8c0894066e31e38d9', // Clanker deployer
+  '0x785648669b8e90a75a6a8de682258957f9028462', // DEX aggregator/router
 ].map(a => a.toLowerCase()));
 
 // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest

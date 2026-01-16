@@ -757,12 +757,14 @@ async function getETHPrice(provider = null) {
 
 /**
  * Convert timestamp to approximate block number
+ * Uses on-chain timestamp instead of system clock for accuracy
  * Base has ~2 second blocks
  */
 async function timestampToBlock(provider, timestamp) {
   try {
     const currentBlock = await provider.getBlockNumber();
-    const currentTime = Math.floor(Date.now() / 1000);
+    const currentBlockData = await provider.getBlock(currentBlock);
+    const currentTime = currentBlockData.timestamp; // Use on-chain timestamp
     const timeDiff = currentTime - timestamp;
     const blockDiff = Math.floor(timeDiff / 2); // ~2 sec per block on Base
     return Math.max(1, currentBlock - blockDiff);

@@ -1167,6 +1167,93 @@
       };
     }
 
+    // Show participants modal for a contest
+    async function showParticipantsModal(contestId) {
+      state.participantsModal = { contestId, loading: true, participants: [], count: 0 };
+      render();
+
+      try {
+        // Fetch full list (up to 200)
+        const response = await fetch(`/api/contest-participants?contestId=${contestId}&limit=200`);
+        const data = await response.json();
+        state.participantsModal = {
+          contestId,
+          loading: false,
+          participants: data.participants || [],
+          count: data.count || 0
+        };
+      } catch (e) {
+        console.error('Error fetching participants:', e);
+        state.participantsModal.loading = false;
+        state.participantsModal.error = e.message;
+      }
+      render();
+    }
+
+    // Close participants modal
+    function closeParticipantsModal() {
+      state.participantsModal = null;
+      render();
+    }
+
+    // Render participants modal
+    function renderParticipantsModal() {
+      if (!state.participantsModal) return '';
+
+      const { contestId, loading, participants, count, error } = state.participantsModal;
+
+      let content = '';
+      if (loading) {
+        content = '<div class="text-center py-8 text-[var(--text-muted)]">Loading participants...</div>';
+      } else if (error) {
+        content = `<div class="text-center py-8 text-red-400">Error: ${error}</div>`;
+      } else if (participants.length === 0) {
+        content = '<div class="text-center py-8 text-[var(--text-muted)]">No participants yet</div>';
+      } else {
+        content = `
+          <div class="max-h-80 overflow-y-auto space-y-2 pr-2">
+            ${participants.map(p => `
+              <div class="flex items-center gap-3 py-2 px-3 rounded-lg bg-[var(--bg-tertiary)]">
+                <img
+                  src="${p.pfpUrl || '/neynartode-sticker.png'}"
+                  alt=""
+                  class="w-10 h-10 rounded-full object-cover border-2 border-[var(--accent)]"
+                  onerror="this.src='/neynartode-sticker.png'"
+                />
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-[var(--text-primary)] truncate">
+                    ${p.displayName || p.username}
+                  </div>
+                  <div class="text-xs text-[var(--text-muted)]">@${p.username}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      return `
+        <div
+          class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onclick="if(event.target === this) closeParticipantsModal()"
+        >
+          <div class="bg-[var(--bg-secondary)] rounded-2xl max-w-sm w-full p-4 shadow-xl border border-[var(--border)]">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-semibold text-[var(--text-primary)]">
+                Participants (${count})
+              </h3>
+              <button
+                onclick="closeParticipantsModal()"
+                class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-2xl leading-none"
+              >&times;</button>
+            </div>
+            <div class="text-xs text-[var(--text-muted)] mb-3">Contest ${contestId}</div>
+            ${content}
+          </div>
+        </div>
+      `;
+    }
+
     // Proxy IPFS images through our server to avoid 403 errors in Warpcast webview
     function proxyImage(url) {
       if (!url) return '';
@@ -2135,8 +2222,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       durationHours: '1',
       durationMinutes: '0',
       upcomingContests: [], // Array of scheduled contests
-      contestParticipants: {}, // Map of contestId -> [{ fid, pfpUrl, username }]
+      contestParticipants: {}, // Map of contestId -> { participants, count, hasMore }
       contestShares: {}, // Map of contestId -> true (user has shared)
+      participantsModal: null, // { contestId, loading } for participants popup
       contestsLoading: true, // Loading state for contests
       headerAnimated: false, // Track if header has been animated
       prizeType: 'token', // 'token' or 'nft'
@@ -3832,8 +3920,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           const response = await fetch(`/api/contest-participants?contestId=${contest.contestId}`);
           if (!response.ok) return;
           const data = await response.json();
-          if (data.participants && data.participants.length > 0) {
-            state.contestParticipants[contest.contestId] = data.participants;
+          if (data.participants) {
+            state.contestParticipants[contest.contestId] = {
+              participants: data.participants,
+              count: data.count || data.participants.length,
+              hasMore: data.hasMore || false
+            };
           }
         } catch (e) {
           console.log(`Could not fetch participants for contest ${contest.contestId}:`, e.message);
@@ -4441,21 +4533,25 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         return;
       }
 
+      let pageHtml = '';
       if (!state.isLoggedIn) {
-        app.innerHTML = renderLoginPage();
+        pageHtml = renderLoginPage();
       } else if (state.launchSuccess) {
-        app.innerHTML = renderLaunchSuccess();
+        pageHtml = renderLaunchSuccess();
       } else if (state.currentView === 'leaderboard') {
-        app.innerHTML = renderLeaderboard();
+        pageHtml = renderLeaderboard();
       } else if (state.currentView === 'active') {
-        app.innerHTML = renderActiveContests();
+        pageHtml = renderActiveContests();
       } else if (state.currentView === 'history') {
-        app.innerHTML = renderHistory();
+        pageHtml = renderHistory();
       } else if (state.currentView === 'suggestions') {
-        app.innerHTML = renderSuggestions();
+        pageHtml = renderSuggestions();
       } else {
-        app.innerHTML = renderCreateContest();
+        pageHtml = renderCreateContest();
       }
+
+      // Add modals on top of page content
+      app.innerHTML = pageHtml + renderParticipantsModal();
 
       attachEventListeners();
     }
@@ -5003,14 +5099,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // Generate floating avatars (PFPs) in synchronized rows at top-right
     // Rows fill from right to left, new rows start below when full
-    // Users show stacked PFPs based on entryCount (1=base, 2=holder bonus, 3=reply bonus)
     function generateEntryStickers(participantCount, contestId) {
       const count = participantCount || 0;
       if (count === 0) return '';
 
-      // Get participant PFPs if available (1 PFP per user, color based on entries)
-      // Purple = 1 entry (base), Green = 2 entries, Gold = 3 entries (max)
-      const participants = state.contestParticipants[contestId] || [];
+      // Get participant data from state (now includes count and hasMore)
+      const participantData = state.contestParticipants[contestId] || { participants: [], count: 0, hasMore: false };
+      const participants = participantData.participants || [];
+      const totalCount = participantData.count || count;
 
       const hasPfps = participants.length > 0;
 
@@ -5043,13 +5139,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         rowParticipants.forEach((participant, colIndex) => {
           const imgSrc = participant?.pfpUrl || '/neynartode-sticker.png';
           const isPfp = hasPfps && participant?.pfpUrl;
-          // Border color based on entry count: 1=purple, 2=green, 3=gold
-          const entryCount = participant?.entryCount || 1;
-          const entryLabel = entryCount === 3 ? '3 entries' : entryCount === 2 ? '2 entries' : '1 entry';
-          const title = participant?.username ? `title="@${participant.username} - ${entryLabel}"` : '';
-          // Colors: purple (1 entry), green (2 entries), gold (3 entries/max)
-          const borderColor = entryCount >= 3 ? 'rgba(234, 179, 8, 0.8)' : entryCount === 2 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(139, 92, 246, 0.6)';
-          const shadowColor = entryCount >= 3 ? 'rgba(234, 179, 8, 0.5)' : entryCount === 2 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(139, 92, 246, 0.4)';
+          const title = participant?.username ? `title="@${participant.username}"` : '';
+          // Simple accent border for all participants
+          const borderColor = 'rgba(139, 92, 246, 0.6)';
+          const shadowColor = 'rgba(139, 92, 246, 0.4)';
 
           rowPfps += `<img
             src="${imgSrc}"
@@ -5077,10 +5170,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         rowsHtml += `<div class="flex items-center justify-end ${driftClass}" style="margin-top: ${rowIndex === 0 ? '0' : rowGap + 'px'}; --drift-duration: ${3 + rowIndex * 0.5}s;">${rowPfps}</div>`;
       });
 
-      // Add "+X more" indicator if there are more participants (use expanded count)
-      const remaining = participants.length - displayCount;
+      // Add "+X more" indicator if there are more participants than displayed
+      const remaining = totalCount - displayCount;
       if (remaining > 0) {
-        rowsHtml += `<div class="text-xs text-[var(--text-muted)] text-right mt-1">+${remaining} more</div>`;
+        rowsHtml += `<div
+          class="text-xs text-[var(--accent)] text-right mt-1 cursor-pointer hover:underline"
+          onclick="event.stopPropagation(); showParticipantsModal('${contestId}')"
+        >+${remaining} more</div>`;
       }
 
       // Container for rows - each row animates independently
