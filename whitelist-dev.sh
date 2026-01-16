@@ -3,7 +3,7 @@
 
 PRIZE_NFT="0x54E3972839A79fB4D1b0F70418141723d02E56e1" # V2
 DEV_WALLET="0x78EeAA6F014667A339fCF8b4eCd74743366603fb"
-RPC_URL="https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/"
+RPC_URL="https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC"
 
 echo "🦎 Whitelisting dev wallet for Season 0..."
 echo "Contract: $PRIZE_NFT"

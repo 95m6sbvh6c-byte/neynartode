@@ -18,7 +18,7 @@ const { ethers } = require('ethers');
 const BLOCKSCOUT_BASE_URL = 'https://base.blockscout.com/api/v2';
 
 // RPC for direct contract calls as fallback
-const BASE_RPC = 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/';
+const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
 
 // NFT ABI for direct metadata fetching
 const NFT_ABI = [

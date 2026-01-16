@@ -17,7 +17,7 @@ const CONFIG = {
   NEYNARTODES: '0x8dE1622fE07f56cda2e2273e615A513F1d828B07',
   WETH: '0x4200000000000000000000000000000000000006',
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-  BASE_RPC: 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
+  BASE_RPC: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
   BLOCKSCOUT_API: 'https://base.blockscout.com/api/v2',
   CHAINLINK_ETH_USD: '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70',

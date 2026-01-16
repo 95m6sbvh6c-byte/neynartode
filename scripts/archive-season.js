@@ -16,7 +16,7 @@ const CONFIG = {
   CONTEST_ESCROW: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
   VOTING_MANAGER: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
-  BASE_RPC: 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
+  BASE_RPC: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
 

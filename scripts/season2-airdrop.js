@@ -13,7 +13,7 @@ const { ethers } = require('ethers');
 require('dotenv').config({ path: '/Users/brianwharton/Web_3_Tings/Neynartodes_Contracts /.env' });
 
 const NEYNARTODES = '0x8de1622fe07f56cda2e2273e615a513f1d828b07';
-const RPC_URL = 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/';
+const RPC_URL = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
 
 const ERC20_ABI = [
   'function transfer(address to, uint256 amount) returns (bool)',
