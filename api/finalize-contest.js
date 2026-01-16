@@ -104,16 +104,14 @@ const CONTEST_MANAGER_ABI = [
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Check if any address received tokens from a non-DEX address in the cooldown period
- * This prevents gaming by transferring tokens between accounts for multiple bonuses
+ * Calculate amount of tokens in cooldown (received via wallet-to-wallet transfer in last 36 hours)
+ * Tokens from DEX purchases are NOT in cooldown
+ * Returns the amount that should be subtracted from total balance for holder qualification
  * @param {string[]} addresses - User's wallet addresses
  * @param {object} provider - Ethers provider
- * @returns {Promise<{inCooldown: boolean, recentTransfer: object|null}>}
+ * @returns {Promise<{cooldownAmount: bigint, transfers: object[]}>}
  */
-async function checkTransferCooldown(addresses, provider) {
-  const cooldownMs = CONFIG.TRANSFER_COOLDOWN_HOURS * 60 * 60 * 1000;
-  const cooldownStart = Date.now() - cooldownMs;
-
+async function calculateCooldownAmount(addresses, provider) {
   // ERC20 Transfer event signature
   const transferEventAbi = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
   const neynartodes = new ethers.Contract(CONFIG.NEYNARTODES_TOKEN, transferEventAbi, provider);
@@ -126,53 +124,73 @@ async function checkTransferCooldown(addresses, provider) {
     const currentBlock = await provider.getBlockNumber();
     const fromBlock = Math.max(0, currentBlock - cooldownBlocks);
 
-    // Query transfers TO each user address
-    for (const addr of addresses) {
-      const filter = neynartodes.filters.Transfer(null, addr);
-      const events = await neynartodes.queryFilter(filter, fromBlock, currentBlock);
+    // Normalize addresses for comparison
+    const normalizedAddresses = addresses.map(a => a.toLowerCase());
 
-      for (const event of events) {
-        const fromAddr = event.args.from.toLowerCase();
+    // Query transfers TO each user address in parallel
+    const transferPromises = addresses.map(addr =>
+      neynartodes.queryFilter(neynartodes.filters.Transfer(null, addr), fromBlock, currentBlock)
+        .catch(e => {
+          console.error(`Error querying transfers for ${addr}:`, e.message);
+          return [];
+        })
+    );
 
-        // Skip if transfer is from a DEX (this is a purchase, not a transfer)
-        if (DEX_ADDRESSES.has(fromAddr)) {
-          continue;
-        }
+    const allTransferArrays = await Promise.all(transferPromises);
+    const allTransfers = allTransferArrays.flat();
 
-        // Check if this transfer is within the cooldown window
-        const block = await event.getBlock();
-        const transferTime = block.timestamp * 1000;
+    // Sum up transfers from non-DEX addresses (wallet-to-wallet transfers)
+    let cooldownAmount = 0n;
+    const cooldownTransfers = [];
 
-        if (transferTime >= cooldownStart) {
-          const hoursAgo = ((Date.now() - transferTime) / (1000 * 60 * 60)).toFixed(1);
-          return {
-            inCooldown: true,
-            recentTransfer: {
-              from: fromAddr,
-              to: addr,
-              value: event.args.value.toString(),
-              hoursAgo: parseFloat(hoursAgo),
-              block: event.blockNumber
-            }
-          };
-        }
+    for (const event of allTransfers) {
+      const fromAddr = event.args.from.toLowerCase();
+      const toAddr = event.args.to.toLowerCase();
+
+      // Skip if transfer is from a DEX (this is a purchase, not a transfer)
+      if (DEX_ADDRESSES.has(fromAddr)) {
+        continue;
       }
+
+      // Skip if transfer is between user's own addresses
+      if (normalizedAddresses.includes(fromAddr)) {
+        continue;
+      }
+
+      cooldownAmount += BigInt(event.args.value);
+      cooldownTransfers.push({
+        from: fromAddr,
+        to: toAddr,
+        value: event.args.value.toString(),
+        block: event.blockNumber
+      });
     }
 
-    return { inCooldown: false, recentTransfer: null };
+    return { cooldownAmount, transfers: cooldownTransfers };
   } catch (e) {
-    console.error('Error checking transfer cooldown:', e.message);
+    console.error('Error calculating cooldown amount:', e.message);
     // On error, don't penalize the user - allow holder bonus
-    return { inCooldown: false, recentTransfer: null };
+    return { cooldownAmount: 0n, transfers: [] };
   }
 }
 
 /**
+ * Format token balance to human readable (e.g., 50M, 1.5B)
+ */
+function formatTokenBalance(balance) {
+  const num = Number(balance / (10n ** 18n));
+  if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(1) + 'B';
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M';
+  if (num >= 1_000) return (num / 1_000).toFixed(1) + 'K';
+  return num.toFixed(0);
+}
+
+/**
  * Check if user holds 100M+ NEYNARTODES across all addresses
- * Also checks for transfer cooldown to prevent gaming
+ * Subtracts tokens in cooldown (received via wallet-to-wallet transfer in last 36hrs)
  * @param {string[]} addresses - User's wallet addresses
  * @param {object} provider - Ethers provider
- * @returns {Promise<{isHolder: boolean, balance: bigint, inCooldown: boolean, cooldownReason: string|null}>}
+ * @returns {Promise<{isHolder: boolean, balance: bigint, eligibleBalance: bigint, cooldownAmount: bigint, cooldownReason: string|null}>}
  */
 async function checkHolderStatus(addresses, provider) {
   const neynartodes = new ethers.Contract(
@@ -181,36 +199,34 @@ async function checkHolderStatus(addresses, provider) {
     provider
   );
 
-  // Fetch all balances in parallel
-  const balancePromises = addresses.map(addr =>
-    neynartodes.balanceOf(addr).catch(() => 0n)
-  );
+  // Fetch all balances and cooldown amount in parallel
+  const [balances, cooldownData] = await Promise.all([
+    Promise.all(addresses.map(addr => neynartodes.balanceOf(addr).catch(() => 0n))),
+    calculateCooldownAmount(addresses, provider)
+  ]);
 
-  const balances = await Promise.all(balancePromises);
   const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
+  const { cooldownAmount, transfers } = cooldownData;
 
-  const meetsThreshold = totalBalance >= CONFIG.HOLDER_THRESHOLD;
+  // Eligible balance = total balance - tokens in cooldown
+  // Can't go negative (in case of rounding or timing issues)
+  const eligibleBalance = totalBalance > cooldownAmount ? totalBalance - cooldownAmount : 0n;
+  const meetsThreshold = eligibleBalance >= CONFIG.HOLDER_THRESHOLD;
+  const hasCooldown = cooldownAmount > 0n;
 
-  // Only check cooldown if they meet the balance threshold
-  if (meetsThreshold) {
-    const cooldownCheck = await checkTransferCooldown(addresses, provider);
-
-    if (cooldownCheck.inCooldown) {
-      const transfer = cooldownCheck.recentTransfer;
-      return {
-        isHolder: false, // Disqualified due to cooldown
-        balance: totalBalance,
-        inCooldown: true,
-        cooldownReason: `Received tokens from wallet ${transfer.from.slice(0, 10)}... ${transfer.hoursAgo}h ago (${CONFIG.TRANSFER_COOLDOWN_HOURS}h cooldown)`
-      };
-    }
+  let cooldownReason = null;
+  if (hasCooldown && !meetsThreshold && totalBalance >= CONFIG.HOLDER_THRESHOLD) {
+    // They would qualify if not for cooldown
+    cooldownReason = `${formatTokenBalance(cooldownAmount)} tokens in ${CONFIG.TRANSFER_COOLDOWN_HOURS}h cooldown (wallet transfers). Eligible: ${formatTokenBalance(eligibleBalance)}`;
   }
 
   return {
     isHolder: meetsThreshold,
     balance: totalBalance,
-    inCooldown: false,
-    cooldownReason: null
+    eligibleBalance: eligibleBalance,
+    cooldownAmount: cooldownAmount,
+    hasCooldown: hasCooldown,
+    cooldownReason: cooldownReason
   };
 }
 

@@ -18,7 +18,7 @@ const { getUserAddresses: getCachedUserAddresses, getUserByWallet: getCachedUser
 const CONFIG = {
   NEYNARTODES: '0x8dE1622fE07f56cda2e2273e615A513F1d828B07',
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://white-special-telescope.base-mainnet.quiknode.pro/f0dccf244a968a322545e7afab7957d927aceda3/',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
   V4_STATE_VIEW: '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71',
   NEYNARTODES_POOL_ID: '0xfad8f807f3f300d594c5725adb8f54314d465bcb1ab8cc04e37b08c1aa80d2e7',
@@ -26,7 +26,18 @@ const CONFIG = {
   // Holder thresholds (in tokens with 18 decimals)
   HOLDER_THRESHOLD_DEFAULT: 100000000n * 10n**18n,  // 100M for NEYNARTODES contests
   HOLDER_THRESHOLD_CUSTOM: 200000000n * 10n**18n,   // 200M for custom token contests
+  // Transfer cooldown for holder bonus (36 hours)
+  TRANSFER_COOLDOWN_HOURS: 36,
 };
+
+// DEX addresses - transfers FROM these are purchases (no cooldown)
+const DEX_ADDRESSES = new Set([
+  '0x5d7f0d6c17a245b62e6a08280f580c59631e8136', // Uniswap V3 NEYNARTODES/WETH pool
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal Router
+  '0x2626664c2603336e57b271c5c0b26f421741e481', // Uniswap V3 SwapRouter02
+  '0x0000000000000000000000000000000000000000', // Zero address (minting)
+  '0x75a2c417b9e2f00d47ad94f8c0894066e31e38d9', // Clanker deployer
+].map(a => a.toLowerCase()));
 
 // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
 const CONTEST_MANAGER_ABI = [
@@ -61,8 +72,64 @@ function getHolderThreshold(tokenRequirement) {
 }
 
 /**
+ * Calculate amount of tokens in cooldown (received via wallet-to-wallet transfer in last 36 hours)
+ * Tokens from DEX purchases are NOT in cooldown
+ * Returns the amount that should be subtracted from total balance for holder qualification
+ */
+async function calculateCooldownAmount(addresses, provider) {
+  try {
+    const currentBlock = await provider.getBlockNumber();
+    const blocksIn36Hours = Math.ceil((CONFIG.TRANSFER_COOLDOWN_HOURS * 60 * 60) / 2); // ~2 sec blocks on Base
+    const fromBlock = currentBlock - blocksIn36Hours;
+
+    const neynartodes = new ethers.Contract(
+      CONFIG.NEYNARTODES,
+      ['event Transfer(address indexed from, address indexed to, uint256 value)'],
+      provider
+    );
+
+    // Query Transfer events TO user addresses in the cooldown period
+    const transferPromises = addresses.map(addr =>
+      neynartodes.queryFilter(neynartodes.filters.Transfer(null, addr), fromBlock, 'latest')
+        .catch(e => {
+          console.error(`Error querying transfers for ${addr}:`, e.message);
+          return [];
+        })
+    );
+
+    const allTransferArrays = await Promise.all(transferPromises);
+    const allTransfers = allTransferArrays.flat();
+
+    // Sum up transfers from non-DEX addresses (wallet-to-wallet transfers)
+    let cooldownAmount = 0n;
+    for (const event of allTransfers) {
+      const fromAddr = event.args.from.toLowerCase();
+
+      // Skip if transfer is from a DEX (those are purchases, not wallet transfers)
+      if (DEX_ADDRESSES.has(fromAddr)) {
+        continue;
+      }
+
+      // Skip if transfer is between user's own addresses
+      if (addresses.includes(fromAddr)) {
+        continue;
+      }
+
+      cooldownAmount += BigInt(event.args.value);
+    }
+
+    console.log(`Cooldown amount for addresses: ${formatTokenBalance(cooldownAmount)} tokens in cooldown`);
+    return cooldownAmount;
+  } catch (e) {
+    console.error('Error calculating cooldown amount:', e.message);
+    return 0n;
+  }
+}
+
+/**
  * Check if user qualifies via NEYNARTODES token holdings
  * Sums balance across all verified addresses
+ * Subtracts tokens in cooldown (received via wallet-to-wallet transfer in last 36hrs)
  * OPTIMIZED: Fetches all balances in parallel
  */
 async function checkHolderQualification(addresses, provider, tokenRequirement) {
@@ -74,25 +141,38 @@ async function checkHolderQualification(addresses, provider, tokenRequirement) {
     provider
   );
 
-  // Fetch all balances in PARALLEL instead of sequentially
-  const balancePromises = addresses.map(addr =>
-    neynartodes.balanceOf(addr).catch(e => {
-      console.error(`Error checking balance for ${addr}:`, e.message);
-      return 0n;
-    })
-  );
+  // Fetch balances and cooldown amount in PARALLEL
+  const [balances, cooldownAmount] = await Promise.all([
+    Promise.all(addresses.map(addr =>
+      neynartodes.balanceOf(addr).catch(e => {
+        console.error(`Error checking balance for ${addr}:`, e.message);
+        return 0n;
+      })
+    )),
+    calculateCooldownAmount(addresses, provider)
+  ]);
 
-  const balances = await Promise.all(balancePromises);
   const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
 
+  // Eligible balance = total balance - tokens in cooldown
+  // Can't go negative (in case of rounding or timing issues)
+  const eligibleBalance = totalBalance > cooldownAmount ? totalBalance - cooldownAmount : 0n;
+
+  const hasCooldown = cooldownAmount > 0n;
+
   return {
-    met: totalBalance >= threshold,
+    met: eligibleBalance >= threshold,
     balance: totalBalance.toString(),
     balanceFormatted: formatTokenBalance(totalBalance),
+    eligibleBalance: eligibleBalance.toString(),
+    eligibleBalanceFormatted: formatTokenBalance(eligibleBalance),
+    cooldownAmount: cooldownAmount.toString(),
+    cooldownAmountFormatted: formatTokenBalance(cooldownAmount),
+    hasCooldown: hasCooldown,
     threshold: threshold.toString(),
     thresholdFormatted: thresholdFormatted,
-    remaining: totalBalance >= threshold ? '0' : (threshold - totalBalance).toString(),
-    remainingFormatted: totalBalance >= threshold ? '0' : formatTokenBalance(threshold - totalBalance),
+    remaining: eligibleBalance >= threshold ? '0' : (threshold - eligibleBalance).toString(),
+    remainingFormatted: eligibleBalance >= threshold ? '0' : formatTokenBalance(threshold - eligibleBalance),
     isCustomToken: isCustomToken
   };
 }
@@ -611,6 +691,11 @@ module.exports = async (req, res) => {
         met: holder.met,
         balance: holder.balance,
         balanceFormatted: holder.balanceFormatted,
+        eligibleBalance: holder.eligibleBalance,
+        eligibleBalanceFormatted: holder.eligibleBalanceFormatted,
+        cooldownAmount: holder.cooldownAmount,
+        cooldownAmountFormatted: holder.cooldownAmountFormatted,
+        hasCooldown: holder.hasCooldown,
         threshold: holder.threshold,
         thresholdFormatted: holder.thresholdFormatted,
         remaining: holder.remaining,

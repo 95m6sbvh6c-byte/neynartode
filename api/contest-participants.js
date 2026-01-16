@@ -181,28 +181,41 @@ module.exports = async (req, res) => {
     const cooldownBlocks = TRANSFER_COOLDOWN_HOURS * blocksPerHour;
     const currentBlock = await provider.getBlockNumber();
     const cooldownFromBlock = Math.max(0, currentBlock - cooldownBlocks);
-    const cooldownStart = Date.now() - (TRANSFER_COOLDOWN_HOURS * 60 * 60 * 1000);
 
-    // Helper to check transfer cooldown for an address
-    async function checkCooldown(addresses) {
+    // Helper to format token balance
+    function formatTokenBalance(balance) {
+      const num = Number(balance / (10n ** 18n));
+      if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(1) + 'B';
+      if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M';
+      if (num >= 1_000) return (num / 1_000).toFixed(1) + 'K';
+      return num.toFixed(0);
+    }
+
+    // Helper to calculate cooldown amount (tokens received via wallet-to-wallet transfer)
+    async function calculateCooldownAmount(addresses) {
       try {
+        const normalizedAddresses = addresses.map(a => a.toLowerCase());
+        let cooldownAmount = 0n;
+
         for (const addr of addresses) {
           const filter = tokenWithEvents.filters.Transfer(null, addr);
           const events = await tokenWithEvents.queryFilter(filter, cooldownFromBlock, currentBlock);
 
           for (const event of events) {
             const fromAddr = event.args.from.toLowerCase();
-            if (DEX_ADDRESSES.has(fromAddr)) continue; // Purchase, not transfer
 
-            const block = await event.getBlock();
-            if (block.timestamp * 1000 >= cooldownStart) {
-              return true; // In cooldown
-            }
+            // Skip if transfer is from a DEX (this is a purchase, not a transfer)
+            if (DEX_ADDRESSES.has(fromAddr)) continue;
+
+            // Skip if transfer is between user's own addresses
+            if (normalizedAddresses.includes(fromAddr)) continue;
+
+            cooldownAmount += BigInt(event.args.value);
           }
         }
-        return false;
+        return cooldownAmount;
       } catch (e) {
-        return false; // On error, don't penalize
+        return 0n; // On error, don't penalize
       }
     }
 
@@ -223,32 +236,34 @@ module.exports = async (req, res) => {
               return { fid: user.fid, isHolder: false, reason: 'no addresses' };
             }
 
-            // Check balance across all addresses
-            const balances = await Promise.all(
-              addresses.map(addr => token.balanceOf(addr).catch((e) => {
-                console.log(`Balance check failed for ${addr}: ${e.message}`);
-                return 0n;
-              }))
-            );
-            const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
-            const meetsThreshold = totalBalance >= HOLDER_THRESHOLD;
+            // Check balance and cooldown amount in parallel
+            const [balances, cooldownAmount] = await Promise.all([
+              Promise.all(
+                addresses.map(addr => token.balanceOf(addr).catch((e) => {
+                  console.log(`Balance check failed for ${addr}: ${e.message}`);
+                  return 0n;
+                }))
+              ),
+              calculateCooldownAmount(addresses)
+            ]);
 
-            // Check cooldown if they meet the threshold
-            let isHolder = meetsThreshold;
-            let inCooldown = false;
-            if (meetsThreshold) {
-              inCooldown = await checkCooldown(addresses);
-              if (inCooldown) {
-                isHolder = false;
-                console.log(`Contest ${contestId}: User ${user.fid} (${user.username}) has 100M+ but IN COOLDOWN`);
-              }
+            const totalBalance = balances.reduce((sum, bal) => sum + BigInt(bal), 0n);
+
+            // Eligible balance = total balance - tokens in cooldown
+            const eligibleBalance = totalBalance > cooldownAmount ? totalBalance - cooldownAmount : 0n;
+            const isHolder = eligibleBalance >= HOLDER_THRESHOLD;
+            const hasCooldown = cooldownAmount > 0n;
+
+            // Log if they would qualify but for cooldown
+            if (hasCooldown && !isHolder && totalBalance >= HOLDER_THRESHOLD) {
+              console.log(`Contest ${contestId}: User ${user.fid} (${user.username}) has ${formatTokenBalance(totalBalance)} but ${formatTokenBalance(cooldownAmount)} in cooldown. Eligible: ${formatTokenBalance(eligibleBalance)}`);
             }
 
             if (isHolder) {
-              console.log(`Contest ${contestId}: User ${user.fid} (${user.username}) is a holder with ${ethers.formatUnits(totalBalance, 18)} tokens`);
+              console.log(`Contest ${contestId}: User ${user.fid} (${user.username}) is a holder with ${formatTokenBalance(eligibleBalance)} eligible tokens`);
             }
 
-            return { fid: user.fid, isHolder, inCooldown, balance: totalBalance.toString() };
+            return { fid: user.fid, isHolder, inCooldown: hasCooldown && !isHolder, balance: totalBalance.toString(), eligibleBalance: eligibleBalance.toString() };
           } catch (e) {
             console.error(`Holder check failed for user ${user.fid}:`, e.message);
             return { fid: user.fid, isHolder: false, error: e.message };
