@@ -6866,6 +6866,23 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           throw e;
         }
 
+        // Check if user holds 100M NEYNARTODES to launch a contest
+        if (statusDiv) statusDiv.textContent = 'Checking NEYNARTODES balance...';
+        const HOLDER_REQUIREMENT = ethers.BigNumber.from('100000000000000000000000000'); // 100M tokens (18 decimals)
+        const neynartodes = new ethers.Contract(
+          CONFIG.CONTRACTS.neynartodes,
+          ['function balanceOf(address) view returns (uint256)'],
+          rpcProvider
+        );
+        const holderBalance = await neynartodes.balanceOf(signerAddress);
+        if (holderBalance.lt(HOLDER_REQUIREMENT)) {
+          const balanceFormatted = parseFloat(ethers.utils.formatUnits(holderBalance, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 });
+          showToast(`You need 100M NEYNARTODES to launch a contest. You have ${balanceFormatted}.`, 'error');
+          if (statusDiv) statusDiv.textContent = '❌ Insufficient NEYNARTODES balance';
+          return;
+        }
+        console.log('   Holder check passed:', ethers.utils.formatUnits(holderBalance, 18), 'NEYNARTODES');
+
         if (statusDiv) statusDiv.textContent = 'Step 7: Creating ethers provider/signer...';
         const provider = new ethers.providers.Web3Provider(ethProvider);
         const signer = provider.getSigner(signerAddress);
