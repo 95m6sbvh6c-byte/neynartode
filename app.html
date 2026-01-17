@@ -1165,6 +1165,109 @@
       render();
     }
 
+    // Show Buy Burn Hold Earn modal
+    function showBuyBurnHoldEarnModal() {
+      state.buyBurnHoldEarnModal = true;
+      render();
+    }
+
+    // Close Buy Burn Hold Earn modal
+    function closeBuyBurnHoldEarnModal() {
+      state.buyBurnHoldEarnModal = false;
+      render();
+    }
+
+    // Render Buy Burn Hold Earn modal
+    function renderBuyBurnHoldEarnModal() {
+      if (!state.buyBurnHoldEarnModal) return '';
+
+      return `
+        <div
+          class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onclick="if(event.target === this) closeBuyBurnHoldEarnModal()"
+        >
+          <div class="bg-[var(--bg-secondary)] rounded-2xl max-w-md w-full p-5 shadow-xl border border-[var(--border)] max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <span>🔥</span> Buy Burn Hold Earn
+              </h3>
+              <button
+                onclick="closeBuyBurnHoldEarnModal()"
+                class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-2xl leading-none"
+              >&times;</button>
+            </div>
+
+            <p class="text-sm text-[var(--text-muted)] mb-4">
+              Every contest entry triggers a token buy that benefits the entire ecosystem.
+            </p>
+
+            <!-- Non-Holder Entry Section -->
+            <div class="mb-4 p-4 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border)]">
+              <div class="font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
+                <span class="text-lg">💰</span> Standard Entry
+              </div>
+              <p class="text-xs text-[var(--text-muted)] mb-3">
+                If you hold less than 100M NEYNARTODES, the contract buys 1M tokens and distributes them:
+              </p>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-[var(--text-muted)]">To You (Entrant)</span>
+                  <span class="font-semibold text-[var(--accent-light)]">25% (250K)</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-[var(--text-muted)]">Burned Forever</span>
+                  <span class="font-semibold text-[var(--error)]">25% (250K)</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-[var(--text-muted)]">To Treasury</span>
+                  <span class="font-semibold text-[var(--success)]">35% (350K)</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-[var(--text-muted)]">To Contest Host</span>
+                  <span class="font-semibold text-[var(--warning)]">15% (150K)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Holder Entry Section -->
+            <div class="mb-4 p-4 rounded-xl bg-gradient-to-r from-[var(--accent)]/10 to-[var(--success)]/10 border border-[var(--accent)]/30">
+              <div class="font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
+                <span class="text-lg">👑</span> Holder Bonus
+              </div>
+              <p class="text-xs text-[var(--text-muted)] mb-3">
+                If you hold 100M+ NEYNARTODES, you enter FREE and the host still gets rewarded:
+              </p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-[var(--text-muted)]">To Contest Host</span>
+                <span class="font-semibold text-[var(--warning)]">150K tokens</span>
+              </div>
+              <p class="text-xs text-[var(--text-muted)] mt-2 italic">
+                Host rewards come from the Treasury, not your wallet!
+              </p>
+            </div>
+
+            <!-- Benefits Summary -->
+            <div class="p-3 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)]">
+              <div class="font-semibold text-sm text-[var(--text-primary)] mb-2">Why This Matters</div>
+              <ul class="text-xs text-[var(--text-muted)] space-y-1">
+                <li>• <span class="text-[var(--error)]">25% burned</span> = reduced supply</li>
+                <li>• <span class="text-[var(--accent-light)]">25% to you</span> = instant rewards</li>
+                <li>• <span class="text-[var(--warning)]">Hosts earn</span> = incentivized contest creation</li>
+                <li>• <span class="text-[var(--success)]">Treasury grows</span> = bigger prize pools</li>
+              </ul>
+            </div>
+
+            <button
+              onclick="closeBuyBurnHoldEarnModal()"
+              class="w-full mt-4 py-3 px-4 rounded-xl bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-opacity"
+            >
+              Got It!
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
     // Render participants modal
     function renderParticipantsModal() {
       if (!state.participantsModal) return '';
@@ -2264,6 +2367,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       contestParticipants: {}, // Map of contestId -> { participants, count, hasMore }
       contestShares: {}, // Map of contestId -> true (user has shared)
       participantsModal: null, // { contestId, loading } for participants popup
+      buyBurnHoldEarnModal: false, // Show Buy Burn Hold Earn details modal
       contestsLoading: true, // Loading state for contests
       headerAnimated: false, // Track if header has been animated
       prizeType: 'token', // 'token' or 'nft'
@@ -4590,7 +4694,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       }
 
       // Add modals on top of page content
-      app.innerHTML = pageHtml + renderParticipantsModal();
+      app.innerHTML = pageHtml + renderParticipantsModal() + renderBuyBurnHoldEarnModal();
 
       attachEventListeners();
     }
@@ -4817,6 +4921,30 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               <div class="w-2 h-2 rounded-full ${window.activeEthProvider ? 'bg-[var(--success)]' : 'bg-[var(--error)]'}"></div>
             </div>
           </div>
+
+          <!-- Buy Burn Hold Earn Banner (shown on active and create pages) -->
+          ${state.currentView === 'active' || state.currentView === 'create' ? `
+            <div class="mb-3 p-3 rounded-xl bg-gradient-to-r from-[var(--accent)]/10 to-[var(--success)]/10 border border-[var(--accent)]/20 cursor-pointer hover:border-[var(--accent)]/40 transition-all" onclick="showBuyBurnHoldEarnModal()">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-lg">🔥</span>
+                  <div>
+                    <span class="font-semibold text-[var(--accent-light)]">Buy Burn Hold Earn</span>
+                    <span class="text-xs text-[var(--text-muted)] ml-2">Tap for details</span>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                <span class="px-2 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent-light)]">25% to You</span>
+                <span class="px-2 py-0.5 rounded-full bg-[var(--error)]/20 text-[var(--error)]">25% Burned</span>
+                <span class="px-2 py-0.5 rounded-full bg-[var(--success)]/20 text-[var(--success)]">35% Treasury</span>
+                <span class="px-2 py-0.5 rounded-full bg-[var(--warning)]/20 text-[var(--warning)]">15% to Host</span>
+              </div>
+            </div>
+          ` : ''}
 
           <!-- Active page title -->
           <div class="mb-2 py-3 text-center">
