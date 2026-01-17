@@ -14,7 +14,7 @@
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- QR Code library for signer approval (qrcodejs - browser compatible) -->
+  <!-- QR Code library (qrcodejs - browser compatible) -->
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
   <!-- Vercel Analytics -->
@@ -207,96 +207,8 @@
               console.log('Entry check failed, proceeding anyway:', e);
             }
 
-            // Check signer status - need approved signer for like/recast
-            console.log('Checking signer status for FID:', userFid);
-            let signerApproved = false;
-
-            try {
-              const signerStatusRes = await fetch(`/api/signer-status?fid=${userFid}`);
-              if (signerStatusRes.ok) {
-                const signerData = await signerStatusRes.json();
-                signerApproved = signerData.approved === true;
-                console.log('Signer status:', signerData);
-              }
-            } catch (e) {
-              console.log('Signer status check failed:', e);
-            }
-
-            if (!signerApproved) {
-              // Need to create/approve signer
-              console.log('No approved signer - creating one...');
-              sdk.actions.setPrimaryButton({
-                text: 'Authorizing...',
-                loading: true,
-                disabled: true
-              });
-
-              try {
-                const createRes = await fetch('/api/signer-create', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ fid: userFid })
-                });
-
-                if (!createRes.ok) {
-                  throw new Error('Failed to create signer');
-                }
-
-                const createData = await createRes.json();
-                console.log('Signer create response:', createData);
-
-                if (createData.already_approved) {
-                  signerApproved = true;
-                } else if (createData.approval_url) {
-                  // Open approval URL - this will open Warpcast for user to approve
-                  console.log('Opening signer approval URL:', createData.approval_url);
-                  sdk.actions.openUrl(createData.approval_url);
-
-                  // Poll for approval (max 60 seconds)
-                  sdk.actions.setPrimaryButton({
-                    text: 'Waiting for approval...',
-                    loading: true,
-                    disabled: true
-                  });
-
-                  let pollAttempts = 0;
-                  const maxPollAttempts = 30;
-
-                  while (!signerApproved && pollAttempts < maxPollAttempts) {
-                    await new Promise(r => setTimeout(r, 2000));
-                    pollAttempts++;
-
-                    try {
-                      const pollRes = await fetch(`/api/signer-status?fid=${userFid}`);
-                      if (pollRes.ok) {
-                        const pollData = await pollRes.json();
-                        if (pollData.approved) {
-                          signerApproved = true;
-                          console.log('Signer approved!');
-                          break;
-                        }
-                      }
-                    } catch (e) {
-                      console.log('Poll attempt failed:', e);
-                    }
-                  }
-
-                  if (!signerApproved) {
-                    throw new Error('Signer approval timed out. Please try again.');
-                  }
-                }
-              } catch (signerError) {
-                console.error('Signer creation/approval failed:', signerError);
-                sdk.actions.setPrimaryButton({
-                  text: 'Authorization Failed',
-                  loading: false,
-                  disabled: false
-                });
-                throw signerError;
-              }
-            }
-
-            console.log('Signer approved, proceeding with entry...');
+            // Proceed with entry (no signer required)
+            console.log('Proceeding with entry for FID:', userFid);
             sdk.actions.setPrimaryButton({
               text: 'Processing...',
               loading: true,
@@ -1522,89 +1434,6 @@
       }
     }
 
-    // Check if user has approved signer
-    async function checkSignerStatus() {
-      if (!state.userFid) return null;
-
-      try {
-        const response = await fetch(`/api/signer-status?fid=${state.userFid}`);
-        if (response.ok) {
-          const data = await response.json();
-          state.signerStatus = data;
-          return data;
-        }
-      } catch (e) {
-        console.log('Error checking signer status:', e);
-      }
-      return null;
-    }
-
-    // Create a new signer and get approval URL
-    async function createSigner() {
-      if (!state.userFid) {
-        showToast('Please connect your Farcaster account first', 'warning');
-        return null;
-      }
-
-      try {
-        showToast('Creating authorization...', 'info');
-        const response = await fetch('/api/signer-create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fid: state.userFid })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-
-          if (data.already_approved) {
-            state.signerStatus = { has_signer: true, approved: true, signer_uuid: data.signer_uuid };
-            return { approved: true };
-          }
-
-          // Show QR code modal for approval
-          // Both URL formats (https://client.farcaster.xyz/deeplinks/... and farcaster://...)
-          // ultimately need to be opened on mobile where Warpcast is installed
-          if (data.approval_url) {
-            state.signerApprovalUrl = data.approval_url;
-            state.showSignerModal = true;
-            renderSignerModal();
-
-            // Start polling for approval
-            pollSignerApproval(60).then(approved => {
-              if (approved) {
-                state.showSignerModal = false;
-                renderSignerModal();
-                showToast('Authorization approved! You can now enter contests.', 'success');
-              }
-            });
-
-            return { pending: true, approval_url: data.approval_url };
-          }
-        } else {
-          const error = await response.json();
-          showToast(error.error || 'Failed to create signer', 'error');
-        }
-      } catch (e) {
-        console.log('Error creating signer:', e);
-        showToast('Failed to create authorization', 'error');
-      }
-      return null;
-    }
-
-    // Poll for signer approval
-    async function pollSignerApproval(maxAttempts = 30) {
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise(r => setTimeout(r, 2000)); // Wait 2 seconds
-        const status = await checkSignerStatus();
-        if (status?.approved) {
-          showToast('Authorization approved!', 'success');
-          return true;
-        }
-      }
-      return false;
-    }
-
     // Check if user is a holder (100M+ NEYNARTODES)
     async function checkHolderStatus() {
       if (!state.userFid && !state.userAddress) return false;
@@ -1716,32 +1545,7 @@
       button.disabled = true;
 
       try {
-        // Step 1: Check signer status
-        let signerStatus = state.signerStatus;
-        if (!signerStatus || !signerStatus.has_signer) {
-          signerStatus = await checkSignerStatus();
-        }
-
-        if (!signerStatus?.approved) {
-          // Need to create/approve signer
-          showToast('You need to authorize the app to enter contests', 'info');
-          const result = await createSigner();
-
-          if (result?.pending) {
-            showToast('Waiting for authorization approval...', 'info');
-            const approved = await pollSignerApproval();
-            if (!approved) {
-              showToast('Authorization timed out. Please try again.', 'error');
-              resetEnterButton(button, contestId);
-              return;
-            }
-          } else if (!result?.approved) {
-            resetEnterButton(button, contestId);
-            return;
-          }
-        }
-
-        // Step 2: Check if holder and process BuyBurnHoldEarn transaction
+        // Check if holder and process BuyBurnHoldEarn transaction
         const isHolder = await checkHolderStatus();
         const sdk = window.FarcasterSDK;
 
@@ -1961,9 +1765,6 @@
             button.innerHTML = 'Entered ✓';
             button.disabled = true;
             showToast('You have already entered this contest!', 'info');
-          } else if (error.needs_signer) {
-            showToast('Authorization required. Please try again.', 'warning');
-            resetEnterButton(button, entryKey);
           } else {
             showToast(error.error || 'Failed to enter contest', 'error');
             resetEnterButton(button, entryKey);
@@ -2424,12 +2225,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
       // Enter Raffle V2
       contestEntries: {},
-      signerStatus: null,
       enteringContest: null,
-
-      // Signer approval QR modal
-      showSignerModal: false,
-      signerApprovalUrl: null,
 
       // Cast sharing modal
       showCastModal: false,
@@ -3876,9 +3672,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // NOTE: Leaderboard and votes are lazy-loaded when user visits that tab
         // This reduces initial API calls and prevents unnecessary re-renders
-
-        // NOTE: Signer check is now lazy - handled when user tries to enter a raffle
-        // This prevents blocking the app entry and unnecessary signer creation prompts
 
         // Track wallet connection
         if (window.analytics?.track) {
@@ -8605,118 +8398,6 @@ ${miniAppUrl}`;
              (window.innerWidth <= 768);
     }
 
-    // Signer Approval Modal (QR for desktop, direct link for mobile)
-    function renderSignerModal() {
-      const existingModal = document.getElementById('signerModal');
-      if (existingModal) existingModal.remove();
-
-      if (!state.showSignerModal) return;
-
-      const isMobile = isMobileDevice();
-
-      const modal = document.createElement('div');
-      modal.id = 'signerModal';
-      modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
-      modal.innerHTML = `
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeSignerModal()"></div>
-        <div class="relative bg-[var(--bg-secondary)] rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-[var(--border-light)]">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold text-[var(--text-primary)]">Authorize NEYNARtodes</h3>
-            <button onclick="closeSignerModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xl">&times;</button>
-          </div>
-
-          <div class="text-center space-y-4">
-            ${isMobile ? `
-              <!-- Mobile: Show button to open Farcaster app directly via deep link -->
-              <p class="text-sm text-[var(--text-secondary)]">
-                Tap the button below to authorize the app in Farcaster/Warpcast.
-              </p>
-
-              <a href="${state.signerApprovalUrl}"
-                 onclick="sessionStorage.setItem('pendingSignerFid', '${state.userFid}')"
-                 class="block w-full px-4 py-4 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-semibold rounded-xl transition-colors text-center">
-                Open in Farcaster App
-              </a>
-
-              <p class="text-xs text-[var(--text-muted)] mt-2">
-                If the app doesn't open, copy this link:<br>
-                <span class="text-[10px] break-all select-all">${state.signerApprovalUrl}</span>
-              </p>
-            ` : `
-              <!-- Desktop: Show QR code to scan -->
-              <p class="text-sm text-[var(--text-secondary)]">
-                Scan this QR code with your phone to authorize the app in Warpcast.
-              </p>
-
-              <div class="flex justify-center">
-                <div id="signerQRCode" class="rounded-lg bg-white p-3 inline-block"></div>
-              </div>
-            `}
-
-            <div class="flex items-center justify-center gap-2 text-sm text-[var(--accent)]">
-              <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span>Waiting for approval...</span>
-            </div>
-
-            <p class="text-xs text-[var(--text-muted)]">
-              This is a one-time authorization. Once approved, you can enter contests without needing to authorize again.
-            </p>
-
-            ${isMobile ? `
-              <p class="text-xs text-[var(--text-muted)] mt-2">
-                After approving in Farcaster, come back to this app to continue.
-              </p>
-            ` : `
-              <p class="text-xs text-[var(--text-muted)] mt-2">
-                After scanning, complete authorization in your Farcaster app.
-              </p>
-            `}
-          </div>
-
-          <button onclick="closeSignerModal()" class="w-full mt-4 px-4 py-3 border border-[var(--border-light)] rounded-xl text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors">
-            Cancel
-          </button>
-        </div>
-      `;
-      document.body.appendChild(modal);
-
-      // Generate QR code after modal is in DOM (only for desktop)
-      if (!isMobile) {
-        setTimeout(() => {
-          const qrContainer = document.getElementById('signerQRCode');
-          if (qrContainer && window.QRCode && state.signerApprovalUrl) {
-            qrContainer.innerHTML = ''; // Clear any existing content
-            try {
-              new QRCode(qrContainer, {
-                text: state.signerApprovalUrl,
-                width: 256,
-                height: 256,
-                colorDark: '#000000',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.L
-              });
-              console.log('QR code generated for:', state.signerApprovalUrl);
-            } catch (error) {
-              console.error('QR code error:', error);
-              // Fallback: show the URL as text if QR code fails
-              qrContainer.innerHTML = `<p class="text-xs text-red-500 break-all">${state.signerApprovalUrl}</p>`;
-            }
-          } else {
-            console.log('QR code not generated: container=', !!qrContainer, 'QRCode=', !!window.QRCode, 'url=', !!state.signerApprovalUrl);
-          }
-        }, 100);
-      }
-    }
-
-    window.closeSignerModal = () => {
-      state.showSignerModal = false;
-      state.signerApprovalUrl = null;
-      renderSignerModal();
-    };
-
     window.showCustomTokenLegacy = () => {
       state.showTokenSuggestions = false;
       updateTokenDropdown();
@@ -8902,45 +8583,6 @@ ${miniAppUrl}`;
         }
       }, 1000); // Wait for contests to load
     }
-
-    // Check for pending signer approval (user returning from Warpcast)
-    (async function checkPendingSigner() {
-      const pendingFid = sessionStorage.getItem('pendingSignerFid');
-      if (pendingFid) {
-        console.log('Found pending signer for FID:', pendingFid);
-        // Poll for signer approval
-        let approved = false;
-        for (let i = 0; i < 10; i++) {
-          try {
-            const response = await fetch(`/api/signer-status?fid=${pendingFid}`);
-            const data = await response.json();
-            if (data.approved) {
-              console.log('Signer now approved!');
-              approved = true;
-              state.signerStatus = data;
-              sessionStorage.removeItem('pendingSignerFid');
-              showToast('Signer authorized! You can now enter raffles.', 'success');
-
-              // Check if there was a pending contest entry
-              const pendingContest = sessionStorage.getItem('pendingContestEntry');
-              if (pendingContest) {
-                sessionStorage.removeItem('pendingContestEntry');
-                console.log('Resuming entry for contest:', pendingContest);
-                // User will need to click Enter Raffle again, but signer is ready
-              }
-              break;
-            }
-          } catch (e) {
-            console.error('Signer status check error:', e);
-          }
-          await new Promise(r => setTimeout(r, 1000));
-        }
-        if (!approved) {
-          console.log('Signer not yet approved, user may need to complete authorization');
-          sessionStorage.removeItem('pendingSignerFid');
-        }
-      }
-    })();
 
     // Re-render when Farcaster SDK loads (it's async)
     window.addEventListener('farcaster-ready', () => {
