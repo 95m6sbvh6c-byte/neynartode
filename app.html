@@ -363,167 +363,138 @@
               console.log('Balance check failed, assuming non-holder:', e);
             }
 
-            if (isHolder) {
-              // Holder: Call enter-contest API directly (free entry)
-              const userFid = window.FarcasterContext?.user?.fid;
-              if (!userFid) throw new Error('No FID available');
-
-              // Fetch contest details first to get cast hash and other data (required by API)
-              let castHash = null;
-              let contestDetails = null;
-              try {
-                // First try without cache buster
-                let contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
+            // Fetch contest details first to get cast hash and host address
+            let castHash = null;
+            let contestDetails = null;
+            try {
+              let contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
+              if (contestRes.ok) {
+                const contestData = await contestRes.json();
+                contestDetails = contestData.contests?.find(c => c.contestId == contestIdParam);
+                if (contestDetails?.castId) {
+                  castHash = contestDetails.castId.split('|')[0];
+                  console.log('Got cast hash and host:', castHash, contestDetails.host);
+                }
+              }
+              if (!castHash) {
+                contestRes = await fetch(`/api/contest-history?limit=100&status=active&_t=${Date.now()}`);
                 if (contestRes.ok) {
                   const contestData = await contestRes.json();
-                  contestDetails = contestData.contests?.find(c =>
-                    c.contestId == contestIdParam
-                  );
+                  contestDetails = contestData.contests?.find(c => c.contestId == contestIdParam);
                   if (contestDetails?.castId) {
                     castHash = contestDetails.castId.split('|')[0];
-                    console.log('Got cast hash for entry:', castHash);
                   }
                 }
-
-                // If not found, retry with cache-buster to bypass CDN cache
-                if (!castHash) {
-                  console.log('Contest not found in cache, fetching fresh data...');
-                  contestRes = await fetch(`/api/contest-history?limit=100&status=active&_t=${Date.now()}`);
-                  if (contestRes.ok) {
-                    const contestData = await contestRes.json();
-                    contestDetails = contestData.contests?.find(c =>
-                      c.contestId == contestIdParam
-                    );
-                    if (contestDetails?.castId) {
-                      castHash = contestDetails.castId.split('|')[0];
-                      console.log('Got cast hash after fresh fetch:', castHash);
-                    }
-                  }
-                }
-              } catch (e) {
-                console.log('Could not fetch cast hash:', e);
               }
+            } catch (e) {
+              console.log('Could not fetch contest details:', e);
+            }
 
-              if (!castHash) {
-                throw new Error('Could not get contest cast hash. Contest may have ended or not exist.');
-              }
+            if (!castHash || !contestDetails?.host) {
+              throw new Error('Could not get contest details. Contest may have ended or not exist.');
+            }
 
-              const response = await fetch('/api/enter-contest', {
+            const hostAddress = contestDetails.host;
+            const BUYBURNHOLDEARN = '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28';
+
+            // Get SDK's ethereum provider
+            const ethProvider = await sdk.wallet.getEthereumProvider();
+            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+            const providerAddress = accounts[0];
+            console.log('Provider address:', providerAddress);
+
+            if (isHolder) {
+              // Holder: Call rewardHostForHolderEntry(host) - sends 150K from treasury to host
+              console.log('Processing holder entry - sending 150K to host:', hostAddress);
+
+              // Encode rewardHostForHolderEntry(address host)
+              // Function selector: keccak256("rewardHostForHolderEntry(address)")[:4] = 0xc763489d
+              const data = '0xc763489d' + hostAddress.slice(2).toLowerCase().padStart(64, '0');
+
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: providerAddress,
+                  to: BUYBURNHOLDEARN,
+                  value: '0x0',
+                  data: data,
+                  gas: '0x' + (150000).toString(16)
+                }]
+              });
+              console.log('Holder entry tx sent:', txHash);
+
+              // Record entry
+              const userFid = window.FarcasterContext?.user?.fid;
+              await fetch('/api/enter-contest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   fid: userFid,
                   contestId: entryKey,
                   castHash: castHash,
-                  addresses: [from]
+                  addresses: [from],
+                  holderEntryTx: txHash
                 })
               });
 
-              if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Entry failed');
-              }
-
-              // Success!
               sdk.actions.setPrimaryButton({
                 text: 'Entered ✓',
                 loading: false,
                 disabled: true
               });
-              console.log('Holder entry successful!');
-
-              // Show celebration animation (no compose modal blocking it!)
               showCelebration(castHash);
 
             } else {
-              // Non-holder: Send buy and burn transaction via SDK ethereum provider
-              // This should show the native Farcaster transaction confirmation dialog
-              console.log('Sending buy and burn via SDK ethereum provider...');
-              console.log('Verified address:', from);
+              // Non-holder: Call buyAndDistribute(entrant, host) - buys 1M, distributes 25/25/35/15
+              console.log('Processing non-holder entry...');
+              console.log('Entrant:', providerAddress, 'Host:', hostAddress);
 
-              const BUYANDBURN = '0x8AffD9eB013cfC08143439207E40dd5419b6b78C';
-              // 0.0001 ETH = 100000000000000 wei = 0x5af3107a4000 hex
-              const VALUE_HEX = '0x5af3107a4000';
-
-              // Get SDK's ethereum provider
-              const provider = await sdk.wallet.getEthereumProvider();
-              console.log('Got ethereum provider');
-
-              // First request accounts to see what address the provider will use
-              const accounts = await provider.request({ method: 'eth_requestAccounts' });
-              console.log('Provider accounts:', accounts);
-              const providerAddress = accounts[0];
-              console.log('Provider will use address:', providerAddress);
-
-              // Check if this matches the verified address
-              if (providerAddress?.toLowerCase() !== from?.toLowerCase()) {
-                console.warn('ADDRESS MISMATCH - Provider:', providerAddress, 'Verified:', from);
-              }
-
-              // Build transaction with explicit from address
-              const txParams = {
-                from: providerAddress,
-                to: BUYANDBURN,
-                value: VALUE_HEX,
-                data: '0xaa6df299', // buyAndBurn() function selector
-                gas: '0x' + (300000).toString(16) // 300k gas limit - required for V4 swap
-              };
-              console.log('Transaction params:', txParams);
-
-              // Send via eth_sendTransaction
-              const txHash = await provider.request({
-                method: 'eth_sendTransaction',
-                params: [txParams]
+              // Get quote for ETH needed via RPC call
+              const quoteCalldata = '0x171755b1'; // getQuote() selector
+              const quoteResponse = await fetch(BASE_RPC, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 1,
+                  method: 'eth_call',
+                  params: [{ to: BUYBURNHOLDEARN, data: quoteCalldata }, 'latest']
+                })
               });
-              console.log('Buy and burn tx sent:', txHash);
+              const quoteData = await quoteResponse.json();
+              const ethNeeded = BigInt(quoteData.result || '0x0');
+              // Add 5% buffer
+              const ethWithBuffer = ethNeeded * 105n / 100n;
+              const valueHex = '0x' + ethWithBuffer.toString(16);
+              console.log('Entry fee with buffer:', ethWithBuffer.toString(), 'wei');
 
-              // Update button
+              // Encode buyAndDistribute(address entrant, address host)
+              // Function selector: keccak256("buyAndDistribute(address,address)")[:4] = 0x7dfda8d0
+              const entrantPadded = providerAddress.slice(2).toLowerCase().padStart(64, '0');
+              const hostPadded = hostAddress.slice(2).toLowerCase().padStart(64, '0');
+              const data = '0x7dfda8d0' + entrantPadded + hostPadded;
+
+              const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                  from: providerAddress,
+                  to: BUYBURNHOLDEARN,
+                  value: valueHex,
+                  data: data,
+                  gas: '0x' + (500000).toString(16)
+                }]
+              });
+              console.log('Non-holder entry tx sent:', txHash);
+
               sdk.actions.setPrimaryButton({
                 text: 'Entered ✓',
                 loading: false,
                 disabled: true
               });
 
-              // Fetch contest details to get cast hash and other data for celebration + auto-cast
-              let castHash = null;
-              let contestDetails = null;
-              try {
-                // First try without cache buster
-                let contestRes = await fetch(`/api/contest-history?limit=100&status=active`);
-                if (contestRes.ok) {
-                  const contestData = await contestRes.json();
-                  contestDetails = contestData.contests?.find(c =>
-                    c.contestId == contestIdParam
-                  );
-                  if (contestDetails?.castId) {
-                    castHash = contestDetails.castId.split('|')[0];
-                    console.log('Got cast hash for celebration:', castHash);
-                  }
-                }
-
-                // If not found, retry with cache-buster
-                if (!castHash) {
-                  console.log('Contest not found, fetching fresh data for celebration...');
-                  contestRes = await fetch(`/api/contest-history?limit=100&status=active&_t=${Date.now()}`);
-                  if (contestRes.ok) {
-                    const contestData = await contestRes.json();
-                    contestDetails = contestData.contests?.find(c =>
-                      c.contestId == contestIdParam
-                    );
-                    if (contestDetails?.castId) {
-                      castHash = contestDetails.castId.split('|')[0];
-                      console.log('Got cast hash after fresh fetch:', castHash);
-                    }
-                  }
-                }
-              } catch (e) {
-                console.log('Could not fetch cast hash:', e);
-              }
-
-              // Show celebration animation with cast hash for reply link
               showCelebration(castHash);
 
-              // Record the entry - include castHash which is required by the API
+              // Record entry
               const userFid = window.FarcasterContext?.user?.fid;
               if (userFid && castHash) {
                 fetch('/api/enter-contest', {
@@ -534,13 +505,11 @@
                     contestId: entryKey,
                     castHash: castHash,
                     addresses: [from],
-                    buyAndBurnTx: txHash
+                    entryTx: txHash
                   })
                 }).then(res => res.json()).then(data => {
                   console.log('Entry recorded:', data);
                 }).catch(e => console.log('Entry record failed:', e));
-              } else {
-                console.log('Could not record entry - missing userFid or castHash');
               }
             }
 
@@ -1391,8 +1360,8 @@
     // ENTER RAFFLE V2 - Auto like, recast, and optional buy and burn
     // ═══════════════════════════════════════════════════════════════════
 
-    const BUYANDBURN_ADDRESS = '0x8AffD9eB013cfC08143439207E40dd5419b6b78C'; // BuyAndBurn_Quoted v2 - burns 1M tokens with sweep refund - deployed 2025-12-23
-    const BUYANDBURN_FEE = '0.0001'; // ETH
+    const BUYBURNHOLDEARN_ADDRESS = '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28'; // BuyBurnHoldEarn - distributes 25% entrant, 25% burn, 35% treasury, 15% host
+    const HOLDER_THRESHOLD = ethers.BigNumber.from('100000000000000000000000000'); // 100M tokens (18 decimals)
 
     // Load which contests user has entered
     async function loadContestEntries() {
@@ -1669,73 +1638,66 @@
           }
         }
 
-        // Step 2: Check if holder or needs wash trade
+        // Step 2: Check if holder and process BuyBurnHoldEarn transaction
         const isHolder = await checkHolderStatus();
+        const sdk = window.FarcasterSDK;
 
-        if (!isHolder) {
-          // Non-holder: needs buy and burn transaction
-          showToast('Processing burn qualification...', 'info');
+        // Get user's wallet address
+        let fromAddress = state.userProfile?.verifiedAddresses?.ethAddresses?.[0] || state.userAddress;
+        if (!fromAddress && sdk?.wallet?.ethProvider) {
+          const accounts = await sdk.wallet.ethProvider.request({ method: 'eth_accounts' });
+          fromAddress = accounts?.[0];
+        }
+        if (!fromAddress && window.ethereum) {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          fromAddress = accounts?.[0];
+        }
+        if (!fromAddress) {
+          showToast('No wallet address found', 'error');
+          resetEnterButton(button, contestId);
+          return;
+        }
 
-          const sdk = window.FarcasterSDK;
+        // Get contest host address from contest data
+        const contest = state.upcomingContests?.find(c => c.contestId === contestId);
+        const hostAddress = contest?.host;
+        if (!hostAddress) {
+          showToast('Could not find contest host address', 'error');
+          resetEnterButton(button, contestId);
+          return;
+        }
 
-          // Prepare transaction parameters
-          // BuyAndBurn_Quoted has a simple buyAndBurn() function with no parameters (burns 1M tokens)
-          const iface = new ethers.utils.Interface(['function buyAndBurn()']);
-          const data = iface.encodeFunctionData('buyAndBurn', []);
-          const fee = ethers.utils.parseEther(BUYANDBURN_FEE);
-          const valueHex = '0x' + fee.toBigInt().toString(16);
-          console.log('Buy and burn fee:', BUYANDBURN_FEE, 'ETH');
-          console.log('Fee in wei:', fee.toString());
-          console.log('Value hex:', valueHex);
+        console.log('Entry details:', { isHolder, entrant: fromAddress, host: hostAddress });
+
+        // Process BuyBurnHoldEarn transaction
+        const iface = new ethers.utils.Interface(BUYBURNHOLDEARN_ABI);
+
+        if (isHolder) {
+          // Holder entry: call rewardHostForHolderEntry(host) - sends 150K from treasury to host
+          showToast('Processing holder entry reward...', 'info');
+          const data = iface.encodeFunctionData('rewardHostForHolderEntry', [hostAddress]);
 
           try {
             let txHash;
+            const txParams = {
+              from: fromAddress,
+              to: BUYBURNHOLDEARN_ADDRESS,
+              value: '0x0', // No ETH needed for holder entry
+              data: data,
+              gas: '0x' + (150000).toString(16) // 150k gas limit
+            };
 
-            // Try Farcaster SDK sendTransaction first (native mini app wallet)
             if (sdk?.wallet?.ethProvider) {
-              console.log('Using Farcaster SDK ethProvider for transaction');
-              // Get user's primary Farcaster wallet address
-              // Priority: 1) First verified address from profile, 2) state.userAddress, 3) eth_accounts
-              let fromAddress = state.userProfile?.verifiedAddresses?.ethAddresses?.[0] || state.userAddress;
-              if (!fromAddress) {
-                const accounts = await sdk.wallet.ethProvider.request({ method: 'eth_accounts' });
-                fromAddress = accounts?.[0];
-              }
-              if (!fromAddress) {
-                showToast('No wallet address found', 'error');
-                resetEnterButton(button, contestId);
-                return;
-              }
-              console.log('Using Farcaster wallet address:', fromAddress);
-              const result = await sdk.wallet.ethProvider.request({
+              console.log('Using Farcaster SDK for holder entry');
+              txHash = await sdk.wallet.ethProvider.request({
                 method: 'eth_sendTransaction',
-                params: [{
-                  from: fromAddress,
-                  to: BUYANDBURN_ADDRESS,
-                  value: valueHex,
-                  data: data,
-                  gas: '0x' + (300000).toString(16) // 300k gas limit
-                }]
+                params: [txParams]
               });
-              txHash = result;
-            }
-            // Fallback to window.ethereum (external wallet)
-            else if (window.ethereum) {
-              console.log('Using window.ethereum for transaction');
-              const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-              if (!accounts || accounts.length === 0) {
-                showToast('No wallet connected', 'error');
-                resetEnterButton(button, contestId);
-                return;
-              }
+            } else if (window.ethereum) {
+              console.log('Using window.ethereum for holder entry');
               txHash = await window.ethereum.request({
                 method: 'eth_sendTransaction',
-                params: [{
-                  from: accounts[0],
-                  to: BUYANDBURN_ADDRESS,
-                  value: valueHex,
-                  data: data
-                }]
+                params: [txParams]
               });
             } else {
               showToast('No wallet available', 'error');
@@ -1758,14 +1720,91 @@
             if (!receipt) {
               showToast('Transaction submitted but confirmation timed out. Entry may still process.', 'warning');
             } else if (receipt.status === 1) {
-              showToast('Trade qualification confirmed!', 'success');
+              showToast('Holder entry confirmed! Host received 150K NEYNARTODES', 'success');
             } else {
               showToast('Transaction failed on-chain', 'error');
               resetEnterButton(button, contestId);
               return;
             }
           } catch (txError) {
-            console.error('Wash trade error:', txError);
+            console.error('Holder entry error:', txError);
+            if (txError.code === 4001 || txError.code === 'ACTION_REJECTED' || txError.message?.includes('rejected')) {
+              showToast('Transaction cancelled - entry not recorded', 'warning');
+            } else {
+              showToast('Transaction failed: ' + (txError.message || txError), 'error');
+            }
+            resetEnterButton(button, contestId);
+            return;
+          }
+        } else {
+          // Non-holder entry: call buyAndDistribute(entrant, host) - buys 1M tokens, distributes 25/25/35/15
+          showToast('Getting entry fee quote...', 'info');
+
+          try {
+            // Get quote for ETH needed
+            const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+            const contract = new ethers.Contract(BUYBURNHOLDEARN_ADDRESS, BUYBURNHOLDEARN_ABI, provider);
+            const ethNeeded = await contract.callStatic.getQuote();
+            // Add 5% buffer for price movement
+            const ethWithBuffer = ethNeeded.mul(105).div(100);
+            const valueHex = '0x' + ethWithBuffer.toBigInt().toString(16);
+
+            console.log('Entry fee:', ethers.utils.formatEther(ethWithBuffer), 'ETH');
+
+            showToast('Processing entry fee...', 'info');
+
+            // Encode buyAndDistribute call
+            const data = iface.encodeFunctionData('buyAndDistribute', [fromAddress, hostAddress]);
+
+            let txHash;
+            const txParams = {
+              from: fromAddress,
+              to: BUYBURNHOLDEARN_ADDRESS,
+              value: valueHex,
+              data: data,
+              gas: '0x' + (500000).toString(16) // 500k gas limit for V4 swap
+            };
+
+            if (sdk?.wallet?.ethProvider) {
+              console.log('Using Farcaster SDK for non-holder entry');
+              txHash = await sdk.wallet.ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [txParams]
+              });
+            } else if (window.ethereum) {
+              console.log('Using window.ethereum for non-holder entry');
+              txHash = await window.ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [txParams]
+              });
+            } else {
+              showToast('No wallet available', 'error');
+              resetEnterButton(button, contestId);
+              return;
+            }
+
+            showToast('Waiting for transaction confirmation...', 'info');
+
+            // Wait for transaction to be mined
+            let receipt = null;
+            let attempts = 0;
+            while (!receipt && attempts < 60) {
+              await new Promise(r => setTimeout(r, 2000));
+              receipt = await provider.getTransactionReceipt(txHash).catch(() => null);
+              attempts++;
+            }
+
+            if (!receipt) {
+              showToast('Transaction submitted but confirmation timed out. Entry may still process.', 'warning');
+            } else if (receipt.status === 1) {
+              showToast('Entry confirmed! You received 250K NEYNARTODES', 'success');
+            } else {
+              showToast('Transaction failed on-chain', 'error');
+              resetEnterButton(button, contestId);
+              return;
+            }
+          } catch (txError) {
+            console.error('Non-holder entry error:', txError);
             if (txError.code === 4001 || txError.code === 'ACTION_REJECTED' || txError.message?.includes('rejected')) {
               showToast('Transaction cancelled - entry not recorded', 'warning');
             } else {
@@ -2081,7 +2120,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // === NEW Unified ContestManager (M- and T- prefix contests) ===
         contestManager: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
-        buyAndBurn: '0x8AffD9eB013cfC08143439207E40dd5419b6b78C', // BuyAndBurn_Quoted v2 - burns 1M with sweep refund
+        buyBurnHoldEarn: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28', // BuyBurnHoldEarn - distributes 25% entrant, 25% burn, 35% treasury, 15% host
 
         // === Shared Contracts ===
         prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
@@ -6823,13 +6862,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       'event WinnersSelected(uint256 indexed contestId, address[] winners, uint256 prizePerWinner)'
     ];
 
-    // BuyAndBurn_Quoted - Buys and burns 1M tokens for non-holder contest entry
-    const BUYANDBURN_ABI = [
-      'function buyAndBurn() external payable',
+    // BuyBurnHoldEarn - Distributes tokens for contest entry
+    // Non-holder: buys 1M tokens, distributes 25% entrant, 25% burn, 35% treasury, 15% host
+    // Holder: sends 150K from treasury to host
+    const BUYBURNHOLDEARN_ABI = [
+      'function buyAndDistribute(address entrant, address host) external payable',
+      'function rewardHostForHolderEntry(address host) external',
       'function getQuote() external returns (uint256)',
-      'function burnAmount() external view returns (uint256)',
-      'function totalBurned() external view returns (uint256)',
-      'event BuyAndBurnExecuted(address indexed user, uint256 tokensBurned, uint256 ethSpent, uint256 timestamp)'
+      'function buyAmount() external view returns (uint256)',
+      'function holderHostReward() external view returns (uint256)',
+      'function getStats() external view returns (uint256 bought, uint256 burned, uint256 toEntrants, uint256 toTreasuryTotal, uint256 toHostsTotal, uint256 holderHostRewardsTotal)',
+      'event BuyBurnHoldEarnExecuted(address indexed entrant, address indexed host, uint256 tokensBought, uint256 toEntrant, uint256 burned, uint256 toTreasury, uint256 toHost, uint256 ethSpent, uint256 timestamp)',
+      'event HolderEntryReward(address indexed host, uint256 amount, uint256 timestamp)'
     ];
 
     // ERC721_ABI and ERC1155_ABI are defined at the top of the file near CONFIG
