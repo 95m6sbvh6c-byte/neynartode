@@ -6940,6 +6940,78 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           return;
         }
 
+        // Minimum prize validation ($0.40 USD minimum for all token types)
+        const MIN_PRIZE_USD = 0.40;
+        const STABLECOIN_ADDRESSES = [
+          '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC on Base
+          '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', // DAI on Base
+          '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2', // USDT on Base
+        ];
+        const ETH_ADDRESSES = [
+          '0x0000000000000000000000000000000000000000', // Native ETH
+          '0x4200000000000000000000000000000000000006', // WETH on Base
+        ];
+
+        if (state.prizeType === 'token' && state.prizeTokenAddress) {
+          const tokenAddr = state.prizeTokenAddress.toLowerCase();
+          const prizeAmount = parseFloat(state.prizeTokenAmount);
+          let prizeUSD = 0;
+
+          if (statusDiv) statusDiv.textContent = 'Validating prize value...';
+
+          if (STABLECOIN_ADDRESSES.includes(tokenAddr)) {
+            // Stablecoins: 1:1 with USD
+            prizeUSD = prizeAmount;
+            console.log('   Stablecoin prize:', prizeUSD, 'USD');
+          } else if (ETH_ADDRESSES.includes(tokenAddr) || state.prizeTokenTicker === 'ETH') {
+            // ETH: Get price from Chainlink
+            try {
+              const chainlink = new ethers.Contract(
+                '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70', // Chainlink ETH/USD on Base
+                ['function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)'],
+                rpcProvider
+              );
+              const roundData = await chainlink.latestRoundData();
+              const ethPriceUSD = Number(roundData[1]) / 1e8;
+              prizeUSD = prizeAmount * ethPriceUSD;
+              console.log('   ETH prize:', prizeAmount, 'ETH @', ethPriceUSD, '=', prizeUSD, 'USD');
+            } catch (e) {
+              console.error('Failed to get ETH price:', e.message);
+              // Skip validation if price fetch fails
+              prizeUSD = MIN_PRIZE_USD;
+            }
+          } else {
+            // Other ERC20: Get price from DexScreener API
+            try {
+              const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${state.prizeTokenAddress}`);
+              const data = await response.json();
+              if (data.pairs && data.pairs.length > 0) {
+                // Find Base chain pair, prefer highest liquidity
+                const basePairs = data.pairs.filter(p => p.chainId === 'base');
+                const pair = basePairs.length > 0 ? basePairs[0] : data.pairs[0];
+                const tokenPriceUSD = parseFloat(pair.priceUsd) || 0;
+                prizeUSD = prizeAmount * tokenPriceUSD;
+                console.log('   ERC20 prize:', prizeAmount, state.prizeTokenTicker, '@', tokenPriceUSD, '=', prizeUSD, 'USD');
+              } else {
+                console.warn('No price data found for token:', state.prizeTokenAddress);
+                // Skip validation if no price data
+                prizeUSD = MIN_PRIZE_USD;
+              }
+            } catch (e) {
+              console.error('Failed to get token price:', e.message);
+              // Skip validation if price fetch fails
+              prizeUSD = MIN_PRIZE_USD;
+            }
+          }
+
+          if (prizeUSD < MIN_PRIZE_USD) {
+            showToast(`Minimum prize is $${MIN_PRIZE_USD.toFixed(2)}. Your prize is worth ~$${prizeUSD.toFixed(2)}.`, 'error');
+            if (statusDiv) statusDiv.textContent = '❌ Prize below minimum ($0.40)';
+            return;
+          }
+          console.log('   Prize validation passed:', prizeUSD.toFixed(2), 'USD');
+        }
+
         let tx;
 
         if (state.prizeType === 'token') {
