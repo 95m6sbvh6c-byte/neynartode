@@ -3,7 +3,7 @@
  *
  * Usage: PRIVATE_KEY=0x... node scripts/set-min-prize.js
  *
- * Sets min prize to 0.00012 ETH (~$0.40 with buffer)
+ * Sets min prize to 0.00015 ETH (~$0.50)
  */
 
 const { ethers } = require('ethers');
@@ -12,8 +12,8 @@ const CONFIG = {
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
   BASE_RPC: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   CHAINLINK_ETH_USD: '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70',
-  // New minimum: 0.00012 ETH (~$0.40 with slight buffer)
-  NEW_MIN_ETH: '0.00012',
+  // New minimum: 0.00015 ETH (~$0.50)
+  NEW_MIN_ETH: '0.00015',
 };
 
 const CONTEST_MANAGER_ABI = [

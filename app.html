@@ -5708,13 +5708,24 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             ${renderHeader()}
 
             <div class="glass-card p-5">
-              <div class="flex items-center justify-between mb-6">
+              <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-bold text-[var(--text-primary)]">Create Contest</h2>
                 <a
                   href="https://github.com/95m6sbvh6c-byte/neynartode/blob/main/docs/GUIDE_CREATE.md"
                   target="_blank"
                   class="btn-ghost text-sm"
                 >Guide</a>
+              </div>
+
+              <!-- Requirements Info -->
+              <div class="bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] rounded-xl p-3 mb-6">
+                <div class="flex items-start gap-2">
+                  <span class="text-[var(--accent)] text-sm">ℹ️</span>
+                  <div class="text-sm text-[var(--text-secondary)]">
+                    <span class="text-[var(--text-primary)] font-medium">Requirements:</span>
+                    Hold 100M $NEYNARTODES to create contests. Minimum prize: $0.50 USD equivalent.
+                  </div>
+                </div>
               </div>
 
               <div class="space-y-6">
@@ -6940,8 +6951,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           return;
         }
 
-        // Minimum prize validation ($0.40 USD minimum for all token types)
-        const MIN_PRIZE_USD = 0.40;
+        // Minimum prize validation ($0.50 USD minimum for all token types)
+        const MIN_PRIZE_USD = 0.50;
         const STABLECOIN_ADDRESSES = [
           '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC on Base
           '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', // DAI on Base
@@ -7006,7 +7017,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           if (prizeUSD < MIN_PRIZE_USD) {
             showToast(`Minimum prize is $${MIN_PRIZE_USD.toFixed(2)}. Your prize is worth ~$${prizeUSD.toFixed(2)}.`, 'error');
-            if (statusDiv) statusDiv.textContent = '❌ Prize below minimum ($0.40)';
+            if (statusDiv) statusDiv.textContent = '❌ Prize below minimum ($0.50)';
             return;
           }
           console.log('   Prize validation passed:', prizeUSD.toFixed(2), 'USD');
