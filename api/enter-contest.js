@@ -40,9 +40,7 @@ module.exports = async (req, res) => {
   if (!contestId) {
     return res.status(400).json({ error: 'Missing contestId' });
   }
-  if (!castHash) {
-    return res.status(400).json({ error: 'Missing castHash' });
-  }
+  // castHash is optional - some contests may not have an associated cast
   if (!addresses || !Array.isArray(addresses) || addresses.length === 0) {
     return res.status(400).json({ error: 'Missing or invalid addresses' });
   }
@@ -68,6 +66,7 @@ module.exports = async (req, res) => {
     const entry = {
       fid: parseInt(fid),
       contestId: contestId.toString(),
+      castHash: castHash || null,
       addresses,
       timestamp: Date.now(),
       hasReplied: false,
