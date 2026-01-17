@@ -2385,6 +2385,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       prizeTokenImage: '',
       prizeTokenSearch: '',
       showPrizeTokenSuggestions: false,
+      showCustomPrizeTokenModal: false, // Modal for adding custom prize token
       // NFT Prize fields
       prizeNftAddress: '',
       prizeNftTokenId: '',
@@ -8129,49 +8130,130 @@ ${miniAppUrl}`;
     // Make functions globally accessible for inline onclick handlers
     window.voteForHost = voteForHost;
 
-    // Custom token prompt functions
+    // Custom prize token modal functions (for mini app compatibility - no prompt() dialogs)
     window.showCustomPrizeToken = () => {
-      state.showPrizeTokenSuggestions = false;
-      updatePrizeTokenDropdown();
+      // Use modal-based approach instead of prompt() for Farcaster Frame compatibility
+      showCustomPrizeTokenModal();
+    };
 
-      let address = prompt('Enter the token contract address:\n\n(e.g., 0x532f27101965dd16442E59d40670FaF5eBB142E4)');
-      if (!address) return;
+    window.showCustomPrizeTokenModal = () => {
+      try {
+        state.showPrizeTokenSuggestions = false;
+        state.showCustomPrizeTokenModal = true;
+        updatePrizeTokenDropdown();
+        renderCustomPrizeTokenModal();
+      } catch (err) {
+        console.error('showCustomPrizeTokenModal error:', err);
+        showToast('Error opening custom token modal: ' + err.message, 'error');
+      }
+    };
 
-      // Trim whitespace and normalize
-      address = address.trim();
+    window.closeCustomPrizeTokenModal = () => {
+      state.showCustomPrizeTokenModal = false;
+      const modal = document.getElementById('customPrizeTokenModal');
+      if (modal) modal.remove();
+    };
 
-      if (!address.startsWith('0x') || address.length !== 42) {
-        showToast(`Invalid address format. Must start with 0x and be 42 characters.`, 'error');
+    window.submitCustomPrizeToken = () => {
+      const addressInput = document.getElementById('customPrizeTokenAddressInput');
+      const tickerInput = document.getElementById('customPrizeTokenTickerInput');
+
+      let address = (addressInput?.value || '').trim();
+      const ticker = (tickerInput?.value || '').trim();
+
+      if (!address) {
+        showToast('Please enter a token address', 'error');
         return;
       }
 
-      const ticker = prompt('Enter the token symbol/ticker:\n\n(e.g., BRETT, USDC, FIRKIT)');
-      if (!ticker) return;
+      if (!address.startsWith('0x') || address.length !== 42) {
+        showToast('Invalid address format. Must start with 0x and be 42 characters.', 'error');
+        return;
+      }
 
-      const name = prompt('Enter the token name (optional):', ticker);
+      if (!ticker) {
+        showToast('Please enter a token ticker/symbol', 'error');
+        return;
+      }
 
       // Add custom token to database
       const customToken = {
-        name: name || ticker,
+        name: ticker.toUpperCase(),
         ticker: ticker.toUpperCase(),
         address: address.toLowerCase(),
         mcap: 1000000,
         supply: 1000000000,
-        image: `https://via.placeholder.com/40/9333ea/ffffff?text=${ticker[0]}`
+        image: `https://via.placeholder.com/40/8b5cf6/ffffff?text=${ticker[0].toUpperCase()}`
       };
 
       // Save to localStorage with 1-year expiration
       saveCustomToken(customToken);
-
       tokenDatabase.push(customToken);
 
-      // Auto-select the custom token
+      // Auto-select the custom prize token
       state.prizeTokenAddress = customToken.address;
       state.prizeTokenTicker = customToken.ticker;
       state.prizeTokenImage = customToken.image;
       state.prizeTokenSearch = customToken.name;
+
+      // Close modal and render
+      state.showCustomPrizeTokenModal = false;
+      const modal = document.getElementById('customPrizeTokenModal');
+      if (modal) modal.remove();
       render();
+
+      showToast(`${customToken.ticker} added as prize token!`, 'success');
     };
+
+    function renderCustomPrizeTokenModal() {
+      // Remove existing modal if any
+      const existingModal = document.getElementById('customPrizeTokenModal');
+      if (existingModal) existingModal.remove();
+
+      if (!state.showCustomPrizeTokenModal) return;
+
+      const modal = document.createElement('div');
+      modal.id = 'customPrizeTokenModal';
+      modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeCustomPrizeTokenModal()"></div>
+        <div class="relative bg-[var(--bg-secondary)] rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-[var(--border-light)]">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-[var(--text-primary)]">Add Custom Prize Token</h3>
+            <button onclick="closeCustomPrizeTokenModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xl">&times;</button>
+          </div>
+
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm text-[var(--text-secondary)] mb-2">Token Contract Address</label>
+              <input type="text" id="customPrizeTokenAddressInput" placeholder="0x..." class="input-modern font-mono text-sm" />
+              <p class="text-xs text-[var(--text-muted)] mt-1">The token's contract address on Base</p>
+            </div>
+
+            <div>
+              <label class="block text-sm text-[var(--text-secondary)] mb-2">Token Symbol</label>
+              <input type="text" id="customPrizeTokenTickerInput" placeholder="e.g., THINK" class="input-modern uppercase" maxlength="10" />
+              <p class="text-xs text-[var(--text-muted)] mt-1">The token's ticker symbol</p>
+            </div>
+          </div>
+
+          <div class="flex gap-3 mt-6">
+            <button onclick="closeCustomPrizeTokenModal()" class="flex-1 px-4 py-3 border border-[var(--border-light)] rounded-xl text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors">
+              Cancel
+            </button>
+            <button onclick="submitCustomPrizeToken()" class="flex-1 px-4 py-3 bg-[var(--accent)] text-white rounded-xl hover:bg-[var(--accent-dark)] transition-colors font-medium">
+              Add Token
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      // Focus the address input
+      setTimeout(() => {
+        document.getElementById('customPrizeTokenAddressInput')?.focus();
+      }, 100);
+    }
 
     // Show custom token modal (for mini app compatibility - no prompt() dialogs)
     window.showCustomTokenModal = () => {
