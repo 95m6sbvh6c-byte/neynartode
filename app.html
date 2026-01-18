@@ -1765,6 +1765,11 @@
             button.innerHTML = 'Entered ✓';
             button.disabled = true;
             showToast('You have already entered this contest!', 'info');
+          } else if (error.contest_full) {
+            button.innerHTML = 'Full (200)';
+            button.disabled = true;
+            button.classList.add('opacity-50');
+            showToast('This contest has reached max entries (200). Try another contest!', 'warning');
           } else {
             showToast(error.error || 'Failed to enter contest', 'error');
             resetEnterButton(button, entryKey);

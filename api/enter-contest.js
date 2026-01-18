@@ -18,6 +18,9 @@
  * Returns: { success: true, entry: { ... } }
  */
 
+// Max entries per contest (Chainlink VRF limit is 1000, with bonus entries we cap at 200)
+const MAX_ENTRIES_PER_CONTEST = 200;
+
 module.exports = async (req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -59,6 +62,17 @@ module.exports = async (req, res) => {
         success: true,
         already_entered: true,
         entry: existingEntry
+      });
+    }
+
+    // Check if contest has reached max entries
+    const currentEntryCount = await kv.scard(`contest_entries:${contestId}`) || 0;
+    if (currentEntryCount >= MAX_ENTRIES_PER_CONTEST) {
+      return res.status(400).json({
+        error: 'Contest has reached maximum entries (200)',
+        contest_full: true,
+        entry_count: currentEntryCount,
+        max_entries: MAX_ENTRIES_PER_CONTEST
       });
     }
 
