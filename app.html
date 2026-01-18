@@ -1809,10 +1809,20 @@
       let prizeText;
       if (isNft) {
         prizeText = prize || 'an NFT';
+        if (winnerCount > 1) {
+          prizeText += ` (${winnerCount} winners)`;
+        }
       } else if (prize && tokenSymbol) {
         // Extract amount from prize (e.g., "0.01 ETH" -> "0.01")
         const amount = prize.replace(tokenSymbol, '').trim();
-        prizeText = `${amount} $${tokenSymbol}`;
+        const numericAmount = parseFloat(amount);
+        if (winnerCount > 1 && !isNaN(numericAmount)) {
+          // Show total prize and per-winner breakdown
+          const perWinner = (numericAmount / winnerCount).toFixed(numericAmount < 1 ? 4 : 2).replace(/\.?0+$/, '');
+          prizeText = `${amount} $${tokenSymbol} (${perWinner} each, ${winnerCount} winners)`;
+        } else {
+          prizeText = `${amount} $${tokenSymbol}`;
+        }
       } else {
         prizeText = prize || 'tokens';
       }
