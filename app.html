@@ -1808,10 +1808,8 @@
       // Format prize text with $ for cashtag highlighting
       let prizeText;
       if (isNft) {
+        // NFT contests always have 1 winner
         prizeText = prize || 'an NFT';
-        if (winnerCount > 1) {
-          prizeText += ` (${winnerCount} winners)`;
-        }
       } else if (prize && tokenSymbol) {
         // Extract amount from prize (e.g., "0.01 ETH" -> "0.01")
         const amount = prize.replace(tokenSymbol, '').trim();
