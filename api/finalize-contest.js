@@ -658,12 +658,12 @@ async function finalizeUnifiedContest(contestIdStr) {
   const volumeByFid = await checkVolumeBonus(users, Number(startTime), Number(endTime));
 
   // ═══════════════════════════════════════════════════════════════════
-  // STEP 4: Build weighted entries and select unique winners
+  // STEP 4: Build entry list with bonuses
   // ═══════════════════════════════════════════════════════════════════
-  console.log('\n📝 Building weighted entry list...');
+  console.log('\n📝 Building entry list with bonuses...');
 
-  // Build weighted entries: each user has weight = 1 + bonuses
-  const userWeights = new Map(); // address -> { weight, user, bonuses }
+  const qualifiedAddresses = [];
+  const userWeights = new Map(); // address -> { weight, user } for multi-winner selection
   let holderBonusCount = 0;
   let replyBonusCount = 0;
   let shareBonusCount = 0;
@@ -671,13 +671,13 @@ async function finalizeUnifiedContest(contestIdStr) {
 
   for (const user of users.values()) {
     let weight = 1; // Base entry
-    const bonuses = [];
+    qualifiedAddresses.push(user.primaryAddress);
 
     // Bonus 1: 100M+ NEYNARTODES holder
     if (holderStatus.get(user.fid)) {
       weight++;
+      qualifiedAddresses.push(user.primaryAddress);
       holderBonusCount++;
-      bonuses.push('holder');
       console.log(`   💎 Holder bonus: @${user.username}`);
     }
 
@@ -685,16 +685,16 @@ async function finalizeUnifiedContest(contestIdStr) {
     const replyData = repliersByFid.get(user.fid);
     if (replyData && replyData.wordCount >= CONFIG.MIN_REPLY_WORDS) {
       weight++;
+      qualifiedAddresses.push(user.primaryAddress);
       replyBonusCount++;
-      bonuses.push('reply');
       console.log(`   💬 Reply bonus: @${user.username} (${replyData.wordCount} words)`);
     }
 
     // Bonus 3: Clicked Share button
     if (sharers.has(user.fid)) {
       weight++;
+      qualifiedAddresses.push(user.primaryAddress);
       shareBonusCount++;
-      bonuses.push('share');
       console.log(`   📤 Share bonus: @${user.username}`);
     }
 
@@ -702,18 +702,12 @@ async function finalizeUnifiedContest(contestIdStr) {
     const volumeData = volumeByFid.get(user.fid);
     if (volumeData && volumeData.passed) {
       weight++;
+      qualifiedAddresses.push(user.primaryAddress);
       volumeBonusCount++;
-      bonuses.push('volume');
       console.log(`   📈 Volume bonus: @${user.username} ($${volumeData.volumeUSD.toFixed(2)})`);
     }
 
-    userWeights.set(user.primaryAddress, { weight, user, bonuses });
-  }
-
-  // Calculate total weight
-  let totalWeight = 0;
-  for (const { weight } of userWeights.values()) {
-    totalWeight += weight;
+    userWeights.set(user.primaryAddress, { weight, user });
   }
 
   console.log(`\n📊 Entry Summary:`);
@@ -722,59 +716,80 @@ async function finalizeUnifiedContest(contestIdStr) {
   console.log(`   Reply bonuses: ${replyBonusCount}`);
   console.log(`   Share bonuses: ${shareBonusCount}`);
   console.log(`   Volume bonuses: ${volumeBonusCount}`);
-  console.log(`   Total weighted entries: ${totalWeight}`);
+  console.log(`   Total entries: ${qualifiedAddresses.length}`);
 
   // ═══════════════════════════════════════════════════════════════════
-  // STEP 5: Select unique winners using weighted random selection
+  // STEP 5: Build final entries (unique selection only for multi-winner)
   // ═══════════════════════════════════════════════════════════════════
-  console.log(`\n🎲 Selecting ${winnerCount} unique winner(s) using weighted random...`);
 
-  // Weighted random selection ensuring unique winners
-  const selectedWinners = [];
-  const remainingCandidates = new Map(userWeights);
-  const numWinners = Math.min(Number(winnerCount), remainingCandidates.size);
+  let finalEntries;
 
-  for (let i = 0; i < numWinners; i++) {
-    // Calculate remaining total weight
-    let remainingWeight = 0;
-    for (const { weight } of remainingCandidates.values()) {
-      remainingWeight += weight;
+  if (Number(winnerCount) === 1) {
+    // Single winner: use simple duplicate entry approach (contract picks randomly)
+    console.log(`\n🎲 Single winner contest - using standard entry pool...`);
+
+    // Limit entries to avoid gas issues
+    const MAX_ENTRIES = 1000;
+    if (qualifiedAddresses.length > MAX_ENTRIES) {
+      console.log(`   ⚠️ Too many entries (${qualifiedAddresses.length}), randomly sampling ${MAX_ENTRIES}...`);
+      const shuffled = [...qualifiedAddresses].sort(() => Math.random() - 0.5);
+      finalEntries = shuffled.slice(0, MAX_ENTRIES);
+    } else {
+      finalEntries = qualifiedAddresses;
     }
 
-    // Random selection based on weight
-    let randomValue = Math.random() * remainingWeight;
-    let selectedAddress = null;
+    console.log(`\n🎲 Finalizing contest with ${finalEntries.length} entries (1 winner)...`);
 
-    for (const [address, { weight, user }] of remainingCandidates) {
-      randomValue -= weight;
-      if (randomValue <= 0) {
-        selectedAddress = address;
-        selectedWinners.push(address);
-        console.log(`   🏆 Winner ${i + 1}: @${user.username} (${weight} entries, ${(weight / totalWeight * 100).toFixed(1)}% chance)`);
-        break;
+  } else {
+    // Multi-winner: use weighted random selection ensuring unique winners
+    console.log(`\n🎲 Multi-winner contest - selecting ${winnerCount} unique winners...`);
+
+    const totalWeight = qualifiedAddresses.length;
+    const selectedWinners = [];
+    const remainingCandidates = new Map(userWeights);
+    const numWinners = Math.min(Number(winnerCount), remainingCandidates.size);
+
+    for (let i = 0; i < numWinners; i++) {
+      // Calculate remaining total weight
+      let remainingWeight = 0;
+      for (const { weight } of remainingCandidates.values()) {
+        remainingWeight += weight;
+      }
+
+      // Random selection based on weight
+      let randomValue = Math.random() * remainingWeight;
+      let selectedAddress = null;
+
+      for (const [address, { weight, user }] of remainingCandidates) {
+        randomValue -= weight;
+        if (randomValue <= 0) {
+          selectedAddress = address;
+          selectedWinners.push(address);
+          console.log(`   🏆 Winner ${i + 1}: @${user.username} (${weight} entries, ${(weight / totalWeight * 100).toFixed(1)}% chance)`);
+          break;
+        }
+      }
+
+      // Remove selected winner from candidates (ensures uniqueness)
+      if (selectedAddress) {
+        remainingCandidates.delete(selectedAddress);
       }
     }
 
-    // Remove selected winner from candidates (ensures uniqueness)
-    if (selectedAddress) {
-      remainingCandidates.delete(selectedAddress);
+    if (selectedWinners.length < Number(winnerCount)) {
+      console.log(`   ⚠️ Only ${selectedWinners.length} unique participants available for ${winnerCount} winner slots`);
     }
-  }
 
-  if (selectedWinners.length < Number(winnerCount)) {
-    console.log(`   ⚠️ Only ${selectedWinners.length} unique participants available for ${winnerCount} winner slots`);
-  }
-
-  // Build final entries array - selected winners + all other participants
-  // This allows the contract to verify the selection while maintaining the weighted pool
-  const finalEntries = [...selectedWinners];
-  for (const address of userWeights.keys()) {
-    if (!selectedWinners.includes(address)) {
-      finalEntries.push(address);
+    // Build final entries array - selected winners first, then others
+    finalEntries = [...selectedWinners];
+    for (const address of userWeights.keys()) {
+      if (!selectedWinners.includes(address)) {
+        finalEntries.push(address);
+      }
     }
-  }
 
-  console.log(`\n🎲 Finalizing contest with ${selectedWinners.length} pre-selected unique winner(s)...`);
+    console.log(`\n🎲 Finalizing contest with ${selectedWinners.length} pre-selected unique winner(s)...`);
+  }
 
   try {
     const finalizeFn = isTest ? 'finalizeTestContest' : 'finalizeContest';
