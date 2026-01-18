@@ -1683,12 +1683,12 @@
 
             showToast('Waiting for transaction confirmation...', 'info');
 
-            // Wait for transaction to be mined
+            // Wait for transaction to be mined (uses global rpcProvider)
             let receipt = null;
             let attempts = 0;
             while (!receipt && attempts < 60) {
               await new Promise(r => setTimeout(r, 2000));
-              receipt = await provider.getTransactionReceipt(txHash).catch(() => null);
+              receipt = await rpcProvider.getTransactionReceipt(txHash).catch(() => null);
               attempts++;
             }
 
