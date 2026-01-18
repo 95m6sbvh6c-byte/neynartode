@@ -1470,19 +1470,12 @@
           console.log('API holder check failed, trying direct RPC:', apiError.message);
         }
 
-        // Fallback: Check NEYNARTODES balance directly on-chain
-        const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-        const tokenContract = new ethers.Contract(
-          CONFIG.CONTRACTS.neynartodes,
-          ['function balanceOf(address) view returns (uint256)'],
-          provider
-        );
-
+        // Fallback: Check NEYNARTODES balance directly on-chain (uses cached contract)
         // Sum balance across all addresses
         let totalBalance = ethers.BigNumber.from(0);
         for (const addr of addresses) {
           try {
-            const balance = await tokenContract.balanceOf(addr);
+            const balance = await neynartodeTokenRead.balanceOf(addr);
             totalBalance = totalBalance.add(balance);
           } catch (e) {
             console.log(`Error checking balance for ${addr}:`, e.message);
@@ -1614,13 +1607,12 @@
 
             showToast('Waiting for transaction confirmation...', 'info');
 
-            // Wait for transaction to be mined
-            const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+            // Wait for transaction to be mined (uses global rpcProvider)
             let receipt = null;
             let attempts = 0;
             while (!receipt && attempts < 60) {
               await new Promise(r => setTimeout(r, 2000));
-              receipt = await provider.getTransactionReceipt(txHash).catch(() => null);
+              receipt = await rpcProvider.getTransactionReceipt(txHash).catch(() => null);
               attempts++;
             }
 
@@ -1648,9 +1640,8 @@
           showToast('Getting entry fee quote...', 'info');
 
           try {
-            // Get quote for ETH needed
-            const provider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-            const contract = new ethers.Contract(BUYBURNHOLDEARN_ADDRESS, BUYBURNHOLDEARN_ABI, provider);
+            // Get quote for ETH needed (uses global rpcProvider)
+            const contract = new ethers.Contract(BUYBURNHOLDEARN_ADDRESS, BUYBURNHOLDEARN_ABI, rpcProvider);
             const ethNeeded = await contract.callStatic.getQuote();
             // Add 5% buffer for price movement
             const ethWithBuffer = ethNeeded.mul(105).div(100);
@@ -2035,12 +2026,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
       CHAIN_ID: 8453, // Base chain ID
       CONTRACTS: {
-        // === LEGACY V1 Contracts (archived - read-only for historical data) ===
-        contestEscrowLegacy: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
-        nftContestEscrowLegacy: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
-        contestManagerV2Legacy: '0x91F7536E5Feafd7b1Ea0225611b02514B7c2eb06',
-
-        // === NEW Unified ContestManager (M- and T- prefix contests) ===
+        // === Unified ContestManager (M- and T- prefix contests) ===
         contestManager: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
         buyBurnHoldEarn: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28', // BuyBurnHoldEarn - distributes 25% entrant, 25% burn, 35% treasury, 15% host
 
@@ -2094,6 +2080,42 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // ===== SHARED RPC PROVIDER (reduces duplicate connections) =====
     const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+
+    // ===== CONTRACT INSTANCE CACHE (reduces duplicate contract instantiation) =====
+    const contractCache = new Map();
+    function getContractRead(address, abi, cacheKey = null) {
+      const key = cacheKey || `${address}:read`;
+      if (!contractCache.has(key)) {
+        contractCache.set(key, new ethers.Contract(address, abi, rpcProvider));
+      }
+      return contractCache.get(key);
+    }
+
+    // Pre-cached read-only contracts for frequently used contracts
+    const neynartodeTokenRead = getContractRead(
+      CONFIG.CONTRACTS.neynartodes,
+      ['function balanceOf(address account) external view returns (uint256)'],
+      'neynartodes:read'
+    );
+    const contestManagerRead = getContractRead(
+      CONFIG.CONTRACTS.contestManager,
+      [
+        'function getContest(uint256 _contestId) external view returns (address host, uint8 contestType, uint8 status, string memory castId, uint256 endTime, address prizeToken, uint256 prizeAmount, uint8 winnerCount, address[] memory winners)',
+        'function contestFee() external view returns (uint256)',
+        'function nextContestId() external view returns (uint256)',
+        'function testNextContestId() external view returns (uint256)'
+      ],
+      'contestManager:read'
+    );
+    const votingManagerRead = getContractRead(
+      CONFIG.CONTRACTS.votingManager,
+      [
+        'function getRemainingVotes(address user) external view returns (uint256)',
+        'function getHostVoteStats(uint256 fid) external view returns (int256 score, uint256 upvotes, uint256 downvotes, uint256 uniqueVoters)',
+        'function totalTokensBurned() external view returns (uint256)'
+      ],
+      'votingManager:read'
+    );
 
     // ===== API CACHE (reduces duplicate Neynar calls) =====
     const apiCache = new Map();
@@ -2249,18 +2271,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       showCastModal: false,
       castModalText: '',
       castModalContestId: null,
-
-      // Contest state
-      contestLaunched: false,
-      showCastPreview: false,
-      announcementCast: '',
-      contestActive: false,
-      winner: null,
-      totalParticipants: 0,
-      contestStats: null,
-      winnerCast: '',
-      autoPosted: false,
-      prizeReleased: false,
 
       // Leaderboard
       leaderboardData: [],
@@ -2706,8 +2716,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       state.loadingNftMetadata = false;
 
       if (result.success) {
-        // Verify ownership before allowing selection
-        const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+        // Verify ownership before allowing selection (uses global rpcProvider)
         const nftType = result.type || 'ERC721';
         let ownsNft = false;
 
@@ -2813,8 +2822,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
     // Select an NFT from the picker
     async function selectNftFromPicker(nft) {
-      // Verify ownership on-chain before selecting (picker data may be stale)
-      const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+      // Verify ownership on-chain before selecting (uses global rpcProvider)
       const nftType = nft.tokenType || 'ERC721';
       let ownsNft = false;
 
@@ -3723,28 +3731,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       ];
 
       try {
-        // Token contract for checking burn address balances (uses shared provider)
-        const neynartodeToken = new ethers.Contract(
-          CONFIG.CONTRACTS.neynartodes,
-          ['function balanceOf(address) view returns (uint256)'],
-          rpcProvider
-        );
-
-        // VotingManager contract for checking burned via burn() function (uses shared provider)
-        const votingManager = new ethers.Contract(
-          CONFIG.CONTRACTS.votingManager,
-          ['function totalTokensBurned() view returns (uint256)'],
-          rpcProvider
-        );
-
-        // Check all sources in parallel (batched RPC calls)
+        // Check all sources in parallel using cached contracts (batched RPC calls)
         const [burnAddressBalances, vmBurned] = await Promise.all([
           // Check burn addresses
           Promise.all(BURN_ADDRESSES.map(addr =>
-            neynartodeToken.balanceOf(addr).catch(() => ethers.BigNumber.from(0))
+            neynartodeTokenRead.balanceOf(addr).catch(() => ethers.BigNumber.from(0))
           )),
           // Check VotingManager's tracked burns
-          votingManager.totalTokensBurned().catch(() => ethers.BigNumber.from(0))
+          votingManagerRead.totalTokensBurned().catch(() => ethers.BigNumber.from(0))
         ]);
 
         // Sum all burned tokens from burn addresses
@@ -4077,20 +4071,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (state.leaderboardData.length === 0) return;
 
       try {
-        // Uses shared rpcProvider for efficiency
-        const votingManagerABI = [
-          'function getHostVoteStats(uint256 hostFid) external view returns (uint256 upvotes, uint256 downvotes, int256 netScore)'
-        ];
-        const votingManager = new ethers.Contract(
-          CONFIG.CONTRACTS.votingManager,
-          votingManagerABI,
-          rpcProvider
-        );
-
-        // Fetch vote stats for each host in parallel
+        // Fetch vote stats for each host in parallel (uses cached contract)
         const votePromises = state.leaderboardData.map(async (host) => {
           try {
-            const stats = await votingManager.getHostVoteStats(host.fid);
+            const stats = await votingManagerRead.getHostVoteStats(host.fid);
             return {
               fid: host.fid,
               upvotes: stats.upvotes.toNumber(),
@@ -4246,12 +4230,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       }
     }
 
-    // History refresh is now manual only - triggered when entering the page or clicking Refresh button
-    // Removed auto-refresh interval to reduce unnecessary API calls
-    function stopHistoryAutoRefresh() {
-      // No-op - kept for compatibility with existing view switching code
-    }
-
     // Countdown timer interval for leaderboard
     let countdownInterval = null;
 
@@ -4389,28 +4367,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         showToast('Copied to clipboard!', 'success', 2000);
       } catch (err) {
         showToast('Failed to copy', 'error');
-      }
-    }
-
-    // Get status color class
-    function getStatusColor(status) {
-      switch (status) {
-        case 0: return 'bg-blue-100 text-blue-700'; // Active
-        case 1: return 'bg-yellow-100 text-yellow-700'; // PendingVRF
-        case 2: return 'bg-green-100 text-green-700'; // Completed
-        case 3: return 'bg-red-100 text-red-700'; // Cancelled
-        default: return 'bg-gray-100 text-gray-700';
-      }
-    }
-
-    // Get status emoji
-    function getStatusEmoji(status) {
-      switch (status) {
-        case 0: return '🔵'; // Active
-        case 1: return '🎲'; // PendingVRF
-        case 2: return '✅'; // Completed
-        case 3: return '❌'; // Cancelled
-        default: return '❓';
       }
     }
 
@@ -6558,7 +6514,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (viewCreate) viewCreate.onclick = () => {
         state.currentView = 'create';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'create' });
-        stopHistoryAutoRefresh();
         stopCountdownTimer();
         render();
       };
@@ -6572,7 +6527,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (viewLeaderboard) viewLeaderboard.onclick = async () => {
         state.currentView = 'leaderboard';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'leaderboard' });
-        stopHistoryAutoRefresh();
         startCountdownTimer();
         render();
 
@@ -6581,14 +6535,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           loadLeaderboard().catch(e => console.error('Leaderboard load failed:', e));
         }
 
-        // Lazy-load remaining votes if not already fetched
+        // Lazy-load remaining votes if not already fetched (uses cached contract)
         if (state.votesRemaining === 10 && state.votesUsedToday === 0 && state.userAddress) {
           try {
-            const votingManagerRead = new ethers.Contract(
-              CONFIG.CONTRACTS.votingManager,
-              ['function getRemainingVotes(address user) external view returns (uint256)'],
-              rpcProvider
-            );
             const remainingVotes = await votingManagerRead.getRemainingVotes(state.userAddress);
             state.votesRemaining = Number(remainingVotes);
             state.votesUsedToday = 10 - state.votesRemaining;
@@ -6605,7 +6554,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (viewActive) viewActive.onclick = () => {
         state.currentView = 'active';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'active' });
-        stopHistoryAutoRefresh();
         stopCountdownTimer();
         render();
       };
@@ -6615,7 +6563,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (viewSuggestions) viewSuggestions.onclick = () => {
         state.currentView = 'suggestions';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'suggestions' });
-        stopHistoryAutoRefresh();
         stopCountdownTimer();
         // Load suggestions for DEV
         if (isDevWallet(state.userAddress)) {
@@ -6993,17 +6940,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       'event WinnersSelected(uint256 indexed contestId, address[] winners, uint256 prizePerWinner, bool isTest)'
     ];
 
-    // ===== LEGACY ABIs (for reading historical contest data only) =====
-    // ContestEscrow ABI (Legacy V1 - token contests 1-65)
-    const CONTEST_ESCROW_ABI = [
-      'function createContestETH(uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
-      'function createContestERC20(address _prizeToken, uint256 _prizeAmount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
-      'function getContest(uint256 _contestId) external view returns (address host, address prizeToken, uint256 prizeAmount, uint256 startTime, uint256 endTime, string memory castId, address tokenRequirement, uint256 volumeRequirement, uint8 status, address winner)',
-      'function customTokenFee() external view returns (uint256)',
-      'function defaultToken() external view returns (address)',
-      'event ContestCreated(uint256 indexed contestId, address indexed host, address prizeToken, uint256 prizeAmount, uint256 endTime, string castId)'
-    ];
-
     const ERC20_ABI = [
       'function approve(address spender, uint256 amount) external returns (bool)',
       'function allowance(address owner, address spender) external view returns (uint256)',
@@ -7011,26 +6947,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       'function decimals() external view returns (uint8)'
     ];
 
-    const NFT_CONTEST_ESCROW_ABI = [
-      // Legacy functions (may fail for restricted NFTs)
-      'function createContestERC721(address _nftContract, uint256 _tokenId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
-      'function createContestERC1155(address _nftContract, uint256 _tokenId, uint256 _amount, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
-      // V3 functions for two-step flow (user transfers NFT first, then registers)
-      'function registerContest(uint256 depositId, uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement) external payable returns (uint256 contestId)',
-      'function withdrawDeposit(uint256 depositId) external',
-      'function nftToDepositId(address nftContract, uint256 tokenId) external view returns (uint256)',
-      'function getPendingDeposit(uint256 depositId) external view returns (address depositor, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 depositTime, bool claimed)',
-      // Common functions
-      'function contestFee() external view returns (uint256)',
-      'function defaultToken() external view returns (address)',
-      // Events
-      'event NFTDeposited(uint256 indexed depositId, address indexed depositor, address nftContract, uint256 tokenId, uint256 amount, uint8 nftType)',
-      'event NFTContestCreated(uint256 indexed contestId, address indexed host, uint8 nftType, address nftContract, uint256 tokenId, uint256 amount, uint256 endTime, string castId)'
-    ];
+    // ===== CONTRACT ABIs =====
 
-    // ===== V2 CONTRACT ABIs =====
-
-    // ContestManager V2 - Unified contest manager for all contest types
+    // ContestManager - Unified contest manager for all contest types
     const CONTEST_MANAGER_ABI = [
       // Create contests
       'function createContestETH(uint256 _duration, string calldata _castId, address _tokenRequirement, uint256 _volumeRequirement, uint8 _winnerCount) external payable returns (uint256 contestId)',
@@ -8416,12 +8335,6 @@ ${miniAppUrl}`;
       // Redirect to modal-based approach
       showCustomTokenModal();
     };
-
-    // Detect if user is on mobile device
-    function isMobileDevice() {
-      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-             (window.innerWidth <= 768);
-    }
 
     window.showCustomTokenLegacy = () => {
       state.showTokenSuggestions = false;
