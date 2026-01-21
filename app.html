@@ -1935,19 +1935,16 @@ ${miniAppUrl}`;
       const countdown = getSeasonCountdown();
       const timeLeft = countdown && !countdown.ended ? countdown.text : 'Season ended';
 
-      // Calculate vote score and net votes
+      // Calculate scores
       const upvotes = host.upvotes || 0;
       const downvotes = host.downvotes || 0;
       const netVotes = upvotes - downvotes;
-      const voteScore = host.voteScore || (netVotes * 200);
-
-      // Social score breakdown: (Likes×1 + Recasts×2 + Replies×3) × 100
-      const likes = host.likes || 0;
-      const recasts = host.recasts || 0;
-      const replies = host.replies || 0;
-      const socialRaw = (likes * 1) + (recasts * 2) + (replies * 3);
+      const voteScore = host.voteScore || (netVotes * 100);
+      const totalEntries = host.totalEntries || 0;
+      const entryScore = host.entryScore || (totalEntries * 100);
+      const tokenHoldings = host.tokenHoldings || 0;
+      const tokenScore = host.tokenScore || (Math.floor(tokenHoldings / 100000) * 100);
       const completedContests = host.completedContests || host.contests || 0;
-      const socialMultiplier = host.socialMultiplier || completedContests;
 
       const text = `${rankEmoji} @${host.username} on the $NEYNARTODES Leaderboard!
 
@@ -1956,13 +1953,11 @@ ${miniAppUrl}`;
 🎯 Contests: ${completedContests} completed
 
 📈 Score Breakdown:
-• Social: [❤️${likes}×1] + [🔁${recasts}×2] + [💬${replies}×3] = ${socialRaw} × 100 = ${(host.socialScore || 0).toLocaleString()}
-  → ×${socialMultiplier} (contests) = ${((host.socialScore || 0) * socialMultiplier).toLocaleString()} pts
-• 💰 Token: ${(host.tokenHoldings || 0).toLocaleString()} holdings ÷ 50,000 = ${(host.tokenScore || 0).toLocaleString()}
-• 🎯 Host Bonus: ${(host.hostBonus || completedContests * 100 || 0).toLocaleString()} (100/contest)
-• 🗳️ Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} × 200 = ${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()} pts
+• 🎟️ Entries: ${totalEntries} × 100 = ${entryScore.toLocaleString()} pts
+• 🗳️ Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} × 100 = ${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()} pts
+• 💰 Tokens: ${tokenHoldings.toLocaleString()} ÷ 100k × 100 = ${tokenScore.toLocaleString()} pts
 
-👍 ${upvotes} | 👎 ${downvotes} | ⭐ Neynar: ${host.neynarScore || 'N/A'}
+👍 ${upvotes} upvotes | 👎 ${downvotes} downvotes
 
 ⏱️ ${timeLeft} left in season
 🦎 Check out the leaderboard!`;
@@ -3891,20 +3886,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             badges,
             contests: host.contests,
             completedContests: host.completedContests,
-            // Score breakdown
-            likes: host.likes,
-            recasts: host.recasts,
-            replies: host.replies,
-            volume: host.volume,
-            upvotes: host.upvotes,
-            downvotes: host.downvotes,
-            socialScore: host.socialScore,
+            // Score breakdown (new scoring system)
+            totalEntries: host.totalEntries || 0,
+            upvotes: host.upvotes || 0,
+            downvotes: host.downvotes || 0,
             tokenHoldings: host.tokenHoldings || 0,
-            tokenScore: host.tokenScore || 0,
-            hostBonus: host.hostBonus || 0,
-            contestScore: host.contestScore,
+            entryScore: host.entryScore || 0,
             voteScore: host.voteScore || 0,
-            totalScore: host.totalScore,
+            tokenScore: host.tokenScore || 0,
+            totalScore: host.totalScore || 0,
             neynarScore: host.neynarScore,
           };
         });
@@ -4541,8 +4531,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           showToast('Vote submitted but not yet confirmed. Check BaseScan.', 'warning');
         }
 
-        // Update UI after successful vote (200 points per vote to align with scoring system)
-        const votePoints = isUpvote ? 200 : -200;
+        // Update UI after successful vote (100 points per vote)
+        const votePoints = isUpvote ? 100 : -100;
         const oldRankings = state.leaderboardData.map(h => ({ fid: h.fid, rank: h.rank }));
 
         // Update leaderboard locally
@@ -5108,11 +5098,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   </div>
                   <div>
                     <div class="text-[var(--text-muted)] mb-1">Upvote</div>
-                    <div class="text-[var(--success)] font-medium">+200 pts</div>
+                    <div class="text-[var(--success)] font-medium">+100 pts</div>
                   </div>
                   <div>
                     <div class="text-[var(--text-muted)] mb-1">Downvote</div>
-                    <div class="text-[var(--error)] font-medium">-200 pts</div>
+                    <div class="text-[var(--error)] font-medium">-100 pts</div>
                   </div>
                 </div>
               </div>
@@ -5183,7 +5173,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                               ${(host.totalScore || 0).toLocaleString()}
                             </div>
                             <div class="text-xs text-[var(--text-muted)] mt-0.5">
-                              ${(host.socialScore || 0).toLocaleString()} social · ${(host.tokenScore || 0).toLocaleString()} token
+                              ${(host.entryScore || 0).toLocaleString()} entry · ${(host.voteScore || 0).toLocaleString()} vote · ${(host.tokenScore || 0).toLocaleString()} token
                             </div>
                           </td>
                           <td class="py-4 px-2">
@@ -5192,13 +5182,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                                 onclick="voteForHost(${host.fid}, true)"
                                 ${state.votesRemaining <= 0 ? 'disabled' : ''}
                                 class="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--success-glow)] hover:bg-[var(--success)] hover:bg-opacity-30 disabled:opacity-30 disabled:cursor-not-allowed text-[var(--success)] transition-colors text-sm"
-                                title="Upvote (+200 pts)"
+                                title="Upvote (+100 pts)"
                               >▲</button>
                               <button
                                 onclick="voteForHost(${host.fid}, false)"
                                 ${state.votesRemaining <= 0 ? 'disabled' : ''}
                                 class="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--error-glow)] hover:bg-[var(--error)] hover:bg-opacity-30 disabled:opacity-30 disabled:cursor-not-allowed text-[var(--error)] transition-colors text-sm"
-                                title="Downvote (-200 pts)"
+                                title="Downvote (-100 pts)"
                               >▼</button>
                             </div>
                           </td>
@@ -5229,9 +5219,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     How scoring works
                   </summary>
                   <div class="mt-3 p-4 bg-[var(--bg-secondary)] rounded-xl text-sm text-[var(--text-secondary)] space-y-1">
-                    <div><span class="text-[var(--text-primary)]">Total Score</span> = Contest Score + Vote Score</div>
-                    <div><span class="text-[var(--text-primary)]">Contest Score</span> = (Social × 3) + Token</div>
-                    <div><span class="text-[var(--text-primary)]">Vote Score</span> = (Upvotes - Downvotes) × 200</div>
+                    <div><span class="text-[var(--text-primary)]">Total Score</span> = Entry Score + Vote Score + Token Score</div>
+                    <div><span class="text-[var(--text-primary)]">Entry Score</span> = Contest Entries × 100</div>
+                    <div><span class="text-[var(--text-primary)]">Vote Score</span> = (Upvotes - Downvotes) × 100</div>
+                    <div><span class="text-[var(--text-primary)]">Token Score</span> = (Holdings ÷ 100k) × 100</div>
                   </div>
                 </details>
               </div>
