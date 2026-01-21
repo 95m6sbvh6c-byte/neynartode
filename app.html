@@ -5695,17 +5695,25 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                             </span>
                           </td>
                           <td class="py-4 px-2">
-                            ${contest.status === 2 && contest.winner !== '0x0000000000000000000000000000000000000000' ? `
-                              ${contest.winnerUser ? `
-                                <a href="https://warpcast.com/${contest.winnerUser.username}" target="_blank" class="flex flex-col items-center hover:opacity-80 transition-opacity">
-                                  ${contest.winnerUser.pfpUrl
-                                    ? `<img src="${contest.winnerUser.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover mb-1" onerror="this.style.display='none';" />`
-                                    : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs mb-1">🏆</span>`
-                                  }
-                                  <span class="text-xs font-medium text-yellow-400">@${contest.winnerUser.username}</span>
-                                </a>
+                            ${contest.status === 2 && contest.winners && contest.winners.length > 0 && contest.winners[0] !== '0x0000000000000000000000000000000000000000' ? `
+                              ${contest.winnerUsers && contest.winnerUsers.length > 0 ? `
+                                <div class="flex items-center justify-center">
+                                  ${contest.winnerUsers.slice(0, 5).map((user, idx) => user ? `
+                                    <a href="https://warpcast.com/${user.username}" target="_blank" class="hover:opacity-80 transition-opacity" title="@${user.username}" style="margin-left: ${idx > 0 ? '-6px' : '0'}; z-index: ${5 - idx};">
+                                      ${user.pfpUrl
+                                        ? `<img src="${user.pfpUrl}" alt="" class="w-7 h-7 rounded-full object-cover border-2 border-yellow-400" onerror="this.outerHTML='<span class=\\'w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs border-2 border-yellow-400\\'>🏆</span>';" />`
+                                        : `<span class="w-7 h-7 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs border-2 border-yellow-400">🏆</span>`
+                                      }
+                                    </a>
+                                  ` : '').join('')}
+                                </div>
+                                ${contest.winnerUsers.length === 1 ? `
+                                  <span class="text-xs font-medium text-yellow-400 text-center block mt-1">@${contest.winnerUsers[0]?.username || ''}</span>
+                                ` : `
+                                  <span class="text-xs text-[var(--text-muted)] text-center block mt-1">${contest.winnerUsers.length} winners</span>
+                                `}
                               ` : `
-                                <span class="font-mono text-xs text-[var(--text-muted)]">${contest.winner.slice(0, 8)}...</span>
+                                <span class="font-mono text-xs text-[var(--text-muted)]">${contest.winners[0].slice(0, 8)}...</span>
                               `}
                             ` : `
                               <span class="text-[var(--text-muted)]">—</span>

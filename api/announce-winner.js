@@ -57,6 +57,16 @@ const PRIZE_TYPES = { ETH: 0, ERC20: 1, ERC721: 2, ERC1155: 3 };
 const CONTEST_STATUS = { Active: 0, PendingVRF: 1, Completed: 2, Cancelled: 3 };
 
 /**
+ * Format token amount to human readable (e.g., 250K, 1.5M)
+ */
+function formatTokenAmount(amount) {
+  if (amount >= 1_000_000_000) return (amount / 1_000_000_000).toFixed(1) + 'B';
+  if (amount >= 1_000_000) return (amount / 1_000_000).toFixed(1) + 'M';
+  if (amount >= 1_000) return (amount / 1_000).toFixed(1) + 'K';
+  return amount.toFixed(0);
+}
+
+/**
  * Parse contest ID string (M-1, T-1) into type and numeric ID
  */
 function parseContestId(contestIdStr) {
@@ -377,13 +387,15 @@ async function announceContestWinners(contestIdStr) {
     }
   }
 
-  // Get custom message and finalize TX
+  // Get custom message, finalize TX, and finalization stats
   const customMessage = await getCustomMessage(fullContestId);
   let finalizeTxHash = null;
+  let finalizationData = null;
   try {
     if (process.env.KV_REST_API_URL) {
       const { kv } = require('@vercel/kv');
       finalizeTxHash = await kv.get(`finalize_tx_${fullContestId}`);
+      finalizationData = await kv.get(`finalize_data:${fullContestId}`);
     }
   } catch (e) { /* ignore */ }
 
@@ -409,7 +421,34 @@ async function announceContestWinners(contestIdStr) {
     });
   }
 
-  announcement += `Prize: ${prizeDisplay}${perWinnerPrize}\n`;
+  announcement += `Prize: ${prizeDisplay}${perWinnerPrize}\n\n`;
+
+  // Add contest stats if available
+  if (finalizationData && finalizationData.summary) {
+    const stats = finalizationData.summary;
+    const bonusEntries = stats.totalEntries - stats.uniqueParticipants;
+    announcement += `📊 Contest Stats:\n`;
+    announcement += `👥 ${stats.uniqueParticipants} unique entries\n`;
+    announcement += `🎟️ ${bonusEntries} bonus entries\n`;
+    const bonuses = [];
+    if (stats.holderBonuses > 0) bonuses.push(`💎${stats.holderBonuses}`);
+    if (stats.replyBonuses > 0) bonuses.push(`💬${stats.replyBonuses}`);
+    if (stats.shareBonuses > 0) bonuses.push(`📤${stats.shareBonuses}`);
+    if (stats.volumeBonuses > 0) bonuses.push(`📈${stats.volumeBonuses}`);
+    if (bonuses.length > 0) {
+      announcement += `   (${bonuses.join(' ')})\n`;
+    }
+
+    // Add tokens burned and host earned
+    const tokensBurned = parseFloat(stats.tokensBurned || '0');
+    const hostEarned = parseFloat(stats.hostEarned || '0');
+    if (tokensBurned > 0 || hostEarned > 0) {
+      announcement += `\n🔥 ${formatTokenAmount(tokensBurned)} burned\n`;
+      announcement += `💰 ${formatTokenAmount(hostEarned)} to host\n`;
+    }
+    announcement += `\n`;
+  }
+
   announcement += `Selected via Chainlink VRF\n`;
 
   if (finalizeTxHash) {

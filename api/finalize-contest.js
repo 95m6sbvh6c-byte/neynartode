@@ -30,6 +30,9 @@ const CONFIG = {
   // Unified ContestManager (M- and T- prefix contests)
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
 
+  // BuyBurnHoldEarn - tracks token burns and host rewards from contest entries
+  BUYBURNHOLDEARN: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28',
+
   // Token
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
 
@@ -100,6 +103,83 @@ const CONTEST_MANAGER_ABI = [
   'function cancelContest(uint256 contestId, string calldata reason) external',
   'function cancelTestContest(uint256 contestId, string calldata reason) external',
 ];
+
+// BuyBurnHoldEarn ABI - for querying token burns and host rewards
+const BUYBURNHOLDEARN_ABI = [
+  'event BuyBurnHoldEarnExecuted(address indexed entrant, address indexed host, uint256 tokensBought, uint256 toEntrant, uint256 burned, uint256 toTreasury, uint256 toHost, uint256 ethSpent, uint256 timestamp)',
+  'event HolderEntryReward(address indexed host, uint256 amount, uint256 timestamp)'
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// BUYBURNHOLDEARN STATS - Track tokens burned and host earned
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Query BuyBurnHoldEarn events for a contest to get total tokens burned and host earned
+ * @param {string} hostAddress - The contest host's wallet address
+ * @param {number} startTime - Contest start timestamp (unix seconds)
+ * @param {number} endTime - Contest end timestamp (unix seconds)
+ * @param {object} provider - Ethers provider
+ * @returns {Promise<{tokensBurned: bigint, hostEarned: bigint, nonHolderEntries: number, holderEntries: number}>}
+ */
+async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider) {
+  try {
+    const contract = new ethers.Contract(CONFIG.BUYBURNHOLDEARN, BUYBURNHOLDEARN_ABI, provider);
+
+    // Calculate block range (~2 sec blocks on Base)
+    // Add buffer: start from 1 hour before contest start, end 1 hour after
+    const blocksPerHour = 1800;
+    const currentBlock = await provider.getBlockNumber();
+
+    // Estimate blocks for time range (rough estimate)
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    const blocksAgo = Math.floor((nowTimestamp - startTime) / 2) + blocksPerHour;
+    const fromBlock = Math.max(0, currentBlock - blocksAgo);
+
+    console.log(`\n🔥 Querying BuyBurnHoldEarn events for host ${hostAddress.slice(0, 10)}...`);
+    console.log(`   Block range: ${fromBlock} to ${currentBlock}`);
+
+    // Query BuyBurnHoldEarnExecuted events for this host
+    const buyBurnFilter = contract.filters.BuyBurnHoldEarnExecuted(null, hostAddress);
+    const buyBurnEvents = await contract.queryFilter(buyBurnFilter, fromBlock, currentBlock).catch(() => []);
+
+    // Query HolderEntryReward events for this host
+    const holderRewardFilter = contract.filters.HolderEntryReward(hostAddress);
+    const holderRewardEvents = await contract.queryFilter(holderRewardFilter, fromBlock, currentBlock).catch(() => []);
+
+    // Filter events by timestamp (within contest period)
+    let tokensBurned = 0n;
+    let hostEarned = 0n;
+    let nonHolderEntries = 0;
+    let holderEntries = 0;
+
+    for (const event of buyBurnEvents) {
+      const eventTimestamp = Number(event.args.timestamp);
+      if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
+        tokensBurned += BigInt(event.args.burned);
+        hostEarned += BigInt(event.args.toHost);
+        nonHolderEntries++;
+      }
+    }
+
+    for (const event of holderRewardEvents) {
+      const eventTimestamp = Number(event.args.timestamp);
+      if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
+        hostEarned += BigInt(event.args.amount);
+        holderEntries++;
+      }
+    }
+
+    console.log(`   Found ${nonHolderEntries} non-holder entries, ${holderEntries} holder entries`);
+    console.log(`   Tokens burned: ${ethers.formatEther(tokensBurned)}`);
+    console.log(`   Host earned: ${ethers.formatEther(hostEarned)}`);
+
+    return { tokensBurned, hostEarned, nonHolderEntries, holderEntries };
+  } catch (error) {
+    console.error('   Error querying BuyBurnHoldEarn stats:', error.message);
+    return { tokensBurned: 0n, hostEarned: 0n, nonHolderEntries: 0, holderEntries: 0 };
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // HOLDER CHECK - 100M NEYNARTODES = bonus entry
@@ -657,6 +737,9 @@ async function finalizeUnifiedContest(contestIdStr) {
   // Check trading volume for bonus entries
   const volumeByFid = await checkVolumeBonus(users, Number(startTime), Number(endTime));
 
+  // Get BuyBurnHoldEarn stats (tokens burned and host earned from contest entries)
+  const buyBurnStats = await getBuyBurnHoldEarnStats(host, Number(startTime), Number(endTime), provider);
+
   // ═══════════════════════════════════════════════════════════════════
   // STEP 4: Build entry list with bonuses
   // ═══════════════════════════════════════════════════════════════════
@@ -801,11 +884,77 @@ async function finalizeUnifiedContest(contestIdStr) {
     const receipt = await tx.wait();
     console.log(`   ✅ Confirmed in block ${receipt.blockNumber}`);
 
-    // Store TX hash in KV
+    // Store TX hash and finalization data in KV
     try {
       const { kv } = require('@vercel/kv');
       await kv.set(`finalize_tx:${contestIdStr}`, tx.hash);
-    } catch (e) {}
+
+      // Build per-user breakdown for later retrieval
+      const participantBreakdown = [];
+      for (const user of users.values()) {
+        const holder = holderStatus.get(user.fid);
+        const reply = repliersByFid.get(user.fid);
+        const shared = sharers.has(user.fid);
+        const volume = volumeByFid.get(user.fid);
+
+        let entries = 1;
+        const bonuses = [];
+
+        if (holder) {
+          entries++;
+          bonuses.push('holder');
+        }
+        if (reply && reply.wordCount >= CONFIG.MIN_REPLY_WORDS) {
+          entries++;
+          bonuses.push('reply');
+        }
+        if (shared) {
+          entries++;
+          bonuses.push('share');
+        }
+        if (volume && volume.passed) {
+          entries++;
+          bonuses.push('volume');
+        }
+
+        participantBreakdown.push({
+          fid: user.fid,
+          username: user.username,
+          address: user.primaryAddress,
+          entries,
+          bonuses,
+          isHolder: !!holder,
+          replyWords: reply?.wordCount || 0,
+          volumeUSD: volume?.volumeUSD || 0
+        });
+      }
+
+      // Store finalization results
+      const finalizationData = {
+        contestId: contestIdStr,
+        txHash: tx.hash,
+        blockNumber: receipt.blockNumber,
+        timestamp: Date.now(),
+        participants: participantBreakdown,
+        summary: {
+          uniqueParticipants: users.size,
+          totalEntries: finalEntries.length,
+          holderBonuses: holderBonusCount,
+          replyBonuses: replyBonusCount,
+          shareBonuses: shareBonusCount,
+          volumeBonuses: volumeBonusCount,
+          tokensBurned: ethers.formatEther(buyBurnStats.tokensBurned),
+          hostEarned: ethers.formatEther(buyBurnStats.hostEarned),
+          nonHolderEntries: buyBurnStats.nonHolderEntries,
+          holderEntries: buyBurnStats.holderEntries
+        }
+      };
+
+      await kv.set(`finalize_data:${contestIdStr}`, finalizationData, { ex: 60 * 60 * 24 * 90 }); // 90 day TTL
+      console.log(`   📊 Finalization data stored in KV`);
+    } catch (e) {
+      console.log(`   ⚠️ Could not store finalization data: ${e.message}`);
+    }
 
     // Poll for winners
     console.log('\n⏳ Waiting for winner selection...');
