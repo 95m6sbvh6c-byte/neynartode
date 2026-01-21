@@ -1,6 +1,6 @@
 # NEYNARtodes Contract Registry
 
-> Last Updated: December 8, 2025
+> Last Updated: January 20, 2026
 > Network: Base Mainnet (Chain ID: 8453)
 
 ## Active Contracts (Season 0 Beta)
@@ -11,7 +11,7 @@
 | **Contest Escrow (ETH)** | `0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A` | V1 | 2025-11-28 |
 | **NFT Contest Escrow** | `0xFD6e84d4396Ecaa144771C65914b2a345305F922` | V3 | 2025-12-05 |
 | **Prize NFT Season 0** | `0x54E3972839A79fB4D1b0F70418141723d02E56e1` | V2 | 2025-12-01 |
-| **Voting Manager** | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` | V2 | 2025-11-29 |
+| **Voting Manager** | `0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB` | V3 | 2026-01-20 |
 | **Treasury** | `0xd4d84f3477eb482783aAB48F00e357C801c48928` | V2 | 2025-12-01 |
 | **Captain Hook** | `0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B` | V2 | 2025-11-XX |
 | **Clanker Collector** | `0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280` | V2 | 2025-11-XX |
@@ -59,7 +59,8 @@
 - **Purpose**: Enables community voting on hosts
 - **Features**:
   - Upvote/downvote hosts on leaderboard
-  - 1000 NEYNARTODES per vote (50% burned, 50% to treasury)
+  - 100,000 NEYNARTODES per vote (adjustable by owner)
+  - 50% burned, 50% to treasury
   - 10 votes per day per wallet
   - Vote scores affect host rankings
 
@@ -108,7 +109,7 @@ All contracts are verified on BaseScan:
 - [Contest Escrow (ETH)](https://basescan.org/address/0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A)
 - [NFT Contest Escrow](https://basescan.org/address/0xFD6e84d4396Ecaa144771C65914b2a345305F922)
 - [Prize NFT Season 0](https://basescan.org/address/0x54E3972839A79fB4D1b0F70418141723d02E56e1)
-- [Voting Manager](https://basescan.org/address/0x267Bd7ae64DA1060153b47d6873a8830dA4236f8)
+- [Voting Manager](https://basescan.org/address/0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB)
 - [Treasury](https://basescan.org/address/0xd4d84f3477eb482783aAB48F00e357C801c48928)
 
 ---
@@ -119,6 +120,7 @@ All contracts are verified on BaseScan:
 |----------|---------|--------|
 | PrizeNFT V1 | `0x82f5A8CEffce9419886Bb0644FA5D3FB8295Ab81` | Replaced by V2 |
 | VotingManager V1 | `0xFF730AB8FaBfc432c513C57bE8ce377ac77eEc99` | Replaced by V2 |
+| VotingManager V2 | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` | Replaced by V3 |
 
 ---
 
@@ -131,7 +133,7 @@ const CONTRACTS = {
   contestEscrow: '0x0A8EAf7de19268ceF2d2bA4F9000c60680cAde7A',
   nftContestEscrow: '0xFD6e84d4396Ecaa144771C65914b2a345305F922',
   prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
-  votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
+  votingManager: '0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB',
   treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928',
   captainHook: '0x38A6C6074f4E14c82dB3bdDe4cADC7Eb2967fa9B',
   clankerCollector: '0xAcFC2aD738599f5E5F0B90B11774b279eb2CF280'

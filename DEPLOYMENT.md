@@ -58,7 +58,7 @@ Contest Score = (Host Bonus) + (Social × Contests) + (Token Holdings / 50,000)
 Vote Score = (Upvotes - Downvotes) × 200
 ```
 
-**Voting Cost:** 1,000 NEYNARTODES per vote (50% burned, 50% to treasury)
+**Voting Cost:** 100,000 NEYNARTODES per vote (50% burned, 50% to treasury) - adjustable by owner
 
 ---
 
@@ -72,7 +72,7 @@ Vote Score = (Upvotes - Downvotes) × 200
 | **NEYNARTODES Token** | `0x8dE1622fE07f56cda2e2273e615A513F1d828B07` | Main token |
 | **BuyAndBurn_Quoted** | `0x30f71E83030E28FA5916099664cbfAFBb4D07EAC` | Entry fee burns 1M tokens |
 | **PrizeNFT_Season0_V2** | `0x54E3972839A79fB4D1b0F70418141723d02E56e1` | Season management, prizes |
-| **VotingManager_Season0_V2** | `0x267Bd7ae64DA1060153b47d6873a8830dA4236f8` | Host voting |
+| **VotingManager V3** | `0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB` | Host voting (100K tokens/vote, adjustable) |
 | **Treasury_V2** | `0xd4d84f3477eb482783aAB48F00e357C801c48928` | Central treasury |
 
 ### V1 Contracts (Legacy - Still Active for Old Contests)

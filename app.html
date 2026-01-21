@@ -2032,7 +2032,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // === Shared Contracts ===
         prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
-        votingManager: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
+        votingManager: '0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB',  // V3 - adjustable vote cost
         treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928',
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
       },
@@ -4397,13 +4397,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // Use shared rpcProvider for read operations (Farcaster wallet doesn't support eth_call)
 
-        // Contract ABIs - VotingManager V2 with upvote/downvote
+        // Contract ABIs - VotingManager V3 with upvote/downvote (100k per vote)
         const votingManagerABI = [
           'function voteForHost(uint256 hostFid, bool isUpvote) external',
           'function getRemainingVotes(address user) external view returns (uint256)',
           'function canVote(address user) external view returns (bool)',
           'function getHostVoteStats(uint256 hostFid) external view returns (uint256 upvotes, uint256 downvotes, int256 netScore)',
-          'function TOKENS_PER_VOTE() external view returns (uint256)'
+          'function tokensPerVote() external view returns (uint256)'
         ];
 
         const tokenABI = [
@@ -4447,13 +4447,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
         }
 
-        // Get tokens per vote (1000 NEYNARTODES)
-        const tokensPerVote = ethers.utils.parseEther('1000');
+        // Get tokens per vote (100,000 NEYNARTODES)
+        const tokensPerVote = ethers.utils.parseEther('100000');
 
         // Check balance - use read-only provider
         const balance = await neynartodeTokenRead.balanceOf(state.userAddress);
         if (balance.lt(tokensPerVote)) {
-          showToast(`Insufficient balance! You need 1,000 NEYNARTODES to vote. Your balance: ${ethers.utils.formatEther(balance)}`, 'error');
+          showToast(`Insufficient balance! You need 100,000 NEYNARTODES to vote. Your balance: ${ethers.utils.formatEther(balance)}`, 'error');
           return;
         }
 
@@ -4498,7 +4498,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         }
 
         // Cast vote on-chain
-        showToast('Submitting vote... Burns 500 + 500 to treasury. Confirm in wallet!', 'info', 8000);
+        showToast('Submitting vote... Burns 50k + 50k to treasury. Confirm in wallet!', 'info', 8000);
 
         // Encode the function call manually (Farcaster provider doesn't support eth_estimateGas)
         const voteInterface = new ethers.utils.Interface(votingManagerABI);
@@ -4590,7 +4590,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const ethFromVote = 0.00001;
         state.prizePoolETH += (ethFromVote * 0.5);
 
-        showToast(`${isUpvote ? 'Upvote' : 'Downvote'} confirmed! 500 burned, 500 to treasury. ${isDevWallet ? 'Dev mode' : `${state.votesRemaining}/10 votes left`}`, 'success', 6000);
+        showToast(`${isUpvote ? 'Upvote' : 'Downvote'} confirmed! 50k burned, 50k to treasury. ${isDevWallet ? 'Dev mode' : `${state.votesRemaining}/10 votes left`}`, 'success', 6000);
 
         render();
       } catch (error) {
@@ -5089,7 +5089,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 <div class="flex items-center justify-between mb-4">
                   <div>
                     <h3 class="text-lg font-semibold text-[var(--accent-light)]">Your Voting Power</h3>
-                    <p class="text-sm text-[var(--text-secondary)]">1000 tokens per vote • Resets daily</p>
+                    <p class="text-sm text-[var(--text-secondary)]">100,000 tokens per vote • Resets daily</p>
                   </div>
                   <div class="text-right">
                     <div class="text-3xl font-bold text-[var(--accent-light)]">${state.votesRemaining}<span class="text-[var(--text-muted)] text-lg">/10</span></div>
@@ -5100,7 +5100,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 <div class="grid grid-cols-3 gap-4 text-center text-sm">
                   <div>
                     <div class="text-[var(--text-muted)] mb-1">Cost</div>
-                    <div class="text-[var(--text-primary)] font-medium">1000 tokens</div>
+                    <div class="text-[var(--text-primary)] font-medium">100k tokens</div>
                   </div>
                   <div>
                     <div class="text-[var(--text-muted)] mb-1">Upvote</div>
