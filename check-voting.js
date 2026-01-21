@@ -2,7 +2,7 @@ const { ethers } = require('ethers');
 require('dotenv').config({ path: '.env.local' });
 
 const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC');
-const VOTING_MANAGER = '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8';
+const VOTING_MANAGER = '0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB';  // V3
 const NEYNARTODES = '0x8de1622fe07f56cda2e2273e615a513f1d828b07';
 
 // Get user address from Neynar API

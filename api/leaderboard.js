@@ -23,20 +23,21 @@ const { getUserByWallet: getCachedUserByWallet, getCached, setCache } = require(
 const CONFIG = {
   // Unified ContestManager (M- and T- prefix contests)
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
-  VOTING_MANAGER: '0x267Bd7ae64DA1060153b47d6873a8830dA4236f8',
+  VOTING_MANAGER: '0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB',  // V3
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
 };
 
 // Excluded from leaderboard (devs/admins)
-// Note: FID 1188162 (app owner) removed for test mode
+// Note: Exclusions disabled for test mode - all hosts visible
 const EXCLUDED_FIDS = [];
 const EXCLUDED_ADDRESSES = [
-  '0x78eeaa6f014667a339fcf8b4ecd74743366603fb',
-  '0x6b814f71712ad9e5b2299676490ce530797f9ec7',
-  '0xab4f21321a7a16eb57171994c7d7d1c808506e5d',
-  '0x64cb30c6d5e1dc5e675296cf13d547150c71c2b1',
+  // Disabled for testing - uncomment for production:
+  // '0x78eeaa6f014667a339fcf8b4ecd74743366603fb',
+  // '0x6b814f71712ad9e5b2299676490ce530797f9ec7',
+  // '0xab4f21321a7a16eb57171994c7d7d1c808506e5d',
+  // '0x64cb30c6d5e1dc5e675296cf13d547150c71c2b1',
 ];
 
 // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
