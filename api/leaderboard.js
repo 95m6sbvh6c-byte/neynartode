@@ -5,13 +5,10 @@
  * aggregates host stats, and calculates scores.
  *
  * Scoring System:
- *   Total Score = Contest Score + Vote Score
- *   Contest Score = Host Bonus + (Social x Contests) + Token
- *   Host Bonus = 100 points per completed contest
- *   Social Multiplier = Social Score x completed contests
- *   Vote Score = (Upvotes - Downvotes) x 200
- *   Social = (Likes x 1 + Recasts x 2 + Replies x 3) x 100
- *   Token = Token Holdings / 50,000
+ *   Total Score = Entry Score + Vote Score + Token Score
+ *   Entry Score = 100 points per contest entry received
+ *   Vote Score = 100 points per net vote (upvotes - downvotes)
+ *   Token Score = 100 points per 100,000 NEYNARTODES held
  *
  * Usage:
  *   GET /api/leaderboard?limit=10
@@ -325,6 +322,7 @@ module.exports = async (req, res) => {
             totalRecasts: 0,
             totalReplies: 0,
             contestInfos: [],
+            completedContestIds: [],  // Track all completed contest IDs for entry counting
           };
         }
 
@@ -332,6 +330,7 @@ module.exports = async (req, res) => {
 
         if (Number(status) === CONTEST_STATUS.Completed) {
           hostStats[hostLower].completedContests++;
+          hostStats[hostLower].completedContestIds.push(`M-${batch[j]}`);
 
           const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
           if (actualCastHash && actualCastHash !== '') {
@@ -379,6 +378,7 @@ module.exports = async (req, res) => {
             totalRecasts: 0,
             totalReplies: 0,
             contestInfos: [],
+            completedContestIds: [],  // Track all completed contest IDs for entry counting
           };
         }
 
@@ -386,6 +386,7 @@ module.exports = async (req, res) => {
 
         if (Number(status) === CONTEST_STATUS.Completed) {
           hostStats[hostLower].completedContests++;
+          hostStats[hostLower].completedContestIds.push(`T-${batch[j]}`);
 
           const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
           if (actualCastHash && actualCastHash !== '') {
@@ -425,21 +426,20 @@ module.exports = async (req, res) => {
 
       if (EXCLUDED_FIDS.includes(hostFid)) continue;
 
-      // Fetch cast engagements
-      let ownedCastsCount = 0;
-      const engagementPromises = stats.contestInfos.map(contestInfo =>
-        getCastEngagement(contestInfo, hostFid, kvClient)
-      );
-      const engagements = await Promise.all(engagementPromises);
-
-      engagements.forEach(engagement => {
-        if (engagement.isAuthor) {
-          stats.totalLikes += engagement.likes;
-          stats.totalRecasts += engagement.recasts;
-          stats.totalReplies += engagement.replies;
-          ownedCastsCount++;
+      // Fetch entry counts from KV for all completed contests
+      let totalEntries = 0;
+      if (kvClient && stats.completedContestIds.length > 0) {
+        try {
+          const entryPromises = stats.completedContestIds.map(async (contestId) => {
+            const count = await kvClient.scard(`contest_entries:${contestId}`).catch(() => 0);
+            return count || 0;
+          });
+          const entryCounts = await Promise.all(entryPromises);
+          totalEntries = entryCounts.reduce((sum, count) => sum + count, 0);
+        } catch (e) {
+          console.log('Error fetching entry counts:', e.message);
         }
-      });
+      }
 
       // Fetch votes and token holdings
       const holdingsAddresses = [...new Set([stats.address, ...(userInfo?.verifiedAddresses || [])])];
@@ -452,14 +452,14 @@ module.exports = async (req, res) => {
       stats.upvotes = Number(upvotes);
       stats.downvotes = Number(downvotes);
 
-      // Calculate scores
-      const hostBonus = stats.completedContests * 100;
-      const socialScore = (stats.totalLikes * 1 + stats.totalRecasts * 2 + stats.totalReplies * 3) * 100;
-      const tokenScore = Math.floor(tokenHoldings / 50000);
-      const socialMultiplier = stats.completedContests;
-      const contestScore = hostBonus + (socialScore * socialMultiplier) + tokenScore;
-      const voteScore = (stats.upvotes - stats.downvotes) * 200;
-      const totalScore = contestScore + voteScore;
+      // NEW SCORING SYSTEM:
+      // - Entry Score: 100 points per contest entry
+      // - Vote Score: 100 points per net vote (upvotes - downvotes)
+      // - Token Score: 100 points per 100,000 NEYNARTODES held
+      const entryScore = totalEntries * 100;
+      const voteScore = (stats.upvotes - stats.downvotes) * 100;
+      const tokenScore = Math.floor(tokenHoldings / 100000) * 100;
+      const totalScore = entryScore + voteScore + tokenScore;
 
       hostsWithScores.push({
         address: stats.address,
@@ -470,18 +470,12 @@ module.exports = async (req, res) => {
         neynarScore: Math.round((userInfo?.neynarScore || 0) * 100) / 100,
         contests: stats.contests,
         completedContests: stats.completedContests,
-        ownedCasts: ownedCastsCount,
-        likes: stats.totalLikes,
-        recasts: stats.totalRecasts,
-        replies: stats.totalReplies,
+        totalEntries,
         tokenHoldings,
         upvotes: stats.upvotes,
         downvotes: stats.downvotes,
-        hostBonus,
-        socialScore,
-        socialMultiplier,
+        entryScore,
         tokenScore,
-        contestScore,
         voteScore,
         totalScore,
       });
@@ -523,13 +517,10 @@ module.exports = async (req, res) => {
       totalContests,
       totalHosts: hostsWithScores.length,
       scoringFormula: {
-        total: 'Contest Score + Vote Score',
-        contest: 'Host Bonus + (Social x Contests) + Token',
-        hostBonus: '100 points per completed contest',
-        socialMultiplier: 'Social Score x completed contests',
-        vote: '(Upvotes - Downvotes) x 200',
-        social: '(Likes x 1 + Recasts x 2 + Replies x 3) x 100',
-        token: 'Token Holdings / 50,000',
+        total: 'Entry Score + Vote Score + Token Score',
+        entry: '100 points per contest entry received',
+        vote: '100 points per net vote (upvotes - downvotes)',
+        token: '100 points per 100,000 NEYNARTODES held',
       },
     };
 
