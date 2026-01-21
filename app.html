@@ -4577,11 +4577,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         // Refresh remaining votes from contract for non-dev wallets
         if (!isDevWallet) {
           try {
+            // Wait a moment for RPC to sync with new state
+            await new Promise(r => setTimeout(r, 1500));
             const remainingVotes = await votingManagerRead.getRemainingVotes(state.userAddress);
             state.votesRemaining = Number(remainingVotes);
             state.votesUsedToday = 10 - state.votesRemaining;
+            console.log(`Vote count updated from contract: ${state.votesRemaining}/10 remaining`);
           } catch (e) {
             // Fallback to local decrement if contract call fails
+            console.log('Failed to fetch remaining votes, using local decrement:', e.message);
             state.votesUsedToday++;
             state.votesRemaining--;
           }

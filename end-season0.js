@@ -30,7 +30,7 @@ async function main() {
 
   // Setup provider and wallet
   const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL);
-  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY.trim(), provider);
 
   console.log(`\nWallet: ${wallet.address}`);
 
