@@ -15,7 +15,7 @@
  */
 
 const { ethers } = require('ethers');
-const { getUserByWallet: getCachedUserByWallet, getCached, setCache } = require('./lib/utils');
+const { getUserByWallet: getCachedUserByWallet } = require('./lib/utils');
 
 const CONFIG = {
   // Unified ContestManager (M- and T- prefix contests)
@@ -121,104 +121,6 @@ async function getTokenHoldings(addresses, tokenContract, kvClient = null) {
   return Number(totalBalance / 10n ** 18n);
 }
 
-async function getCastEngagement(contestInfo, hostFid, kv = null) {
-  const { castHash, type, id } = contestInfo;
-
-  if (!castHash || castHash === '' || castHash.includes('|')) {
-    return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-  }
-
-  const cleanHash = castHash.startsWith('0x') ? castHash : `0x${castHash}`;
-  const memoryCacheKey = `cast:engagement:${cleanHash}:${hostFid}`;
-  const cached = getCached(memoryCacheKey, 300000);
-  if (cached !== null) return cached;
-
-  // Check KV cache
-  if (kv && type && id) {
-    try {
-      const kvCacheKey = `contest:social:${type}-${id}`;
-      const kvCached = await kv.get(kvCacheKey);
-
-      if (kvCached) {
-        if (hostFid && kvCached.hostFid && kvCached.hostFid !== hostFid) {
-          const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-          setCache(memoryCacheKey, result, 300000);
-          return result;
-        }
-
-        const result = {
-          likes: kvCached.likes || 0,
-          recasts: kvCached.recasts || 0,
-          replies: kvCached.replies || 0,
-          isAuthor: true,
-          fromKVCache: true,
-        };
-        setCache(memoryCacheKey, result, 300000);
-        return result;
-      }
-    } catch (e) { }
-  }
-
-  // Fetch from Neynar API
-  try {
-    const response = await fetch(
-      `https://api.neynar.com/v2/farcaster/cast?identifier=${cleanHash}&type=hash`,
-      { headers: { 'api_key': CONFIG.NEYNAR_API_KEY } }
-    );
-
-    if (!response.ok) {
-      const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-      setCache(memoryCacheKey, result, 60000);
-      return result;
-    }
-
-    const data = await response.json();
-    const cast = data.cast;
-
-    if (!cast) {
-      const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-      setCache(memoryCacheKey, result, 60000);
-      return result;
-    }
-
-    const authorFid = cast.author?.fid;
-    const isAuthor = hostFid && authorFid && authorFid === hostFid;
-
-    if (!isAuthor) {
-      const result = { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-      setCache(memoryCacheKey, result, 300000);
-      return result;
-    }
-
-    const result = {
-      likes: cast.reactions?.likes_count || 0,
-      recasts: cast.reactions?.recasts_count || 0,
-      replies: cast.replies?.count || 0,
-      isAuthor: true,
-    };
-    setCache(memoryCacheKey, result, 300000);
-
-    // Store in KV
-    if (kv && type && id) {
-      try {
-        const kvCacheKey = `contest:social:${type}-${id}`;
-        await kv.set(kvCacheKey, {
-          likes: result.likes,
-          recasts: result.recasts,
-          replies: result.replies,
-          castHash: cleanHash,
-          hostFid: authorFid,
-          capturedAt: Date.now(),
-        });
-      } catch (e) { }
-    }
-
-    return result;
-  } catch (e) {
-    return { likes: 0, recasts: 0, replies: 0, isAuthor: false };
-  }
-}
-
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -308,7 +210,7 @@ module.exports = async (req, res) => {
         const contest = contestResults[j];
         if (!contest) continue;
 
-        const { host, castId, status } = contest;
+        const { host, status } = contest;
         const hostLower = host.toLowerCase();
 
         if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
@@ -318,11 +220,7 @@ module.exports = async (req, res) => {
             address: host,
             contests: 0,
             completedContests: 0,
-            totalLikes: 0,
-            totalRecasts: 0,
-            totalReplies: 0,
-            contestInfos: [],
-            completedContestIds: [],  // Track all completed contest IDs for entry counting
+            completedContestIds: [],
           };
         }
 
@@ -331,15 +229,6 @@ module.exports = async (req, res) => {
         if (Number(status) === CONTEST_STATUS.Completed) {
           hostStats[hostLower].completedContests++;
           hostStats[hostLower].completedContestIds.push(`M-${batch[j]}`);
-
-          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-          if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].contestInfos.push({
-              castHash: actualCastHash,
-              type: 'M',
-              id: batch[j],
-            });
-          }
         }
       }
     }
@@ -364,7 +253,7 @@ module.exports = async (req, res) => {
         const contest = contestResults[j];
         if (!contest) continue;
 
-        const { host, castId, status } = contest;
+        const { host, status } = contest;
         const hostLower = host.toLowerCase();
 
         if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
@@ -374,11 +263,7 @@ module.exports = async (req, res) => {
             address: host,
             contests: 0,
             completedContests: 0,
-            totalLikes: 0,
-            totalRecasts: 0,
-            totalReplies: 0,
-            contestInfos: [],
-            completedContestIds: [],  // Track all completed contest IDs for entry counting
+            completedContestIds: [],
           };
         }
 
@@ -387,15 +272,6 @@ module.exports = async (req, res) => {
         if (Number(status) === CONTEST_STATUS.Completed) {
           hostStats[hostLower].completedContests++;
           hostStats[hostLower].completedContestIds.push(`T-${batch[j]}`);
-
-          const actualCastHash = castId.includes('|') ? castId.split('|')[0] : castId;
-          if (actualCastHash && actualCastHash !== '') {
-            hostStats[hostLower].contestInfos.push({
-              castHash: actualCastHash,
-              type: 'T',
-              id: batch[j],
-            });
-          }
         }
       }
     }
