@@ -4618,7 +4618,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         }
 
         // Refresh remaining votes from contract for non-dev wallets
-        if (!isDevWallet) {
+        if (!isDev) {
           try {
             // Wait a moment for RPC to sync with new state
             await new Promise(r => setTimeout(r, 1500));
@@ -4637,7 +4637,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const ethFromVote = 0.00001;
         state.prizePoolETH += (ethFromVote * 0.5);
 
-        showToast(`${isUpvote ? 'Upvote' : 'Downvote'} confirmed! 50k burned, 50k to treasury. ${isDevWallet ? 'Dev mode' : `${state.votesRemaining}/10 votes left`}`, 'success', 6000);
+        showToast(`${isUpvote ? 'Upvote' : 'Downvote'} confirmed! 50k burned, 50k to treasury. ${isDev ? 'Dev mode' : `${state.votesRemaining}/10 votes left`}`, 'success', 6000);
 
         render();
       } catch (error) {
