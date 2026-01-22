@@ -246,33 +246,48 @@
             }
             console.log('Using address:', from);
 
-            // Check if user is a holder (100M+ tokens)
-            // Use Base RPC directly since embedded wallet doesn't support eth_call
-            const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
-            const HOLDER_THRESHOLD = '100000000000000000000000000'; // 100M with 18 decimals
-            const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
-
+            // Check if user is a holder via API (handles all verified addresses, cooldown, and correct threshold)
+            // Threshold is 100M for NEYNARTODES contests, 200M for custom token contests
             let isHolder = false;
             try {
-              const rpcResponse = await fetch(BASE_RPC, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  jsonrpc: '2.0',
-                  id: 1,
-                  method: 'eth_call',
-                  params: [{
-                    to: NEYNARTODES_TOKEN,
-                    data: '0x70a08231000000000000000000000000' + from.slice(2).toLowerCase()
-                  }, 'latest']
-                })
-              });
-              const rpcData = await rpcResponse.json();
-              const balance = BigInt(rpcData.result || '0x0');
-              isHolder = balance >= BigInt(HOLDER_THRESHOLD);
-              console.log('Is holder:', isHolder, 'Balance:', balance.toString());
+              const eligibilityResponse = await fetch(`/api/check-eligibility?fid=${userFid}&contestId=${contestIdParam}`);
+              if (eligibilityResponse.ok) {
+                const eligibilityData = await eligibilityResponse.json();
+                isHolder = eligibilityData.holder?.met || false;
+                console.log(`Holder check via API for contest ${contestIdParam}:`, {
+                  balance: eligibilityData.holder?.balanceFormatted,
+                  eligibleBalance: eligibilityData.holder?.eligibleBalanceFormatted,
+                  threshold: eligibilityData.holder?.thresholdFormatted,
+                  cooldown: eligibilityData.holder?.cooldownAmountFormatted,
+                  isHolder: isHolder
+                });
+              } else {
+                console.log('Eligibility API returned non-OK status, falling back to RPC check');
+                // Fallback to direct RPC check (single address, 100M threshold, no cooldown)
+                const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
+                const HOLDER_THRESHOLD = '100000000000000000000000000'; // 100M with 18 decimals
+                const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
+
+                const rpcResponse = await fetch(BASE_RPC, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'eth_call',
+                    params: [{
+                      to: NEYNARTODES_TOKEN,
+                      data: '0x70a08231000000000000000000000000' + from.slice(2).toLowerCase()
+                    }, 'latest']
+                  })
+                });
+                const rpcData = await rpcResponse.json();
+                const balance = BigInt(rpcData.result || '0x0');
+                isHolder = balance >= BigInt(HOLDER_THRESHOLD);
+                console.log('Is holder (RPC fallback):', isHolder, 'Balance:', balance.toString());
+              }
             } catch (e) {
-              console.log('Balance check failed, assuming non-holder:', e);
+              console.log('Holder check failed, assuming non-holder:', e);
             }
 
             // Fetch contest details first to get cast hash and host address
@@ -1434,8 +1449,9 @@
       }
     }
 
-    // Check if user is a holder (100M+ NEYNARTODES)
-    async function checkHolderStatus() {
+    // Check if user is a holder (100M+ NEYNARTODES for NEYNARTODES contests, 200M for custom token contests)
+    // contestId parameter ensures we check against the correct threshold for the specific contest
+    async function checkHolderStatus(contestId = 'M-1') {
       if (!state.userFid && !state.userAddress) return false;
 
       try {
@@ -1454,16 +1470,17 @@
         }
 
         // Check NEYNARTODES balance via API call to avoid provider issues
+        // Uses the actual contestId to get correct threshold (100M for NEYNARTODES, 200M for custom tokens)
         try {
           const params = state.userFid
-            ? `fid=${state.userFid}&contestId=1`
-            : `address=${addresses[0]}&contestId=1`;
+            ? `fid=${state.userFid}&contestId=${contestId}`
+            : `address=${addresses[0]}&contestId=${contestId}`;
 
           const response = await fetch(`/api/check-eligibility?${params}`);
           if (response.ok) {
             const data = await response.json();
             const isHolder = data.holder?.met || false;
-            console.log(`Holder check via API: balance=${data.holder?.balanceFormatted}, threshold=${data.holder?.thresholdFormatted}, isHolder=${isHolder}`);
+            console.log(`Holder check via API for contest ${contestId}: balance=${data.holder?.balanceFormatted}, eligibleBalance=${data.holder?.eligibleBalanceFormatted}, threshold=${data.holder?.thresholdFormatted}, cooldown=${data.holder?.cooldownAmountFormatted || '0'}, isHolder=${isHolder}`);
             return isHolder;
           }
         } catch (apiError) {
@@ -1471,6 +1488,7 @@
         }
 
         // Fallback: Check NEYNARTODES balance directly on-chain (uses cached contract)
+        // Note: Fallback uses 100M threshold and doesn't account for cooldown
         // Sum balance across all addresses
         let totalBalance = ethers.BigNumber.from(0);
         for (const addr of addresses) {
@@ -1482,11 +1500,11 @@
           }
         }
 
-        // Threshold: 100M tokens (with 18 decimals)
+        // Threshold: 100M tokens (with 18 decimals) - fallback doesn't know contest type
         const threshold = ethers.utils.parseUnits('100000000', 18);
         const isHolder = totalBalance.gte(threshold);
 
-        console.log(`Holder check via RPC: balance=${ethers.utils.formatUnits(totalBalance, 18)}, threshold=100M, isHolder=${isHolder}`);
+        console.log(`Holder check via RPC (fallback): balance=${ethers.utils.formatUnits(totalBalance, 18)}, threshold=100M, isHolder=${isHolder}`);
 
         return isHolder;
       } catch (e) {
@@ -1539,7 +1557,8 @@
 
       try {
         // Check if holder and process BuyBurnHoldEarn transaction
-        const isHolder = await checkHolderStatus();
+        // Pass actual contestId to check against correct threshold (100M for NEYNARTODES, 200M for custom tokens)
+        const isHolder = await checkHolderStatus(contestId);
         const sdk = window.FarcasterSDK;
 
         // Get user's wallet address
@@ -4079,11 +4098,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         const voteStats = await Promise.all(votePromises);
 
-        // Update leaderboard with on-chain vote scores (200 points per net vote)
+        // Update leaderboard with on-chain vote scores (100 points per net vote)
         state.leaderboardData = state.leaderboardData.map(host => {
           const stats = voteStats.find(s => s.fid === host.fid);
           if (stats) {
-            const onChainVoteScore = stats.netScore * 200; // 200 points per net vote
+            const onChainVoteScore = stats.netScore * 100; // 100 points per net vote
             // Replace API vote score with on-chain score
             const adjustedTotal = host.totalScore - (host.voteScore || 0) + onChainVoteScore;
             return {
