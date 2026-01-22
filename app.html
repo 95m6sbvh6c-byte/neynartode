@@ -1270,8 +1270,11 @@
       const container = document.getElementById('celebration-container');
       if (!container) return;
 
+      console.log('showCelebration called with castHash:', castHash, 'type:', typeof castHash, 'length:', castHash?.length);
+
       // Build Warpcast reply URL
       const replyUrl = castHash ? `https://warpcast.com/~/conversations/${castHash}` : null;
+      console.log('Reply URL:', replyUrl);
 
       // Create overlay
       const overlay = document.createElement('div');
@@ -1733,7 +1736,13 @@
         }
 
         // Step 3: Call enter-contest API (auto like)
-        const castHash = castId?.split('|')[0] || '';
+        // Get castId from button, or fallback to contest data in state (in case button was rendered with stale cache)
+        let castHash = castId?.split('|')[0] || '';
+        if (!castHash && contest?.castId) {
+          castHash = contest.castId.split('|')[0];
+          console.log('enterRaffle - using castId from state.upcomingContests:', castHash);
+        }
+        console.log('enterRaffle - castId from button:', castId, 'final castHash:', castHash);
         const userAddresses = state.userProfile?.verifiedAddresses?.ethAddresses || [];
 
         const response = await fetch('/api/enter-contest', {
