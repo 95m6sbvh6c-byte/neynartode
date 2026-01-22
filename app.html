@@ -1863,10 +1863,35 @@
       const hostTag = hostUsername ? `@${hostUsername}'s` : 'a';
 
       // Mini app URL
-      const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}`;
+      const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
 
-      // Build the share text
-      let text = `I just entered ${hostTag} raffle for ${prizeText}!!! ⏱️ ${timeLeft} left
+      // Calculate total duration from hours and minutes
+      let durationText;
+      const totalHours = hoursLeft + Math.floor(minutesLeft / 60);
+      const totalMins = minutesLeft % 60;
+      if (totalHours > 0 && totalMins > 0) {
+        durationText = `${totalHours}h ${totalMins}m`;
+      } else if (totalHours > 0) {
+        durationText = `${totalHours} hour${totalHours > 1 ? 's' : ''}`;
+      } else {
+        durationText = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+      }
+
+      // Prize line with emoji
+      const prizeLine = isNft ? `🖼️ Prize: ${prize}` : `🎁 Prize: ${prizeText}`;
+
+      // Winners line (if multiple)
+      const winnersLine = winnerCount > 1 ? `\n👥 ${winnerCount} Winners!` : '';
+
+      // Build the share text to match contest creation format
+      let text = `🦎 I just entered ${hostTag} raffle! Join now 🔥
+
+${prizeLine}
+⏱️ Duration: ${durationText}
+⏰ Time remaining: ${timeLeft}${winnersLine}
+
+🎟️ How to enter:
+1️⃣ Click Enter in the app (required!)
 
 🎟️ Bonus entries:
 💎 Hold 100M+ $NEYNARTODES
