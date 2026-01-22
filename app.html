@@ -4617,27 +4617,25 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           movementText = `\n➡️ @${votedHost.username} stayed at rank #${newRank}`;
         }
 
-        // Refresh remaining votes from contract for non-dev wallets
-        if (!isDev) {
-          try {
-            // Wait a moment for RPC to sync with new state
-            await new Promise(r => setTimeout(r, 1500));
-            const remainingVotes = await votingManagerRead.getRemainingVotes(state.userAddress);
-            state.votesRemaining = Number(remainingVotes);
-            state.votesUsedToday = 10 - state.votesRemaining;
-            console.log(`Vote count updated from contract: ${state.votesRemaining}/10 remaining`);
-          } catch (e) {
-            // Fallback to local decrement if contract call fails
-            console.log('Failed to fetch remaining votes, using local decrement:', e.message);
-            state.votesUsedToday++;
-            state.votesRemaining--;
-          }
+        // Refresh remaining votes from contract
+        try {
+          // Wait a moment for RPC to sync with new state
+          await new Promise(r => setTimeout(r, 1500));
+          const remainingVotes = await votingManagerRead.getRemainingVotes(state.userAddress);
+          state.votesRemaining = Number(remainingVotes);
+          state.votesUsedToday = 10 - state.votesRemaining;
+          console.log(`Vote count updated from contract: ${state.votesRemaining}/10 remaining`);
+        } catch (e) {
+          // Fallback to local decrement if contract call fails
+          console.log('Failed to fetch remaining votes, using local decrement:', e.message);
+          state.votesUsedToday++;
+          state.votesRemaining--;
         }
 
         const ethFromVote = 0.00001;
         state.prizePoolETH += (ethFromVote * 0.5);
 
-        showToast(`${isUpvote ? 'Upvote' : 'Downvote'} confirmed! 50k burned, 50k to treasury. ${isDev ? 'Dev mode' : `${state.votesRemaining}/10 votes left`}`, 'success', 6000);
+        showToast(`${isUpvote ? 'Upvote' : 'Downvote'} confirmed! 50k burned, 50k to treasury. ${state.votesRemaining}/10 votes left`, 'success', 6000);
 
         render();
       } catch (error) {
