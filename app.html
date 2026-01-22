@@ -5005,7 +5005,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               <button id="viewCreate" class="btn-ghost flex-1 text-[10px] py-2 px-1">Create</button>
             ` : ''}
             ${state.currentView !== 'leaderboard' && (!CONFIG.PUBLIC_TESTING_MODE || isUserAdmin()) ? `
-              <button id="viewLeaderboard" class="btn-ghost flex-1 text-[10px] py-2 px-1">Stats</button>
+              <button id="viewLeaderboard" class="btn-ghost flex-1 text-[10px] py-2 px-1">Board</button>
             ` : ''}
             ${state.currentView !== 'history' && (!CONFIG.PUBLIC_TESTING_MODE || isUserAdmin()) ? `
               <button id="viewHistory" class="btn-ghost flex-1 text-[10px] py-2 px-1">History</button>
@@ -5160,7 +5160,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
               <!-- Leaderboard Table -->
               <div class="glass-card p-5">
-                <div class="flex items-center justify-between mb-5">
+                <div class="flex items-center justify-between mb-3">
                   <div>
                     <h2 class="text-xl font-bold"><span class="text-gradient">NEYNARtodes</span> <span class="text-[var(--text-primary)]">Leaderboard</span></h2>
                     <p class="text-sm text-[var(--text-muted)]">Season ${state.currentSeason} Rankings</p>
@@ -5170,6 +5170,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     target="_blank"
                     class="btn-ghost text-sm"
                   >Guide</a>
+                </div>
+                <div class="mb-5 p-3 bg-[var(--bg-secondary)] rounded-xl text-xs text-[var(--text-secondary)] grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div><span class="text-[var(--accent-light)]">Total</span> = Entry + Vote + Token</div>
+                  <div><span class="text-[var(--text-primary)]">Entry</span> = Entries × 100</div>
+                  <div><span class="text-[var(--text-primary)]">Vote</span> = Net Votes × 100</div>
+                  <div><span class="text-[var(--text-primary)]">Token</span> = (Holdings ÷ 100k) × 100</div>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -5264,18 +5270,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   `}
                 </div>
 
-                <!-- Scoring Info - Collapsed by default -->
-                <details class="mt-4">
-                  <summary class="text-sm text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors">
-                    How scoring works
-                  </summary>
-                  <div class="mt-3 p-4 bg-[var(--bg-secondary)] rounded-xl text-sm text-[var(--text-secondary)] space-y-1">
-                    <div><span class="text-[var(--text-primary)]">Total Score</span> = Entry Score + Vote Score + Token Score</div>
-                    <div><span class="text-[var(--text-primary)]">Entry Score</span> = Contest Entries × 100</div>
-                    <div><span class="text-[var(--text-primary)]">Vote Score</span> = (Upvotes - Downvotes) × 100</div>
-                    <div><span class="text-[var(--text-primary)]">Token Score</span> = (Holdings ÷ 100k) × 100</div>
-                  </div>
-                </details>
               </div>
             </div>
           </div>
