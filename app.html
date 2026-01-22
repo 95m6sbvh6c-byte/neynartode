@@ -2254,6 +2254,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       totalPrizesGiven: 0, // All-time prizes distributed (ETH)
       leaderboardLoaded: false, // Track if leaderboard has been lazy-loaded
 
+      // Best Tode voting (end of season)
+      bestTodeActive: false,
+      bestTodeInitialized: false,
+      bestTodeCandidates: [],      // [{fid, username, pfpUrl, voteCount}]
+      bestTodeEndTime: null,       // Unix timestamp when voting ends
+      bestTodeUserVote: null,      // FID user voted for (null if not voted)
+      bestTodeResults: null,       // Final results after voting ends
+      bestTodeVotingEnded: false,  // True if 48 hours have passed
+
       // Contest settings
       startMode: 'now', // 'now' or 'scheduled'
       startDate: '',
@@ -3882,6 +3891,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           tokensBurned: state.totalTokensBurned,
           prizesGiven: state.totalPrizesGiven
         });
+
+        // Check if season has ended - load Best Tode status
+        const now = Math.floor(Date.now() / 1000);
+        if (state.seasonEndTime && now >= state.seasonEndTime) {
+          console.log('Season has ended, checking Best Tode status...');
+          await loadBestTodeStatus();
+        }
       } catch (error) {
         console.error('Failed to load prize pools:', error);
         console.error('Error details:', error.message, error.code);
@@ -4160,6 +4176,216 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
       } catch (error) {
         console.error('Error fetching on-chain vote scores:', error);
+      }
+    }
+
+    // ===== BEST TODE VOTING (END OF SEASON) =====
+
+    async function loadBestTodeStatus() {
+      if (!state.currentSeason) return;
+
+      try {
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const url = `${baseUrl}/api/best-tode-status?seasonId=${state.currentSeason}${state.userFid ? `&fid=${state.userFid}` : ''}`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.log('Best Tode status not available');
+          return;
+        }
+
+        const data = await response.json();
+
+        state.bestTodeInitialized = data.initialized || false;
+        state.bestTodeActive = data.active || false;
+        state.bestTodeCandidates = data.candidates || [];
+        state.bestTodeEndTime = data.endTime || null;
+        state.bestTodeUserVote = data.userVote || null;
+        state.bestTodeResults = data.results || null;
+        state.bestTodeVotingEnded = data.votingEnded || false;
+
+        if (state.bestTodeInitialized) {
+          console.log('Best Tode status loaded:', {
+            active: state.bestTodeActive,
+            candidates: state.bestTodeCandidates.length,
+            userVote: state.bestTodeUserVote,
+            votingEnded: state.bestTodeVotingEnded
+          });
+        }
+
+        render();
+      } catch (error) {
+        console.error('Error loading Best Tode status:', error);
+      }
+    }
+
+    async function castBestTodeVote(candidateFid) {
+      if (!state.userFid) {
+        showToast('Please connect your wallet first', 'error');
+        return;
+      }
+
+      if (state.bestTodeUserVote) {
+        showToast('You have already voted!', 'warning');
+        return;
+      }
+
+      if (state.bestTodeVotingEnded) {
+        showToast('Voting period has ended', 'error');
+        return;
+      }
+
+      try {
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const response = await fetch(`${baseUrl}/api/best-tode-vote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            seasonId: state.currentSeason,
+            voterFid: state.userFid,
+            candidateFid: candidateFid
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (data.alreadyVoted) {
+            showToast('You have already voted!', 'warning');
+            state.bestTodeUserVote = data.votedFor;
+          } else if (data.votingEnded) {
+            showToast('Voting period has ended', 'error');
+            state.bestTodeVotingEnded = true;
+          } else {
+            showToast(data.error || 'Failed to vote', 'error');
+          }
+          render();
+          return;
+        }
+
+        // Success!
+        state.bestTodeUserVote = candidateFid;
+
+        // Update vote count locally
+        state.bestTodeCandidates = state.bestTodeCandidates.map(c => {
+          if (c.fid === candidateFid) {
+            return { ...c, voteCount: (c.voteCount || 0) + 1 };
+          }
+          return c;
+        });
+
+        showToast(`Vote cast for @${data.votedFor.username}!`, 'success');
+        render();
+
+      } catch (error) {
+        console.error('Error casting Best Tode vote:', error);
+        showToast('Failed to cast vote', 'error');
+      }
+    }
+
+    function getBestTodeTimeRemaining() {
+      if (!state.bestTodeEndTime) return null;
+
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = state.bestTodeEndTime - now;
+
+      if (remaining <= 0) return { ended: true, text: 'Ended' };
+
+      const hours = Math.floor(remaining / 3600);
+      const minutes = Math.floor((remaining % 3600) / 60);
+
+      if (hours > 0) {
+        return { ended: false, text: `${hours}h ${minutes}m` };
+      }
+      return { ended: false, text: `${minutes}m` };
+    }
+
+    async function startBestTodeVoting() {
+      if (!isUserAdmin()) {
+        showToast('Admin access required', 'error');
+        return;
+      }
+
+      if (state.bestTodeInitialized) {
+        showToast('Best Tode already initialized for this season', 'warning');
+        return;
+      }
+
+      // Get top 3 from leaderboard
+      if (state.leaderboardData.length < 3) {
+        showToast('Not enough hosts on leaderboard (need at least 3)', 'error');
+        return;
+      }
+
+      const candidates = state.leaderboardData.slice(0, 3).map(host => ({
+        fid: host.fid,
+        username: host.username,
+        pfpUrl: host.pfpUrl || null,
+        address: host.address || null
+      }));
+
+      try {
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const response = await fetch(`${baseUrl}/api/best-tode-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'start',
+            seasonId: state.currentSeason,
+            candidates,
+            adminFid: state.userFid
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showToast(data.error || 'Failed to start Best Tode', 'error');
+          return;
+        }
+
+        showToast('Best Tode voting started! 48 hours to vote.', 'success');
+        await loadBestTodeStatus();
+        render();
+
+      } catch (error) {
+        console.error('Error starting Best Tode:', error);
+        showToast('Failed to start Best Tode voting', 'error');
+      }
+    }
+
+    async function finalizeBestTode() {
+      if (!isUserAdmin()) {
+        showToast('Admin access required', 'error');
+        return;
+      }
+
+      try {
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const response = await fetch(`${baseUrl}/api/best-tode-finalize`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            seasonId: state.currentSeason,
+            adminFid: state.userFid,
+            hostPoolETH: state.hostPoolETH
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showToast(data.error || 'Failed to finalize', 'error');
+          return;
+        }
+
+        showToast('Best Tode voting finalized!', 'success');
+        await loadBestTodeStatus();
+        render();
+
+      } catch (error) {
+        console.error('Error finalizing Best Tode:', error);
+        showToast('Failed to finalize voting', 'error');
       }
     }
 
@@ -5128,6 +5354,108 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   </div>
                 </div>
               ` : ''}
+
+              <!-- Best Tode Voting (End of Season) -->
+              ${(() => {
+                const now = Math.floor(Date.now() / 1000);
+                const seasonEnded = state.seasonEndTime && now >= state.seasonEndTime;
+
+                // Admin: Show "Start Best Tode" when season ended but not initialized
+                if (seasonEnded && !state.bestTodeInitialized && isUserAdmin()) {
+                  return `
+                  <div class="glass-card-accent p-5">
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <h2 class="text-xl font-bold text-[var(--accent-light)]">Season Ended</h2>
+                        <p class="text-sm text-[var(--text-secondary)]">Start Best Tode voting for top 3 hosts</p>
+                      </div>
+                      <button onclick="startBestTodeVoting()" class="btn-primary">
+                        Start Best Tode
+                      </button>
+                    </div>
+                  </div>
+                  `;
+                }
+
+                // Show Best Tode voting UI when initialized
+                if (state.bestTodeInitialized) {
+                  return `
+                  <div class="glass-card-accent p-5">
+                    <div class="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 class="text-xl font-bold text-[var(--accent-light)]">Best Tode Voting</h2>
+                        <p class="text-sm text-[var(--text-secondary)]">
+                          ${state.bestTodeVotingEnded || state.bestTodeResults
+                            ? 'Voting has ended'
+                            : 'Vote for your favorite host! ' + (() => {
+                                const time = getBestTodeTimeRemaining();
+                                return time ? 'Ends in ' + time.text : '';
+                              })()
+                          }
+                        </p>
+                      </div>
+                      ${!state.bestTodeVotingEnded && !state.bestTodeResults ? `
+                      <div class="text-right">
+                        <div class="text-2xl font-bold ${state.bestTodeUserVote ? 'text-[var(--success)]' : 'text-[var(--accent-light)]'}">
+                          ${state.bestTodeUserVote ? 'Voted' : '1'}
+                        </div>
+                        <div class="text-xs text-[var(--text-muted)]">${state.bestTodeUserVote ? '' : 'vote available'}</div>
+                      </div>
+                      ` : ''}
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3">
+                      ${state.bestTodeCandidates.map((candidate, idx) => `
+                        <div class="bg-[var(--bg-secondary)] rounded-xl p-4 text-center ${state.bestTodeUserVote === candidate.fid ? 'ring-2 ring-[var(--success)]' : ''}">
+                          ${candidate.pfpUrl
+                            ? '<img src="' + candidate.pfpUrl + '" alt="" class="w-14 h-14 rounded-full object-cover mx-auto mb-2" onerror="this.style.display=\\'none\\';" />'
+                            : '<div class="w-14 h-14 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-2xl mx-auto mb-2">' + getPfpEmoji(candidate.username) + '</div>'
+                          }
+                          <div class="font-semibold text-[var(--text-primary)] text-sm mb-1">@${candidate.username}</div>
+                          <div class="text-2xl font-bold ${state.bestTodeResults ? (idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-400' : 'text-orange-400') : 'text-[var(--accent-light)]'} mb-2">
+                            ${candidate.voteCount || 0}
+                            <span class="text-xs text-[var(--text-muted)]">votes</span>
+                          </div>
+                          ${state.bestTodeResults ? `
+                            <div class="text-sm font-bold ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-400' : 'text-orange-400'}">
+                              ${idx === 0 ? '1st - 50%' : idx === 1 ? '2nd - 35%' : '3rd - 15%'}
+                            </div>
+                          ` : state.bestTodeVotingEnded ? `
+                            <div class="text-xs text-[var(--text-muted)]">Awaiting results</div>
+                          ` : state.bestTodeUserVote ? `
+                            <div class="text-xs ${state.bestTodeUserVote === candidate.fid ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}">
+                              ${state.bestTodeUserVote === candidate.fid ? 'Your vote' : ''}
+                            </div>
+                          ` : `
+                            <button
+                              onclick="castBestTodeVote(${candidate.fid})"
+                              class="btn-primary text-xs px-4 py-1.5 w-full"
+                            >Vote</button>
+                          `}
+                        </div>
+                      `).join('')}
+                    </div>
+
+                    ${state.bestTodeResults ? `
+                    <div class="mt-4 p-3 bg-[var(--bg-secondary)] rounded-xl text-center">
+                      <div class="text-sm text-[var(--text-muted)]">Total Votes: ${state.bestTodeResults.totalVotes || 0}</div>
+                      <div class="text-xs text-[var(--text-muted)] mt-1">Prize pool: ${state.hostPoolETH.toFixed(4)} ETH</div>
+                    </div>
+                    ` : ''}
+
+                    ${state.bestTodeVotingEnded && !state.bestTodeResults && isUserAdmin() ? `
+                    <div class="mt-4 flex justify-center">
+                      <button onclick="finalizeBestTode()" class="btn-primary">
+                        Finalize Results
+                      </button>
+                    </div>
+                    ` : ''}
+                  </div>
+                  `;
+                }
+
+                return '';
+              })()}
 
               <!-- Voting Power -->
               <div class="glass-card p-5">
@@ -8132,6 +8460,10 @@ ${miniAppUrl}`;
 
     // Make functions globally accessible for inline onclick handlers
     window.voteForHost = voteForHost;
+    window.castBestTodeVote = castBestTodeVote;
+    window.getBestTodeTimeRemaining = getBestTodeTimeRemaining;
+    window.startBestTodeVoting = startBestTodeVoting;
+    window.finalizeBestTode = finalizeBestTode;
 
     // Custom prize token modal functions (for mini app compatibility - no prompt() dialogs)
     window.showCustomPrizeToken = () => {
