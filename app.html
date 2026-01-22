@@ -4389,6 +4389,116 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       }
     }
 
+    function renderBestTodeSection() {
+      const now = Math.floor(Date.now() / 1000);
+      const seasonEnded = state.seasonEndTime && now >= state.seasonEndTime;
+
+      // Admin: Show "Start Best Tode" when season ended but not initialized
+      if (seasonEnded && !state.bestTodeInitialized && isUserAdmin()) {
+        return `
+        <div class="glass-card-accent p-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-bold text-[var(--accent-light)]">Season Ended</h2>
+              <p class="text-sm text-[var(--text-secondary)]">Start Best Tode voting for top 3 hosts</p>
+            </div>
+            <button onclick="startBestTodeVoting()" class="btn-primary">
+              Start Best Tode
+            </button>
+          </div>
+        </div>
+        `;
+      }
+
+      // Show Best Tode voting UI when initialized
+      if (!state.bestTodeInitialized) return '';
+
+      const timeRemaining = getBestTodeTimeRemaining();
+      const timeText = timeRemaining ? (timeRemaining.ended ? '' : 'Ends in ' + timeRemaining.text) : '';
+
+      let candidatesHtml = state.bestTodeCandidates.map((candidate, idx) => {
+        const isVoted = state.bestTodeUserVote === candidate.fid;
+        const rankClass = idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-400' : 'text-orange-400';
+
+        let pfpHtml = candidate.pfpUrl
+          ? `<img src="${candidate.pfpUrl}" alt="" class="w-14 h-14 rounded-full object-cover mx-auto mb-2" onerror="this.style.display='none';" />`
+          : `<div class="w-14 h-14 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-2xl mx-auto mb-2">${getPfpEmoji(candidate.username)}</div>`;
+
+        let actionHtml = '';
+        if (state.bestTodeResults) {
+          const prizeText = idx === 0 ? '1st - 50%' : idx === 1 ? '2nd - 35%' : '3rd - 15%';
+          actionHtml = `<div class="text-sm font-bold ${rankClass}">${prizeText}</div>`;
+        } else if (state.bestTodeVotingEnded) {
+          actionHtml = `<div class="text-xs text-[var(--text-muted)]">Awaiting results</div>`;
+        } else if (state.bestTodeUserVote) {
+          actionHtml = isVoted ? `<div class="text-xs text-[var(--success)]">Your vote</div>` : '';
+        } else {
+          actionHtml = `<button onclick="castBestTodeVote(${candidate.fid})" class="btn-primary text-xs px-4 py-1.5 w-full">Vote</button>`;
+        }
+
+        return `
+          <div class="bg-[var(--bg-secondary)] rounded-xl p-4 text-center ${isVoted ? 'ring-2 ring-[var(--success)]' : ''}">
+            ${pfpHtml}
+            <div class="font-semibold text-[var(--text-primary)] text-sm mb-1">@${candidate.username}</div>
+            <div class="text-2xl font-bold ${state.bestTodeResults ? rankClass : 'text-[var(--accent-light)]'} mb-2">
+              ${candidate.voteCount || 0}
+              <span class="text-xs text-[var(--text-muted)]">votes</span>
+            </div>
+            ${actionHtml}
+          </div>
+        `;
+      }).join('');
+
+      let resultsHtml = '';
+      if (state.bestTodeResults) {
+        resultsHtml = `
+        <div class="mt-4 p-3 bg-[var(--bg-secondary)] rounded-xl text-center">
+          <div class="text-sm text-[var(--text-muted)]">Total Votes: ${state.bestTodeResults.totalVotes || 0}</div>
+          <div class="text-xs text-[var(--text-muted)] mt-1">Prize pool: ${state.hostPoolETH.toFixed(4)} ETH</div>
+        </div>
+        `;
+      }
+
+      let adminHtml = '';
+      if (state.bestTodeVotingEnded && !state.bestTodeResults && isUserAdmin()) {
+        adminHtml = `
+        <div class="mt-4 flex justify-center">
+          <button onclick="finalizeBestTode()" class="btn-primary">Finalize Results</button>
+        </div>
+        `;
+      }
+
+      const statusText = (state.bestTodeVotingEnded || state.bestTodeResults)
+        ? 'Voting has ended'
+        : 'Vote for your favorite host! ' + timeText;
+
+      const voteStatusHtml = (!state.bestTodeVotingEnded && !state.bestTodeResults) ? `
+        <div class="text-right">
+          <div class="text-2xl font-bold ${state.bestTodeUserVote ? 'text-[var(--success)]' : 'text-[var(--accent-light)]'}">
+            ${state.bestTodeUserVote ? 'Voted' : '1'}
+          </div>
+          <div class="text-xs text-[var(--text-muted)]">${state.bestTodeUserVote ? '' : 'vote available'}</div>
+        </div>
+      ` : '';
+
+      return `
+      <div class="glass-card-accent p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-[var(--accent-light)]">Best Tode Voting</h2>
+            <p class="text-sm text-[var(--text-secondary)]">${statusText}</p>
+          </div>
+          ${voteStatusHtml}
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          ${candidatesHtml}
+        </div>
+        ${resultsHtml}
+        ${adminHtml}
+      </div>
+      `;
+    }
+
     // Get a consistent emoji for a user based on their username
     function getPfpEmoji(username) {
       const emojis = ['🦎', '🐸', '🐊', '🦖', '🐢', '🦕', '🐍', '🐲', '🌊', '🪸'];
@@ -5356,106 +5466,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               ` : ''}
 
               <!-- Best Tode Voting (End of Season) -->
-              ${(() => {
-                const now = Math.floor(Date.now() / 1000);
-                const seasonEnded = state.seasonEndTime && now >= state.seasonEndTime;
-
-                // Admin: Show "Start Best Tode" when season ended but not initialized
-                if (seasonEnded && !state.bestTodeInitialized && isUserAdmin()) {
-                  return `
-                  <div class="glass-card-accent p-5">
-                    <div class="flex items-center justify-between">
-                      <div>
-                        <h2 class="text-xl font-bold text-[var(--accent-light)]">Season Ended</h2>
-                        <p class="text-sm text-[var(--text-secondary)]">Start Best Tode voting for top 3 hosts</p>
-                      </div>
-                      <button onclick="startBestTodeVoting()" class="btn-primary">
-                        Start Best Tode
-                      </button>
-                    </div>
-                  </div>
-                  `;
-                }
-
-                // Show Best Tode voting UI when initialized
-                if (state.bestTodeInitialized) {
-                  return `
-                  <div class="glass-card-accent p-5">
-                    <div class="flex items-center justify-between mb-4">
-                      <div>
-                        <h2 class="text-xl font-bold text-[var(--accent-light)]">Best Tode Voting</h2>
-                        <p class="text-sm text-[var(--text-secondary)]">
-                          ${state.bestTodeVotingEnded || state.bestTodeResults
-                            ? 'Voting has ended'
-                            : 'Vote for your favorite host! ' + (() => {
-                                const time = getBestTodeTimeRemaining();
-                                return time ? 'Ends in ' + time.text : '';
-                              })()
-                          }
-                        </p>
-                      </div>
-                      ${!state.bestTodeVotingEnded && !state.bestTodeResults ? `
-                      <div class="text-right">
-                        <div class="text-2xl font-bold ${state.bestTodeUserVote ? 'text-[var(--success)]' : 'text-[var(--accent-light)]'}">
-                          ${state.bestTodeUserVote ? 'Voted' : '1'}
-                        </div>
-                        <div class="text-xs text-[var(--text-muted)]">${state.bestTodeUserVote ? '' : 'vote available'}</div>
-                      </div>
-                      ` : ''}
-                    </div>
-
-                    <div class="grid grid-cols-3 gap-3">
-                      ${state.bestTodeCandidates.map((candidate, idx) => `
-                        <div class="bg-[var(--bg-secondary)] rounded-xl p-4 text-center ${state.bestTodeUserVote === candidate.fid ? 'ring-2 ring-[var(--success)]' : ''}">
-                          ${candidate.pfpUrl
-                            ? '<img src="' + candidate.pfpUrl + '" alt="" class="w-14 h-14 rounded-full object-cover mx-auto mb-2" onerror="this.style.display=\\'none\\';" />'
-                            : '<div class="w-14 h-14 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-2xl mx-auto mb-2">' + getPfpEmoji(candidate.username) + '</div>'
-                          }
-                          <div class="font-semibold text-[var(--text-primary)] text-sm mb-1">@${candidate.username}</div>
-                          <div class="text-2xl font-bold ${state.bestTodeResults ? (idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-400' : 'text-orange-400') : 'text-[var(--accent-light)]'} mb-2">
-                            ${candidate.voteCount || 0}
-                            <span class="text-xs text-[var(--text-muted)]">votes</span>
-                          </div>
-                          ${state.bestTodeResults ? `
-                            <div class="text-sm font-bold ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-400' : 'text-orange-400'}">
-                              ${idx === 0 ? '1st - 50%' : idx === 1 ? '2nd - 35%' : '3rd - 15%'}
-                            </div>
-                          ` : state.bestTodeVotingEnded ? `
-                            <div class="text-xs text-[var(--text-muted)]">Awaiting results</div>
-                          ` : state.bestTodeUserVote ? `
-                            <div class="text-xs ${state.bestTodeUserVote === candidate.fid ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}">
-                              ${state.bestTodeUserVote === candidate.fid ? 'Your vote' : ''}
-                            </div>
-                          ` : `
-                            <button
-                              onclick="castBestTodeVote(${candidate.fid})"
-                              class="btn-primary text-xs px-4 py-1.5 w-full"
-                            >Vote</button>
-                          `}
-                        </div>
-                      `).join('')}
-                    </div>
-
-                    ${state.bestTodeResults ? `
-                    <div class="mt-4 p-3 bg-[var(--bg-secondary)] rounded-xl text-center">
-                      <div class="text-sm text-[var(--text-muted)]">Total Votes: ${state.bestTodeResults.totalVotes || 0}</div>
-                      <div class="text-xs text-[var(--text-muted)] mt-1">Prize pool: ${state.hostPoolETH.toFixed(4)} ETH</div>
-                    </div>
-                    ` : ''}
-
-                    ${state.bestTodeVotingEnded && !state.bestTodeResults && isUserAdmin() ? `
-                    <div class="mt-4 flex justify-center">
-                      <button onclick="finalizeBestTode()" class="btn-primary">
-                        Finalize Results
-                      </button>
-                    </div>
-                    ` : ''}
-                  </div>
-                  `;
-                }
-
-                return '';
-              })()}
+              ${renderBestTodeSection()}
 
               <!-- Voting Power -->
               <div class="glass-card p-5">
