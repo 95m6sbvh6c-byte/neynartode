@@ -4211,6 +4211,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             userVote: state.bestTodeUserVote,
             votingEnded: state.bestTodeVotingEnded
           });
+          // Start the live countdown if voting is active
+          if (state.bestTodeActive && state.currentView === 'leaderboard') {
+            startBestTodeCountdown();
+          }
         }
 
         render();
@@ -4289,15 +4293,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const now = Math.floor(Date.now() / 1000);
       const remaining = state.bestTodeEndTime - now;
 
-      if (remaining <= 0) return { ended: true, text: 'Ended' };
+      if (remaining <= 0) return { ended: true, text: '00:00:00' };
 
       const hours = Math.floor(remaining / 3600);
       const minutes = Math.floor((remaining % 3600) / 60);
+      const seconds = remaining % 60;
 
-      if (hours > 0) {
-        return { ended: false, text: `${hours}h ${minutes}m` };
-      }
-      return { ended: false, text: `${minutes}m` };
+      // Format as HH:MM:SS
+      const pad = (n) => n.toString().padStart(2, '0');
+      return { ended: false, text: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` };
     }
 
     async function startBestTodeVoting() {
@@ -4468,9 +4472,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         `;
       }
 
+      const countdownHtml = (!state.bestTodeVotingEnded && !state.bestTodeResults)
+        ? `<span id="best-tode-countdown" class="font-mono font-bold text-[var(--accent-light)]">${timeRemaining ? timeRemaining.text : ''}</span>`
+        : '';
+
       const statusText = (state.bestTodeVotingEnded || state.bestTodeResults)
         ? 'Voting has ended'
-        : 'Vote for your favorite host! ' + timeText;
+        : `Vote for your favorite host!`;
 
       const voteStatusHtml = (!state.bestTodeVotingEnded && !state.bestTodeResults) ? `
         <div class="text-right">
@@ -4487,6 +4495,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           <div>
             <h2 class="text-xl font-bold text-[var(--accent-light)]">Best Tode Voting</h2>
             <p class="text-sm text-[var(--text-secondary)]">${statusText}</p>
+            ${countdownHtml ? `<p class="text-lg mt-1">Ends in ${countdownHtml}</p>` : ''}
           </div>
           ${voteStatusHtml}
         </div>
@@ -4641,6 +4650,45 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       if (countdownInterval) {
         clearInterval(countdownInterval);
         countdownInterval = null;
+      }
+    }
+
+    // Best Tode countdown timer - updates every second for live HH:MM:SS display
+    let bestTodeCountdownInterval = null;
+
+    function startBestTodeCountdown() {
+      stopBestTodeCountdown();
+      // Only start if Best Tode is active and voting hasn't ended
+      if (!state.bestTodeInitialized || state.bestTodeVotingEnded || state.bestTodeResults) return;
+
+      bestTodeCountdownInterval = setInterval(() => {
+        if (state.currentView === 'leaderboard') {
+          updateBestTodeCountdownDisplay();
+        }
+      }, 1000); // Update every second
+    }
+
+    function updateBestTodeCountdownDisplay() {
+      const countdownEl = document.getElementById('best-tode-countdown');
+      if (!countdownEl) return;
+
+      const timeRemaining = getBestTodeTimeRemaining();
+      if (!timeRemaining) {
+        countdownEl.textContent = '';
+      } else if (timeRemaining.ended) {
+        countdownEl.textContent = '00:00:00';
+        // Stop the interval and refresh status when voting ends
+        stopBestTodeCountdown();
+        loadBestTodeStatus();
+      } else {
+        countdownEl.textContent = timeRemaining.text;
+      }
+    }
+
+    function stopBestTodeCountdown() {
+      if (bestTodeCountdownInterval) {
+        clearInterval(bestTodeCountdownInterval);
+        bestTodeCountdownInterval = null;
       }
     }
 
@@ -6902,12 +6950,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.currentView = 'create';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'create' });
         stopCountdownTimer();
+        stopBestTodeCountdown();
         render();
       };
       if (viewHistory) viewHistory.onclick = () => {
         state.currentView = 'history';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'history' });
         stopCountdownTimer();
+        stopBestTodeCountdown();
         // Refresh history when switching to this view (manual refresh via Refresh button also available)
         loadHistory();
       };
@@ -6915,6 +6965,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.currentView = 'leaderboard';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'leaderboard' });
         startCountdownTimer();
+        startBestTodeCountdown();
         render();
 
         // Lazy-load leaderboard data and votes if not already loaded
@@ -6942,6 +6993,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.currentView = 'active';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'active' });
         stopCountdownTimer();
+        stopBestTodeCountdown();
         render();
       };
 
@@ -6951,6 +7003,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         state.currentView = 'suggestions';
         if (window.analytics?.track) window.analytics.track('View Changed', { view: 'suggestions' });
         stopCountdownTimer();
+        stopBestTodeCountdown();
         // Load suggestions for DEV
         if (isDevWallet(state.userAddress)) {
           loadSuggestions();
