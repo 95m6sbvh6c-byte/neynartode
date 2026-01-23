@@ -140,6 +140,50 @@ module.exports = async (req, res) => {
         });
       }
 
+      // Reset Best Tode data for a season
+      if (action === 'reset') {
+        // Get candidates to know which vote sets to delete
+        const existingCandidates = await kv.get(`best_tode:${seasonId}:candidates`);
+
+        // Delete all Best Tode keys for this season
+        const keysToDelete = [
+          `best_tode:${seasonId}:candidates`,
+          `best_tode:${seasonId}:end_time`,
+          `best_tode:${seasonId}:results`,
+          `best_tode:${seasonId}:distributed`
+        ];
+
+        // Delete vote sets for each candidate
+        if (existingCandidates && Array.isArray(existingCandidates)) {
+          for (const candidate of existingCandidates) {
+            keysToDelete.push(`best_tode:${seasonId}:votes:${candidate.fid}`);
+          }
+        }
+
+        // Delete all keys (kv.del returns number of keys deleted)
+        let deleted = 0;
+        for (const key of keysToDelete) {
+          try {
+            await kv.del(key);
+            deleted++;
+          } catch (e) {
+            // Key might not exist, that's ok
+          }
+        }
+
+        // Note: voted:{fid} keys are not deleted here as we don't track all voters
+        // They will naturally become irrelevant when a new Best Tode starts
+
+        console.log(`Best Tode reset for season ${seasonId}, deleted ${deleted} keys`);
+
+        return res.status(200).json({
+          success: true,
+          message: 'Best Tode data cleared',
+          seasonId: parseInt(seasonId),
+          keysDeleted: deleted
+        });
+      }
+
       return res.status(400).json({ error: 'Invalid action' });
 
     } catch (error) {
