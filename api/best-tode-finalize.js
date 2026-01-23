@@ -15,7 +15,7 @@
  *   6th-10th: 100M NEYNARTODES each
  */
 
-const ADMIN_FIDS = [3, 893935, 394128, 483571, 880094];
+const ADMIN_FIDS = [3, 893935, 394128, 483571, 880094, 1891537, 1188162];
 
 module.exports = async (req, res) => {
   // CORS headers
