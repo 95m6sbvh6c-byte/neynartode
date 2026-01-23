@@ -4311,9 +4311,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         return;
       }
 
-      // Get top 3 from leaderboard
-      if (state.leaderboardData.length < 3) {
-        showToast('Not enough hosts on leaderboard (need at least 3)', 'error');
+      // Get top 3 from leaderboard (or fewer if testing)
+      if (state.leaderboardData.length < 1) {
+        showToast('No hosts on leaderboard', 'error');
         return;
       }
 
@@ -4490,7 +4490,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           </div>
           ${voteStatusHtml}
         </div>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-${state.bestTodeCandidates.length} gap-3">
           ${candidatesHtml}
         </div>
         ${resultsHtml}

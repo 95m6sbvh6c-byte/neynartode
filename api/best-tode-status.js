@@ -112,8 +112,8 @@ module.exports = async (req, res) => {
     try {
       // Start voting
       if (action === 'start') {
-        if (!candidates || !Array.isArray(candidates) || candidates.length !== 3) {
-          return res.status(400).json({ error: 'Must provide exactly 3 candidates' });
+        if (!candidates || !Array.isArray(candidates) || candidates.length < 1 || candidates.length > 3) {
+          return res.status(400).json({ error: 'Must provide 1-3 candidates' });
         }
 
         // Check if already initialized
