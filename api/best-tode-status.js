@@ -122,8 +122,8 @@ module.exports = async (req, res) => {
           return res.status(400).json({ error: 'Best Tode already initialized for this season' });
         }
 
-        // Set 48 hour voting period from now
-        const endTime = Math.floor(Date.now() / 1000) + (48 * 60 * 60);
+        // Set 10 minute voting period for testing (change to 48 * 60 * 60 for production)
+        const endTime = Math.floor(Date.now() / 1000) + (10 * 60);
 
         await kv.set(`best_tode:${seasonId}:candidates`, candidates);
         await kv.set(`best_tode:${seasonId}:end_time`, endTime);
