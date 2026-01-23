@@ -2,7 +2,7 @@
  * Best Tode Finalize API (Admin only)
  *
  * POST /api/best-tode-finalize
- * Body: { seasonId: 1, adminFid: 893935 }
+ * Body: { seasonId: 1, adminFid: 1891537 }
  *
  * Finalizes Best Tode voting and calculates final rankings.
  * Can only be called after the 48-hour voting period ends.
@@ -15,7 +15,7 @@
  *   6th-10th: 100M NEYNARTODES each
  */
 
-const ADMIN_FIDS = [3, 893935, 394128, 483571, 880094, 1891537, 1188162];
+const ADMIN_FIDS = [1891537, 1188162];
 
 module.exports = async (req, res) => {
   // CORS headers

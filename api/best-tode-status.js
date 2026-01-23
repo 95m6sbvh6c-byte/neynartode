@@ -12,7 +12,7 @@
  *   Initializes Best Tode voting for a season
  */
 
-const ADMIN_FIDS = [3, 893935, 394128, 483571, 880094, 1891537, 1188162];
+const ADMIN_FIDS = [1891537, 1188162];
 
 module.exports = async (req, res) => {
   // CORS headers
