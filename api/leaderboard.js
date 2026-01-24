@@ -87,7 +87,7 @@ async function getTokenHoldings(addresses, tokenContract, kvClient = null) {
       try {
         const cached = await kvClient.get(kvCacheKey);
         if (cached && cached.balance !== undefined) {
-          if (Date.now() - cached.updatedAt < 3600000) {
+          if (Date.now() - cached.updatedAt < 600000) {  // 10 minutes
             totalBalance += BigInt(cached.balance);
             continue;
           }
@@ -106,7 +106,7 @@ async function getTokenHoldings(addresses, tokenContract, kvClient = null) {
             await kvClient.set(kvCacheKey, {
               balance: balance.toString(),
               updatedAt: Date.now(),
-            }, { ex: 3600 });
+            }, { ex: 600 });  // 10 minutes
           } catch (e) { }
         }
         break;
