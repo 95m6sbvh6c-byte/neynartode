@@ -62,10 +62,11 @@ const CONFIG = {
   // Note: FID 1188162 (app owner) removed for test mode
   BLOCKED_FIDS: [
     1990047,  // ropiik - scam token contests
-    892902,   // liadavid - suspected multi-account abuse
     533329,   // ayeshawaqas - suspected multi-account abuse
     940217,   // futurepicker - suspected multi-account abuse
     874752,   // lunamarsh - suspected multi-account abuse
+    1139990,  // sonite/bengarfm - suspected multi-account abuse
+    1354724,  // aeskyhigh - suspected multi-account abuse
   ],
 };
 
