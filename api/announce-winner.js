@@ -365,7 +365,8 @@ async function announceContestWinners(contestIdStr) {
       const totalAmount = Number(prizeAmount) / Math.pow(10, Number(decimals));
       const perWinner = totalAmount / uniqueWinnerCount;
       prizeDisplay = `${totalAmount.toLocaleString()} $${symbol}`;
-      perWinnerPrize = uniqueWinnerCount > 1 ? ` (${perWinner.toLocaleString()} each)` : '';
+      const perWinnerFormatted = perWinner % 1 === 0 ? perWinner.toString() : perWinner.toFixed(2);
+      perWinnerPrize = uniqueWinnerCount > 1 ? ` (${perWinnerFormatted} each)` : '';
     } catch (e) {
       prizeDisplay = `${ethers.formatEther(prizeAmount)} tokens`;
     }
@@ -394,34 +395,34 @@ async function announceContestWinners(contestIdStr) {
   try {
     if (process.env.KV_REST_API_URL) {
       const { kv } = require('@vercel/kv');
-      finalizeTxHash = await kv.get(`finalize_tx_${fullContestId}`);
+      finalizeTxHash = await kv.get(`finalize_tx:${fullContestId}`);
       finalizationData = await kv.get(`finalize_data:${fullContestId}`);
     }
   } catch (e) { /* ignore */ }
 
   // Build announcement message
   let announcement = isNftPrize
-    ? `NFT CONTEST ${fullContestId} COMPLETE!\n\n`
-    : `CONTEST ${fullContestId} COMPLETE!\n\n`;
+    ? `🖼️🎉 NFT CONTEST ${fullContestId} COMPLETE! 🎉🖼️\n\n`
+    : `🦎🎉 CONTEST ${fullContestId} COMPLETE! 🎉🔥\n\n`;
 
   if (customMessage) {
     announcement += `${customMessage}\n\n`;
   }
 
   if (hostTag) {
-    announcement += `Host: ${hostTag}\n`;
+    announcement += `🎙️ Host: ${hostTag}\n`;
   }
 
   if (winners.length === 1) {
-    announcement += `Winner: ${winnerProfiles[0].tag}\n`;
+    announcement += `🏆 Winner: ${winnerProfiles[0].tag}\n`;
   } else {
-    announcement += `Winners:\n`;
+    announcement += `🏆 Winners:\n`;
     winnerProfiles.forEach((wp, i) => {
       announcement += `   ${i + 1}. ${wp.tag}\n`;
     });
   }
 
-  announcement += `Prize: ${prizeDisplay}${perWinnerPrize}\n\n`;
+  announcement += `🎁 Prize: ${prizeDisplay}${perWinnerPrize}\n\n`;
 
   // Add contest stats if available
   if (finalizationData && finalizationData.summary) {
@@ -449,13 +450,13 @@ async function announceContestWinners(contestIdStr) {
     announcement += `\n`;
   }
 
-  announcement += `Selected via Chainlink VRF\n`;
+  announcement += `🔗 Selected via Chainlink VRF\n`;
 
   if (finalizeTxHash) {
     announcement += `https://basescan.org/tx/${finalizeTxHash}\n`;
   }
 
-  announcement += `\nCongrats to ${winners.length === 1 ? 'the winner' : 'all winners'}!\n\n`;
+  announcement += `\n🥳 Congrats to ${winners.length === 1 ? 'the winner' : 'all winners'}!\n\n`;
   announcement += `Launch your own contest: https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes`;
 
   // Post the announcement

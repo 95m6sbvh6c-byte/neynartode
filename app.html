@@ -1838,13 +1838,7 @@
         // Extract amount from prize (e.g., "0.01 ETH" -> "0.01")
         const amount = prize.replace(tokenSymbol, '').trim();
         const numericAmount = parseFloat(amount);
-        if (winnerCount > 1 && !isNaN(numericAmount)) {
-          // Show total prize and per-winner breakdown
-          const perWinner = (numericAmount / winnerCount).toFixed(numericAmount < 1 ? 4 : 2).replace(/\.?0+$/, '');
-          prizeText = `${amount} $${tokenSymbol} (${perWinner} each, ${winnerCount} winners)`;
-        } else {
-          prizeText = `${amount} $${tokenSymbol}`;
-        }
+        prizeText = `${amount} $${tokenSymbol}`;
       } else {
         prizeText = prize || 'tokens';
       }
@@ -1880,8 +1874,18 @@
       // Prize line with emoji
       const prizeLine = isNft ? `🖼️ Prize: ${prize}` : `🎁 Prize: ${prizeText}`;
 
-      // Winners line (if multiple)
-      const winnersLine = winnerCount > 1 ? `\n👥 ${winnerCount} Winners!` : '';
+      // Winners line (if multiple) with per-winner split
+      let winnersLine = '';
+      if (winnerCount > 1) {
+        const numAmount = parseFloat(prize);
+        if (!isNaN(numAmount) && numAmount > 0) {
+          const perWinner = numAmount / winnerCount;
+          const perWinnerDisplay = perWinner % 1 === 0 ? perWinner.toString() : perWinner.toFixed(2);
+          winnersLine = `\n👥 ${winnerCount} Winners!\n💰 ${perWinnerDisplay} $${tokenSymbol} each`;
+        } else {
+          winnersLine = `\n👥 ${winnerCount} Winners!`;
+        }
+      }
 
       // Build the share text to match contest creation format
       let text = `🦎 I just entered ${hostTag} raffle! Join now 🔥
@@ -1894,10 +1898,10 @@ ${prizeLine}
 1️⃣ Click Enter in the app (required!)
 
 🎟️ Bonus entries:
-💎 Hold 100M+ $NEYNARTODES
+💎 Hold 100M+ $NEYNARTODES (at finalization)
 💬 Reply with 3+ words
 📤 Share the contest
-📈 Trade $20+ volume
+📈 Trade $20+ volume (during contest)
 
 👇 Enter now!
 ${miniAppUrl}`;
@@ -8404,7 +8408,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         // Winner count (V2 contests can have multiple winners)
         const winnerCount = parseInt(state.winnerCount) || 1;
-        const winnersLine = winnerCount > 1 ? `👥 ${winnerCount} Winners!` : '';
+        let winnersLine = '';
+        if (winnerCount > 1) {
+          const prizeAmount = parseFloat(state.prizeTokenAmount) || 0;
+          const perWinner = prizeAmount / winnerCount;
+          const perWinnerDisplay = perWinner % 1 === 0 ? perWinner.toString() : perWinner.toFixed(2);
+          winnersLine = `👥 ${winnerCount} Winners!\n💰 ${perWinnerDisplay} $${state.prizeTokenTicker || 'ETH'} each`;
+        }
 
         // Build the cast text with mini app URL
         const miniAppUrl = `https://farcaster.xyz/miniapps/uaKwcOvUry8F/neynartodes?contestId=${contestId}&action=enter`;
@@ -8418,10 +8428,10 @@ ${prizeLine}
 1️⃣ Click Enter in the app (required!)
 
 🎟️ Bonus entries:
-💎 Hold 100M+ $NEYNARTODES
+💎 Hold 100M+ $NEYNARTODES (at finalization)
 💬 Reply with 3+ words
 📤 Share the contest
-📈 Trade $20+ volume
+📈 Trade $20+ volume (during contest)
 
 👇 Enter now!
 ${miniAppUrl}`;
