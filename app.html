@@ -1842,10 +1842,14 @@
         // NFT contests always have 1 winner
         prizeText = prize || 'an NFT';
       } else if (prize && tokenSymbol) {
-        // Extract amount from prize (e.g., "0.01 ETH" -> "0.01")
-        const amount = prize.replace(tokenSymbol, '').trim();
-        const numericAmount = parseFloat(amount);
-        prizeText = `${amount} $${tokenSymbol}`;
+        // prize is already formatted like "50,000,000 $CLAIM" or "0.01 ETH"
+        // Ensure token symbol has $ prefix for cashtag
+        if (prize.includes('$')) {
+          prizeText = prize;
+        } else {
+          const amount = prize.replace(tokenSymbol, '').trim();
+          prizeText = `${amount} $${tokenSymbol}`;
+        }
       } else {
         prizeText = prize || 'tokens';
       }
@@ -1884,10 +1888,13 @@
       // Winners line (if multiple) with per-winner split
       let winnersLine = '';
       if (winnerCount > 1) {
-        const numAmount = parseFloat(prize);
+        // Remove commas and non-numeric chars (except .) to parse the amount
+        const numAmount = parseFloat(prize.replace(/[^0-9.]/g, ''));
         if (!isNaN(numAmount) && numAmount > 0) {
           const perWinner = numAmount / winnerCount;
-          const perWinnerDisplay = perWinner % 1 === 0 ? perWinner.toString() : perWinner.toFixed(2);
+          const perWinnerDisplay = perWinner >= 1000
+            ? Math.round(perWinner).toLocaleString()
+            : perWinner % 1 === 0 ? perWinner.toString() : perWinner.toFixed(2);
           winnersLine = `\n👥 ${winnerCount} Winners!\n💰 ${perWinnerDisplay} $${tokenSymbol} each`;
         } else {
           winnersLine = `\n👥 ${winnerCount} Winners!`;
@@ -5873,7 +5880,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       data-hours="${hoursLeft}"
                       data-minutes="${minutesLeft}"
                       data-volume="${contest.volumeRequirement || 0}"
-                      data-token="${encodeURIComponent(contest.tokenRequirementSymbol || '')}"
+                      data-token="${encodeURIComponent(contest.prizeToken || '')}"
                       data-host="${encodeURIComponent(contest.hostUser?.username || '')}"
                       data-cast-id="${contest.castId || ''}"
                       data-is-nft="${contest.isNft || false}"
