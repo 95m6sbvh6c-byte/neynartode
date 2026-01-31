@@ -409,7 +409,7 @@ module.exports = async (req, res) => {
       const entryScore = totalEntries * 100;
       const voteScore = (stats.upvotes - stats.downvotes) * 100;
       const tokenScore = Math.floor(tokenHoldings / 1000000) * 10;
-      const prizeScore = Math.floor(totalPrizeUSD) * 500;
+      const prizeScore = Math.floor(totalPrizeUSD * 500);
       const totalScore = entryScore + voteScore + tokenScore + prizeScore;
 
       hostsWithScores.push({
