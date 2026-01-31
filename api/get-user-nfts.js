@@ -20,6 +20,57 @@ const BLOCKSCOUT_BASE_URL = 'https://base.blockscout.com/api/v2';
 // RPC for direct contract calls as fallback
 const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
 
+// IPFS gateways to try in order (ipfs.io is unreliable from serverless)
+const IPFS_GATEWAYS = [
+  'https://nftstorage.link/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://cloudflare-ipfs.com/ipfs/',
+  'https://ipfs.io/ipfs/',
+];
+
+/**
+ * Resolve an IPFS URI to an HTTP URL, trying multiple gateways
+ */
+function resolveIpfsUrl(uri) {
+  if (!uri) return '';
+  if (uri.startsWith('ipfs://')) return uri.replace('ipfs://', IPFS_GATEWAYS[0]);
+  if (uri.startsWith('ar://')) return uri.replace('ar://', 'https://arweave.net/');
+  return uri;
+}
+
+/**
+ * Fetch JSON from a URL with timeout, trying multiple IPFS gateways if needed
+ */
+async function fetchWithGatewayFallback(ipfsUri, timeoutMs = 8000) {
+  const ipfsPath = ipfsUri.startsWith('ipfs://') ? ipfsUri.replace('ipfs://', '') : null;
+
+  if (ipfsPath) {
+    for (const gateway of IPFS_GATEWAYS) {
+      try {
+        const url = gateway + ipfsPath;
+        const res = await fetch(url, {
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (res.ok) return await res.json();
+      } catch (e) {
+        console.log(`Gateway ${gateway} failed: ${e.message}`);
+      }
+    }
+    return null;
+  }
+
+  // Non-IPFS URL
+  let url = ipfsUri;
+  if (url.startsWith('ar://')) url = url.replace('ar://', 'https://arweave.net/');
+  const res = await fetch(url, {
+    headers: { 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (res.ok) return await res.json();
+  return null;
+}
+
 // NFT ABI for direct metadata fetching
 const NFT_ABI = [
   'function tokenURI(uint256 tokenId) view returns (string)',
@@ -80,22 +131,13 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
       }
     }
 
-    // Resolve metadata URL
-    let metadataUrl = tokenUri;
-    if (tokenUri.startsWith('ipfs://')) {
-      metadataUrl = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
-    } else if (tokenUri.startsWith('ar://')) {
-      metadataUrl = tokenUri.replace('ar://', 'https://arweave.net/');
-    } else if (tokenUri.startsWith('data:application/json')) {
-      // Handle base64 encoded JSON
+    // Handle base64 encoded JSON (data URIs)
+    if (tokenUri.startsWith('data:application/json')) {
       try {
         const base64Data = tokenUri.split(',')[1];
         const jsonStr = Buffer.from(base64Data, 'base64').toString('utf8');
         const metadata = JSON.parse(jsonStr);
-        let imageUrl = metadata.image || '';
-        if (imageUrl.startsWith('ipfs://')) {
-          imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
-        }
+        let imageUrl = resolveIpfsUrl(metadata.image || '');
         return {
           success: true,
           contractAddress,
@@ -124,12 +166,10 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
       }
     }
 
-    // Fetch metadata from URL
-    const metaResponse = await fetch(metadataUrl, {
-      headers: { 'Accept': 'application/json' }
-    });
+    // Fetch metadata with multi-gateway fallback for IPFS
+    const metadata = await fetchWithGatewayFallback(tokenUri);
 
-    if (!metaResponse.ok) {
+    if (!metadata) {
       return {
         success: true,
         contractAddress,
@@ -144,11 +184,8 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
       };
     }
 
-    const metadata = await metaResponse.json();
     let imageUrl = metadata.image || metadata.image_url || '';
-    if (imageUrl.startsWith('ipfs://')) {
-      imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
-    }
+    imageUrl = resolveIpfsUrl(imageUrl);
 
     return {
       success: true,

@@ -81,6 +81,47 @@ async function getUserByWallet(walletAddress) {
   }
 }
 
+// IPFS gateways to try in order
+const IPFS_GATEWAYS = [
+  'https://nftstorage.link/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://cloudflare-ipfs.com/ipfs/',
+  'https://ipfs.io/ipfs/',
+];
+
+function resolveIpfsUrl(uri) {
+  if (!uri) return '';
+  if (uri.startsWith('ipfs://')) return uri.replace('ipfs://', IPFS_GATEWAYS[0]);
+  if (uri.startsWith('ar://')) return uri.replace('ar://', 'https://arweave.net/');
+  return uri;
+}
+
+async function fetchWithGatewayFallback(ipfsUri, timeoutMs = 8000) {
+  const ipfsPath = ipfsUri.startsWith('ipfs://') ? ipfsUri.replace('ipfs://', '') : null;
+  if (ipfsPath) {
+    for (const gateway of IPFS_GATEWAYS) {
+      try {
+        const res = await fetch(gateway + ipfsPath, {
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (res.ok) return await res.json();
+      } catch (e) {}
+    }
+    return null;
+  }
+  let url = ipfsUri;
+  if (url.startsWith('ar://')) url = url.replace('ar://', 'https://arweave.net/');
+  try {
+    const res = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return null;
+}
+
 /**
  * Get NFT metadata (name, image)
  */
@@ -105,23 +146,14 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType) {
       return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
     }
 
-    let metadataUrl = tokenUri;
-    if (tokenUri.startsWith('ipfs://')) {
-      metadataUrl = tokenUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
-    } else if (tokenUri.startsWith('ar://')) {
-      metadataUrl = tokenUri.replace('ar://', 'https://arweave.net/');
-    } else if (tokenUri.startsWith('data:application/json')) {
+    if (tokenUri.startsWith('data:application/json')) {
       try {
         const base64Data = tokenUri.split(',')[1];
         const jsonStr = Buffer.from(base64Data, 'base64').toString('utf8');
         const metadata = JSON.parse(jsonStr);
-        let imageUrl = metadata.image || '';
-        if (imageUrl.startsWith('ipfs://')) {
-          imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
-        }
         return {
           name: metadata.name || `${collectionName} #${tokenId}`,
-          image: imageUrl,
+          image: resolveIpfsUrl(metadata.image || ''),
           collection: collectionName
         };
       } catch (e) {
@@ -129,21 +161,14 @@ async function getNftMetadata(provider, nftContract, tokenId, nftType) {
       }
     }
 
-    try {
-      const response = await fetch(metadataUrl, { signal: AbortSignal.timeout(5000) });
-      if (response.ok) {
-        const metadata = await response.json();
-        let imageUrl = metadata.image || '';
-        if (imageUrl.startsWith('ipfs://')) {
-          imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
-        }
-        return {
-          name: metadata.name || `${collectionName} #${tokenId}`,
-          image: imageUrl,
-          collection: collectionName
-        };
-      }
-    } catch (e) {}
+    const metadata = await fetchWithGatewayFallback(tokenUri);
+    if (metadata) {
+      return {
+        name: metadata.name || `${collectionName} #${tokenId}`,
+        image: resolveIpfsUrl(metadata.image || ''),
+        collection: collectionName
+      };
+    }
 
     return { name: `${collectionName} #${tokenId}`, image: '', collection: collectionName };
   } catch (e) {
