@@ -8,7 +8,7 @@
  *   Total Score = Entry Score + Vote Score + Token Score + Prize Score
  *   Entry Score = 100 points per contest entry received
  *   Vote Score = 100 points per net vote (upvotes - downvotes)
- *   Token Score = 10 points per 100,000 NEYNARTODES held
+ *   Token Score = 10 points per 1,000,000 NEYNARTODES held
  *   Prize Score = 500 points per $1 USD given away in completed contests
  *
  * Usage:
@@ -404,11 +404,11 @@ module.exports = async (req, res) => {
       // SCORING SYSTEM:
       // - Entry Score: 100 points per contest entry
       // - Vote Score: 100 points per net vote (upvotes - downvotes)
-      // - Token Score: 10 points per 100,000 NEYNARTODES held
+      // - Token Score: 10 points per 1,000,000 NEYNARTODES held
       // - Prize Score: 500 points per $1 USD given away in completed contests
       const entryScore = totalEntries * 100;
       const voteScore = (stats.upvotes - stats.downvotes) * 100;
-      const tokenScore = Math.floor(tokenHoldings / 100000) * 10;
+      const tokenScore = Math.floor(tokenHoldings / 1000000) * 10;
       const prizeScore = Math.floor(totalPrizeUSD) * 500;
       const totalScore = entryScore + voteScore + tokenScore + prizeScore;
 
@@ -473,7 +473,7 @@ module.exports = async (req, res) => {
         total: 'Entry Score + Vote Score + Token Score + Prize Score',
         entry: '100 points per contest entry received',
         vote: '100 points per net vote (upvotes - downvotes)',
-        token: '10 points per 100,000 NEYNARTODES held',
+        token: '10 points per 1,000,000 NEYNARTODES held',
         prize: '500 points per $1 USD given away in completed contests',
       },
     };
