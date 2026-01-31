@@ -1046,6 +1046,13 @@
         toast.style.paddingRight = '32px';
       }
 
+      // Click anywhere on toast to close
+      toast.style.cursor = 'pointer';
+      toast.onclick = () => {
+        toast.style.animation = 'toastOut 0.3s ease-out forwards';
+        setTimeout(() => toast.remove(), 300);
+      };
+
       container.appendChild(toast);
 
       // Auto-remove after duration (skip if duration is 0 for persistent)
@@ -4397,25 +4404,34 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const now = Math.floor(Date.now() / 1000);
       const seasonEnded = state.seasonEndTime && now >= state.seasonEndTime;
 
-      // Admin: Show "Start Best Tode" when season ended but not initialized
-      if (seasonEnded && !state.bestTodeInitialized && isUserAdmin()) {
+      const bestTodeInfoText = 'Best Tode Voting:\\n\\nAt the end of each season, the top 3 hosts are nominated for Best Tode.\\n\\nAll users get 1 vote to pick their favorite host.\\nVoting lasts 48 hours after the season ends.\\n\\nThe Best Tode winner receives a commemorative NFT and bragging rights!\\n\\nThe voter pool is split among voters who picked the winning host.';
+
+      // Season active & not initialized - show preview
+      if (!state.bestTodeInitialized) {
+        const adminBtn = (seasonEnded && isUserAdmin())
+          ? `<button onclick="startBestTodeVoting()" class="btn-primary text-sm">Start Best Tode</button>`
+          : '';
+
         return `
         <div class="glass-card-accent p-5">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between mb-3">
             <div>
-              <h2 class="text-xl font-bold text-[var(--accent-light)]">Season Ended</h2>
-              <p class="text-sm text-[var(--text-secondary)]">Start Best Tode voting for top 3 hosts</p>
+              <h2 class="text-xl font-bold text-[var(--accent-light)]">Best Tode Voting</h2>
+              <p class="text-sm text-[var(--text-secondary)]">${seasonEnded ? 'Season ended — voting can begin!' : 'Coming at end of season'}</p>
             </div>
-            <button onclick="startBestTodeVoting()" class="btn-primary">
-              Start Best Tode
-            </button>
+            <div class="flex items-center gap-2">
+              ${adminBtn}
+              <button onclick="showToast('${bestTodeInfoText}', 'info', 0)" class="btn-ghost text-sm">Info</button>
+            </div>
+          </div>
+          <div class="p-4 bg-[var(--bg-secondary)] rounded-xl text-center">
+            <div class="text-4xl mb-2">🦎</div>
+            <p class="text-sm text-[var(--text-secondary)]">Top 3 hosts will be nominated for <span class="text-[var(--accent-light)] font-semibold">Best Tode</span></p>
+            <p class="text-xs text-[var(--text-muted)] mt-2">All users get 1 vote • 48hr voting period • Voter pool rewards</p>
           </div>
         </div>
         `;
       }
-
-      // Show Best Tode voting UI when initialized
-      if (!state.bestTodeInitialized) return '';
 
       const timeRemaining = getBestTodeTimeRemaining();
       const timeText = timeRemaining ? (timeRemaining.ended ? '' : 'Ends in ' + timeRemaining.text) : '';
@@ -4497,7 +4513,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             <p class="text-sm text-[var(--text-secondary)]">${statusText}</p>
             ${countdownHtml ? `<p class="text-lg mt-1">Ends in ${countdownHtml}</p>` : ''}
           </div>
-          ${voteStatusHtml}
+          <div class="flex items-center gap-2">
+            <button onclick="showToast('${bestTodeInfoText}', 'info', 0)" class="btn-ghost text-sm">Info</button>
+            ${voteStatusHtml}
+          </div>
         </div>
         <div class="grid grid-cols-${state.bestTodeCandidates.length} gap-3">
           ${candidatesHtml}
@@ -5552,11 +5571,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     <h2 class="text-xl font-bold"><span class="text-gradient">NEYNARtodes</span> <span class="text-[var(--text-primary)]">Leaderboard</span></h2>
                     <p class="text-sm text-[var(--text-muted)]">Season ${state.currentSeason} Rankings</p>
                   </div>
-                  <a
-                    href="https://github.com/95m6sbvh6c-byte/neynartode/blob/main/docs/GUIDE_LEADERBOARD.md"
-                    target="_blank"
+                  <button
+                    onclick="showToast('Prize Distribution (End of Season):\n\n1st Place — 50% of Host Prize Pool\n2nd Place — 30% of Host Prize Pool\n3rd Place — 15% of Host Prize Pool\nTreasury — 5% of Host Prize Pool\n\n4th-5th Place — 200M $NEYNARTODES each\n6th-10th Place — 100M $NEYNARTODES each', 'info', 0)"
                     class="btn-ghost text-sm"
-                  >Guide</a>
+                  >Prize Distribution</button>
                 </div>
                 <div class="mb-5 p-3 bg-[var(--bg-secondary)] rounded-xl text-xs text-[var(--text-secondary)] grid grid-cols-2 md:grid-cols-4 gap-2">
                   <div><span class="text-[var(--accent-light)]">Total</span> = Entry + Vote + Token + Prize</div>
