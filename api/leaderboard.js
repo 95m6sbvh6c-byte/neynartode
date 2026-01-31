@@ -239,8 +239,9 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Process Test contests (T-)
-    for (let i = 1; i <= totalTestContests; i += BATCH_SIZE) {
+    // Skip Test contests (T-) for production — only score M- contests
+    const INCLUDE_TEST_CONTESTS = false;
+    for (let i = 1; INCLUDE_TEST_CONTESTS && i <= totalTestContests; i += BATCH_SIZE) {
       const batch = [];
       for (let j = i; j < Math.min(i + BATCH_SIZE, totalTestContests + 1); j++) {
         batch.push(j);

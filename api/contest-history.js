@@ -420,9 +420,10 @@ module.exports = async (req, res) => {
     for (let i = totalMainContests; i >= 1; i--) {
       contestPromises.push(getContestDetails(provider, contract, i, false));
     }
-    for (let i = totalTestContests; i >= 1; i--) {
-      contestPromises.push(getContestDetails(provider, contract, i, true));
-    }
+    // Skip Test contests (T-) for production — only show M- contests
+    // for (let i = totalTestContests; i >= 1; i--) {
+    //   contestPromises.push(getContestDetails(provider, contract, i, true));
+    // }
 
     const allContests = (await Promise.all(contestPromises)).filter(c => c !== null);
 
