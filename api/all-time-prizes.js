@@ -89,7 +89,7 @@ module.exports = async (req, res) => {
       if (type === PRIZE_TYPE.ERC20) {
         if (kvClient) {
           const priceData = await kvClient.get(`contest_price_prize_${contestId}`).catch(() => null);
-          if (priceData?.prizeValueUSD) return Math.min(priceData.prizeValueUSD, MAX_PRIZE_USD);
+          if (priceData?.prizeValueUSD && priceData.prizeValueUSD >= 0.01) return Math.min(priceData.prizeValueUSD, MAX_PRIZE_USD);
         }
         // Fallback: calculate from on-chain token price
         if (prizeTokenAddr && prizeTokenAddr !== ethers.ZeroAddress) {

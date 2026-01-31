@@ -356,7 +356,7 @@ module.exports = async (req, res) => {
             // ERC20 token contests (type 1): lookup stored price, fallback to live price
             if (c.contestType === 1) {
               const priceData = await kvClient.get(`contest_price_prize_${c.id}`).catch(() => null);
-              if (priceData?.prizeValueUSD) return Math.min(priceData.prizeValueUSD, MAX_PRIZE_USD);
+              if (priceData?.prizeValueUSD && priceData.prizeValueUSD >= 0.01) return Math.min(priceData.prizeValueUSD, MAX_PRIZE_USD);
               // Fallback: calculate from on-chain token price
               if (c.prizeToken && c.prizeToken !== ethers.ZeroAddress) {
                 try {
