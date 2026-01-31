@@ -17,7 +17,7 @@
 
 const { ethers } = require('ethers');
 const { getUserByWallet: getCachedUserByWallet } = require('./lib/utils');
-const { getETHPrice } = require('./lib/uniswap-volume');
+const { getETHPrice, getTokenPriceUSD } = require('./lib/uniswap-volume');
 
 const CONFIG = {
   // Unified ContestManager (M- and T- prefix contests)
@@ -212,7 +212,7 @@ module.exports = async (req, res) => {
         const contest = contestResults[j];
         if (!contest) continue;
 
-        const { host, status, contestType, prizeAmount } = contest;
+        const { host, status, contestType, prizeAmount, prizeToken } = contest;
         const hostLower = host.toLowerCase();
 
         if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
@@ -234,6 +234,7 @@ module.exports = async (req, res) => {
             id: `M-${batch[j]}`,
             contestType: Number(contestType),
             prizeAmount: prizeAmount.toString(),
+            prizeToken: prizeToken,
           });
         }
       }
@@ -352,10 +353,28 @@ module.exports = async (req, res) => {
               usd = ethAmount > 0 ? ethAmount * ethPriceUSD : 0;
               return Math.min(usd, MAX_PRIZE_USD);
             }
-            // ERC20 token contests (type 1): lookup stored price
+            // ERC20 token contests (type 1): lookup stored price, fallback to live price
             if (c.contestType === 1) {
               const priceData = await kvClient.get(`contest_price_prize_${c.id}`).catch(() => null);
-              return Math.min(priceData?.prizeValueUSD || 0, MAX_PRIZE_USD);
+              if (priceData?.prizeValueUSD) return Math.min(priceData.prizeValueUSD, MAX_PRIZE_USD);
+              // Fallback: calculate from on-chain token price
+              if (c.prizeToken && c.prizeToken !== ethers.ZeroAddress) {
+                try {
+                  const tokenPrice = await getTokenPriceUSD(provider, c.prizeToken);
+                  if (tokenPrice > 0) {
+                    const tokenContract = new ethers.Contract(c.prizeToken, ['function decimals() view returns (uint8)'], provider);
+                    const decimals = await tokenContract.decimals().catch(() => 18n);
+                    const amount = Number(ethers.formatUnits(c.prizeAmount, Number(decimals)));
+                    usd = amount * tokenPrice;
+                    // Cache for future lookups
+                    await kvClient.set(`contest_price_prize_${c.id}`, { prizeValueUSD: usd }).catch(() => {});
+                    return Math.min(usd, MAX_PRIZE_USD);
+                  }
+                } catch (e) {
+                  console.log(`Error getting ERC20 price for ${c.id}:`, e.message);
+                }
+              }
+              return 0;
             }
             // NFT contests (type 2, 3): lookup stored floor price
             if (c.contestType === 2 || c.contestType === 3) {

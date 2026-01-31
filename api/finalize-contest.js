@@ -20,7 +20,7 @@
 
 const { ethers } = require('ethers');
 const { parseContestId } = require('./lib/config');
-const { getUniswapVolumes } = require('./lib/uniswap-volume');
+const { getUniswapVolumes, getTokenPriceUSD } = require('./lib/uniswap-volume');
 
 // ═══════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -521,6 +521,8 @@ async function finalizeUnifiedContest(contestIdStr) {
     castId,
     startTime,
     endTime,
+    prizeToken,
+    prizeAmount,
     winnerCount
   } = contest;
 
@@ -955,6 +957,9 @@ async function finalizeUnifiedContest(contestIdStr) {
 
       await kv.set(`finalize_data:${contestIdStr}`, finalizationData, { ex: 60 * 60 * 24 * 90 }); // 90 day TTL
       console.log(`   📊 Finalization data stored in KV`);
+
+      // Prize value is stored at contest creation time by the frontend via /api/store
+      // (KV key: contest_price_prize_{contestId}) — no overwrite here to preserve historical price
     } catch (e) {
       console.log(`   ⚠️ Could not store finalization data: ${e.message}`);
     }
