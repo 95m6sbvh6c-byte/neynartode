@@ -2082,7 +2082,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         buyBurnHoldEarn: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28', // BuyBurnHoldEarn - distributes 25% entrant, 25% burn, 35% treasury, 15% host
 
         // === Shared Contracts ===
-        prizeNFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
+        prizeNFT: '0x181a7Ec7496bf525BB0F3d007bD06dB4983BeBD1',
         votingManager: '0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB',  // V3 - adjustable vote cost
         treasury: '0xd4d84f3477eb482783aAB48F00e357C801c48928',
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
@@ -3825,11 +3825,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       try {
         console.log('Loading prize pools from PrizeNFT:', CONFIG.CONTRACTS.prizeNFT);
 
-        // Load current season and prize pools from PrizeNFT contract (V2 - no devPool)
-        // Uses shared rpcProvider for efficiency
+        // Load current season and prize pools from PrizeNFT_Season0 contract
+        // Supports test mode (testSeasons/testNextSeasonId) and main mode (seasons/nextSeasonId)
         const prizeNFTABI = [
+          'function testMode() external view returns (bool)',
           'function nextSeasonId() external view returns (uint256)',
-          'function seasons(uint256) external view returns (string theme, uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)'
+          'function testNextSeasonId() external view returns (uint256)',
+          'function seasons(uint256) external view returns (string theme, uint256 durationDays, uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)',
+          'function testSeasons(uint256) external view returns (string theme, uint256 durationDays, uint256 startTime, uint256 endTime, uint256 hostPool, uint256 voterPool, bool distributed)'
         ];
 
         const prizeNFT = new ethers.Contract(
@@ -3838,19 +3841,27 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           rpcProvider
         );
 
-        // Get current season ID (latest season)
-        console.log('Calling nextSeasonId()...');
-        const nextSeasonId = await prizeNFT.nextSeasonId();
+        // Check if contract is in test mode
+        const isTestMode = await prizeNFT.testMode();
+        console.log('PrizeNFT test mode:', isTestMode);
+
+        // Get current season ID based on mode
+        const nextSeasonId = isTestMode
+          ? await prizeNFT.testNextSeasonId()
+          : await prizeNFT.nextSeasonId();
         console.log('nextSeasonId result:', nextSeasonId.toString());
         state.currentSeason = nextSeasonId.toNumber() - 1;
         console.log('currentSeason:', state.currentSeason);
 
         if (state.currentSeason > 0) {
-          // Get season data
-          console.log('Calling seasons(' + state.currentSeason + ')...');
-          const season = await prizeNFT.seasons(state.currentSeason);
+          // Get season data from correct mapping
+          console.log('Calling ' + (isTestMode ? 'testSeasons' : 'seasons') + '(' + state.currentSeason + ')...');
+          const season = isTestMode
+            ? await prizeNFT.testSeasons(state.currentSeason)
+            : await prizeNFT.seasons(state.currentSeason);
           console.log('Season data:', {
             theme: season.theme,
+            durationDays: season.durationDays.toString(),
             startTime: season.startTime.toString(),
             endTime: season.endTime.toString(),
             hostPool: season.hostPool.toString(),
