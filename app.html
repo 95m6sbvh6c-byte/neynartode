@@ -1996,7 +1996,9 @@ ${miniAppUrl}`;
       const totalEntries = host.totalEntries || 0;
       const entryScore = host.entryScore || (totalEntries * 100);
       const tokenHoldings = host.tokenHoldings || 0;
-      const tokenScore = host.tokenScore || (Math.floor(tokenHoldings / 100000) * 100);
+      const tokenScore = host.tokenScore || (Math.floor(tokenHoldings / 100000) * 10);
+      const totalPrizeUSD = host.totalPrizeUSD || 0;
+      const prizeScore = host.prizeScore || (Math.floor(totalPrizeUSD) * 500);
       const completedContests = host.completedContests || host.contests || 0;
 
       const text = `${rankEmoji} @${host.username} on the $NEYNARTODES Leaderboard!
@@ -2008,7 +2010,8 @@ ${miniAppUrl}`;
 📈 Score Breakdown:
 • 🎟️ Entries: ${totalEntries} × 100 = ${entryScore.toLocaleString()} pts
 • 🗳️ Votes: ${netVotes >= 0 ? '+' : ''}${netVotes} × 100 = ${voteScore >= 0 ? '+' : ''}${voteScore.toLocaleString()} pts
-• 💰 Tokens: ${tokenHoldings.toLocaleString()} ÷ 100k × 100 = ${tokenScore.toLocaleString()} pts
+• 💰 Tokens: ${tokenHoldings.toLocaleString()} ÷ 100k × 10 = ${tokenScore.toLocaleString()} pts
+• 🎁 Prizes: $${totalPrizeUSD.toFixed(2)} × 500 = ${prizeScore.toLocaleString()} pts
 
 👍 ${upvotes} upvotes | 👎 ${downvotes} downvotes
 
@@ -3963,6 +3966,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             entryScore: host.entryScore || 0,
             voteScore: host.voteScore || 0,
             tokenScore: host.tokenScore || 0,
+            prizeScore: host.prizeScore || 0,
+            totalPrizeUSD: host.totalPrizeUSD || 0,
             totalScore: host.totalScore || 0,
             neynarScore: host.neynarScore,
           };
@@ -5559,10 +5564,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   >Guide</a>
                 </div>
                 <div class="mb-5 p-3 bg-[var(--bg-secondary)] rounded-xl text-xs text-[var(--text-secondary)] grid grid-cols-2 md:grid-cols-4 gap-2">
-                  <div><span class="text-[var(--accent-light)]">Total</span> = Entry + Vote + Token</div>
+                  <div><span class="text-[var(--accent-light)]">Total</span> = Entry + Vote + Token + Prize</div>
                   <div><span class="text-[var(--text-primary)]">Entry</span> = Entries × 100</div>
                   <div><span class="text-[var(--text-primary)]">Vote</span> = Net Votes × 100</div>
-                  <div><span class="text-[var(--text-primary)]">Token</span> = (Holdings ÷ 100k) × 100</div>
+                  <div><span class="text-[var(--text-primary)]">Token</span> = (Holdings ÷ 100k) × 10</div>
+                  <div><span class="text-[var(--text-primary)]">Prize</span> = $USD Given × 500</div>
                 </div>
 
                 <div class="overflow-x-auto">
