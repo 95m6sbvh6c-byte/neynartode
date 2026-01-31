@@ -5588,7 +5588,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                         <th class="text-left py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Host</th>
                         <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Score</th>
                         <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Vote</th>
-                        <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Contests</th>
+                        <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Prizes</th>
                         <th class="text-right py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Neynar</th>
                         <th class="text-center py-3 px-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider"></th>
                       </tr>
@@ -5623,7 +5623,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                               ${(host.totalScore || 0).toLocaleString()}
                             </div>
                             <div class="text-xs text-[var(--text-muted)] mt-0.5">
-                              ${(host.entryScore || 0).toLocaleString()} entry · ${(host.voteScore || 0).toLocaleString()} vote · ${(host.tokenScore || 0).toLocaleString()} token
+                              ${(host.entryScore || 0).toLocaleString()} entry · ${(host.voteScore || 0).toLocaleString()} vote · ${(host.tokenScore || 0).toLocaleString()} token · ${(host.prizeScore || 0).toLocaleString()} prize
                             </div>
                           </td>
                           <td class="py-4 px-2">
@@ -5643,8 +5643,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                             </div>
                           </td>
                           <td class="py-4 px-2 text-right">
-                            <div class="font-medium text-[var(--text-primary)]">${host.completedContests || host.contests || 0}</div>
-                            <div class="text-xs text-[var(--text-muted)]">${host.contests || 0} total</div>
+                            <div class="font-medium text-[var(--text-primary)]">$${(host.totalPrizeUSD || 0).toFixed(2)}</div>
+                            <div class="text-xs text-[var(--text-muted)]">${host.completedContests || 0} contests</div>
                           </td>
                           <td class="py-4 px-2 text-right">
                             <span class="tag tag-accent">${host.neynarScore}</span>
