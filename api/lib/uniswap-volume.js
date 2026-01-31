@@ -614,7 +614,19 @@ async function getHistoricalTokenPriceUSD(provider, tokenAddress, blockNumber) {
  * Get approximate token price in USD using ETH pair
  * Priority: Known V4 pools > V2 pools > V3 pools > V4 discovery
  */
+// Known stablecoins on Base (always ~$1 USD)
+const STABLECOINS = [
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC
+  '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', // DAI
+  '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca', // USDbC
+];
+
 async function getTokenPriceUSD(provider, tokenAddress) {
+  // Short-circuit for stablecoins
+  if (STABLECOINS.includes(tokenAddress.toLowerCase())) {
+    return 1.0;
+  }
+
   // Get current ETH price from Chainlink
   const ethPriceUSD = await getETHPrice(provider);
 

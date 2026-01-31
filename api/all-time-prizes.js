@@ -71,25 +71,30 @@ module.exports = async (req, res) => {
     let completedTestContests = 0;
 
     // Helper to get prize USD value for a contest
+    // Cap per-contest prize at $1M to filter corrupted price data
+    const MAX_PRIZE_USD = 1_000_000;
+
     async function getContestPrizeUSD(contestType, prizeAmount, contestId) {
       const type = Number(contestType);
+      let usd = 0;
       if (type === PRIZE_TYPE.ETH) {
-        // Check KV cache first, fallback to on-chain calculation
         if (kvClient) {
           const cached = await kvClient.get(`contest_price_prize_${contestId}`).catch(() => null);
-          if (cached?.prizeValueUSD) return cached.prizeValueUSD;
+          if (cached?.prizeValueUSD) { usd = cached.prizeValueUSD; return Math.min(usd, MAX_PRIZE_USD); }
         }
         const ethAmount = Number(ethers.formatEther(prizeAmount));
         totalETH += ethAmount;
-        return ethAmount * ethPrice;
+        return Math.min(ethAmount * ethPrice, MAX_PRIZE_USD);
       }
       if (type === PRIZE_TYPE.ERC20 && kvClient) {
         const priceData = await kvClient.get(`contest_price_prize_${contestId}`).catch(() => null);
-        return priceData?.prizeValueUSD || 0;
+        usd = priceData?.prizeValueUSD || 0;
+        return Math.min(usd, MAX_PRIZE_USD);
       }
       if ((type === PRIZE_TYPE.ERC721 || type === PRIZE_TYPE.ERC1155) && kvClient) {
         const nftData = await kvClient.get(`nft_price_${contestId}`).catch(() => null);
-        return nftData?.floorPriceUSD || 0;
+        usd = nftData?.floorPriceUSD || 0;
+        return Math.min(usd, MAX_PRIZE_USD);
       }
       return 0;
     }

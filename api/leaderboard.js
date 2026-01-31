@@ -336,26 +336,30 @@ module.exports = async (req, res) => {
       }
 
       // Fetch prize values (USD) for all completed contests
+      // Cap per-contest prize at $1M to filter corrupted price data
+      const MAX_PRIZE_USD = 1_000_000;
       let totalPrizeUSD = 0;
       if (kvClient && stats.completedContestIds.length > 0) {
         try {
           const prizePromises = stats.completedContestIds.map(async (c) => {
+            let usd = 0;
             // ETH contests (type 0): check KV cache first, fallback to on-chain calc
             if (c.contestType === 0) {
               const cached = await kvClient.get(`contest_price_prize_${c.id}`).catch(() => null);
-              if (cached?.prizeValueUSD) return cached.prizeValueUSD;
+              if (cached?.prizeValueUSD) return Math.min(cached.prizeValueUSD, MAX_PRIZE_USD);
               const ethAmount = Number(ethers.formatEther(c.prizeAmount));
-              return ethAmount > 0 ? ethAmount * ethPriceUSD : 0;
+              usd = ethAmount > 0 ? ethAmount * ethPriceUSD : 0;
+              return Math.min(usd, MAX_PRIZE_USD);
             }
             // ERC20 token contests (type 1): lookup stored price
             if (c.contestType === 1) {
               const priceData = await kvClient.get(`contest_price_prize_${c.id}`).catch(() => null);
-              return priceData?.prizeValueUSD || 0;
+              return Math.min(priceData?.prizeValueUSD || 0, MAX_PRIZE_USD);
             }
             // NFT contests (type 2, 3): lookup stored floor price
             if (c.contestType === 2 || c.contestType === 3) {
               const nftData = await kvClient.get(`nft_price_${c.id}`).catch(() => null);
-              return nftData?.floorPriceUSD || 0;
+              return Math.min(nftData?.floorPriceUSD || 0, MAX_PRIZE_USD);
             }
             return 0;
           });
