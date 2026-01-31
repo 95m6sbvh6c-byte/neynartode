@@ -308,7 +308,7 @@ module.exports = async (req, res) => {
 
   const { type } = req.query;
 
-  if (!type || !['message', 'price', 'nftprice'].includes(type)) {
+  if (!type || !['message', 'price', 'nftprice', 'admin-set-prize'].includes(type)) {
     return res.status(400).json({
       error: 'Missing or invalid type parameter',
       usage: 'Use ?type=message, ?type=price, or ?type=nftprice'
@@ -331,6 +331,26 @@ module.exports = async (req, res) => {
       } else if (req.method === 'POST') {
         const { contestId, tokenAddress, prizeAmount } = req.body;
         return storePrice(contestId, tokenAddress, prizeAmount, res);
+      }
+    }
+
+    if (type === 'admin-set-prize') {
+      const authKey = req.headers.authorization?.replace('Bearer ', '');
+      const expectedKey = process.env.NOTIFICATION_SECRET || 'neynartodes-notif-secret';
+      if (authKey !== expectedKey) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      if (req.method === 'POST') {
+        const { contestId, prizeValueUSD } = req.body;
+        if (!contestId || prizeValueUSD == null) {
+          return res.status(400).json({ error: 'Missing contestId or prizeValueUSD' });
+        }
+        if (process.env.KV_REST_API_URL) {
+          const { kv } = require('@vercel/kv');
+          await kv.set(`contest_price_prize_${contestId}`, { prizeValueUSD });
+          return res.status(200).json({ success: true, contestId, prizeValueUSD });
+        }
+        return res.status(500).json({ error: 'KV not configured' });
       }
     }
 
