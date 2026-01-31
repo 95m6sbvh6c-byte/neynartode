@@ -59,8 +59,9 @@ const CONFIG = {
   TRANSFER_COOLDOWN_HOURS: 36,
 
   // Blocked FIDs - these users cannot win contests
-  // Note: FID 1188162 (app owner) removed for test mode
   BLOCKED_FIDS: [
+    1188162,  // brianwharton - app owner
+    1891537,  // neynartodes - official account
     1990047,  // ropiik - scam token contests
     533329,   // ayeshawaqas - suspected multi-account abuse
     940217,   // futurepicker - suspected multi-account abuse

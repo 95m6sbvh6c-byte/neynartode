@@ -9,7 +9,7 @@
   <meta name="fc:frame" content='{"version":"1","imageUrl":"https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png","button":{"title":"Launch NEYNARtodes","action":{"type":"launch_frame","name":"NEYNARtodes","url":"https://frame-opal-eight.vercel.app/app","splashImageUrl":"https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png","splashBackgroundColor":"#667eea"}}}' />
 
   <!-- Open Graph -->
-  <meta property="og:title" content="NEYNARtodes - Season 0 Beta" />
+  <meta property="og:title" content="NEYNARtodes - Season 1" />
   <meta property="og:description" content="Create contests on Farcaster!" />
   <meta property="og:image" content="https://frame-opal-eight.vercel.app/Neynartodes_1200x638_splash.png" />
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
@@ -2099,7 +2099,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         neynartodes: '0x8de1622fe07f56cda2e2273e615a513f1d828b07'
       },
       // Test mode - creates T- prefix contests with separate counter
-      TEST_MODE: true,  // Set to false for production M- prefix contests
+      TEST_MODE: false,  // Set to false for production M- prefix contests
       // Contest ID prefixes
       MAIN_PREFIX: 'M-',
       TEST_PREFIX: 'T-',
@@ -2108,9 +2108,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         1990047,  // ropiik - scam token contests
       ],
       // Maintenance mode - blocks all users except admins
-      MAINTENANCE_MODE: false,
+      MAINTENANCE_MODE: true,
       // Public testing mode - allows entry but hides create/leaderboard/history for non-admins
-      PUBLIC_TESTING_MODE: true,
+      PUBLIC_TESTING_MODE: false,
       ADMIN_FIDS: [
         1188162,  // brianwharton - app owner
         1891537,  // neynartodes - official account
@@ -5114,10 +5114,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           <div style="background: rgba(102, 126, 234, 0.2); border: 1px solid rgba(102, 126, 234, 0.4); border-radius: 12px; padding: 1.5rem; max-width: 400px; margin-bottom: 2rem;">
             <div style="font-size: 1rem; color: #e2e8f0; margin-bottom: 1rem;">
-              BETA Season has ended!
+              Season 1 is coming!
             </div>
             <div style="font-size: 0.9rem; color: #a0aec0; line-height: 1.6;">
-              Thank you to all our amazing hosts and participants. We're working on exciting updates for Main Launch.
+              We're preparing for Season 1. Stay tuned!
             </div>
           </div>
 
@@ -5305,7 +5305,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               </div>
               <div>
                 <h1 class="text-xl font-bold text-gradient">NEYNARtodes</h1>
-                <p class="text-xs text-[var(--text-muted)]">Season 0 Beta</p>
+                <p class="text-xs text-[var(--text-muted)]">Season 1</p>
               </div>
             </div>
             <div class="flex items-center gap-3">
@@ -5322,25 +5322,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             </div>
           </div>
 
-          <!-- Public Testing Mode Banner -->
-          ${CONFIG.PUBLIC_TESTING_MODE && state.currentView === 'active' ? `
-            <div class="mb-3 p-4 rounded-xl bg-gradient-to-r from-[var(--warning)]/20 to-[var(--accent)]/20 border border-[var(--warning)]/40">
-              <div class="flex items-center gap-3 mb-2">
-                <span class="text-2xl">🧪</span>
-                <div>
-                  <h3 class="font-bold text-[var(--text-primary)]">Public Testing Phase</h3>
-                  <p class="text-xs text-[var(--text-muted)]">Contest entries are now open!</p>
-                </div>
-              </div>
-              <p class="text-sm text-[var(--text-secondary)] mb-2">
-                We're testing contest entries before full launch. Enter contests to help us test!
-              </p>
-              <div class="flex items-center gap-2 text-xs text-[var(--warning)]">
-                <span>🚀</span>
-                <span class="font-medium">Full app launch coming soon!</span>
-              </div>
-            </div>
-          ` : ''}
+          <!-- Public Testing Mode Banner removed for Season 1 -->
 
           <!-- Buy Burn Hold Earn Banner (shown on active and create pages) -->
           ${state.currentView === 'active' || state.currentView === 'create' ? `
