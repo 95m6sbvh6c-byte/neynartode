@@ -8503,27 +8503,6 @@ ${miniAppUrl}`;
           nftName: state.prizeType === 'nft' ? `${state.prizeNftName || 'NFT'} #${state.prizeNftTokenId || '?'}` : ''
         };
 
-        // Send new contest notification (fire-and-forget)
-        try {
-          const prizeText = state.launchSuccess.isNft
-            ? state.launchSuccess.nftName
-            : `${state.launchSuccess.prizeAmount} ${state.launchSuccess.prizeTicker}`;
-          fetch(`${apiBaseUrl}/api/send-notification`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer neynartodes-notif-secret'
-            },
-            body: JSON.stringify({
-              type: 'new_contest',
-              data: {
-                contestId,
-                prize: prizeText,
-                hostUsername: state.userProfile?.username || ''
-              }
-            })
-          }).catch(() => {});
-        } catch (e) { /* ignore notification errors */ }
 
         // Reset form only after successful launch
         state.prizeTokenAddress = '';
