@@ -159,7 +159,10 @@ function buildNotificationContent(type, data) {
 }
 
 // Set to true to disable all notifications (for testing)
-const NOTIFICATIONS_DISABLED = true;
+const NOTIFICATIONS_DISABLED = false;
+
+// Only these notification types are allowed in production
+const ALLOWED_TYPES = ['new_contest', 'prize_pool_funded'];
 
 /**
  * Send notification to all subscribers
@@ -171,6 +174,11 @@ async function sendNotification(type, data, targetFids = null) {
   if (NOTIFICATIONS_DISABLED) {
     console.log(`[NOTIFICATIONS DISABLED] Would have sent: ${type}`);
     return { sent: 0, failed: 0, disabled: true };
+  }
+
+  if (!ALLOWED_TYPES.includes(type)) {
+    console.log(`[NOTIFICATION SKIPPED] Type "${type}" not in allowed list`);
+    return { sent: 0, failed: 0, skipped: true };
   }
 
   const subscribers = await getSubscribers();
