@@ -117,23 +117,8 @@ module.exports = async (req, res) => {
       console.log('Error processing main contests:', e.message);
     }
 
-    // Process Test contests
-    try {
-      const testNextId = await contestManager.testNextContestId();
-      for (let i = 1n; i < testNextId; i++) {
-        try {
-          const contest = await contestManager.getTestContestFull(i);
-          const { contestType, prizeAmount, status } = contest;
-
-          if (Number(status) !== CONTEST_STATUS.Completed) continue;
-          completedTestContests++;
-
-          totalUSD += await getContestPrizeUSD(contestType, prizeAmount, `T-${i}`);
-        } catch (e) {}
-      }
-    } catch (e) {
-      console.log('Error processing test contests:', e.message);
-    }
+    // Skip Test contests (T-) for production — only count M- contests
+    completedTestContests = 0;
 
     const result = {
       totalUSD: Math.round(totalUSD * 100) / 100,
