@@ -5,10 +5,11 @@
  * aggregates host stats, and calculates scores.
  *
  * Scoring System:
- *   Total Score = Entry Score + Vote Score + Token Score
+ *   Total Score = Entry Score + Vote Score + Token Score + Prize Score
  *   Entry Score = 100 points per contest entry received
  *   Vote Score = 100 points per net vote (upvotes - downvotes)
- *   Token Score = 100 points per 100,000 NEYNARTODES held
+ *   Token Score = 10 points per 100,000 NEYNARTODES held
+ *   Prize Score = 500 points per $1 USD given away in completed contests
  *
  * Usage:
  *   GET /api/leaderboard?limit=10
@@ -16,6 +17,7 @@
 
 const { ethers } = require('ethers');
 const { getUserByWallet: getCachedUserByWallet } = require('./lib/utils');
+const { getETHPrice } = require('./lib/uniswap-volume');
 
 const CONFIG = {
   // Unified ContestManager (M- and T- prefix contests)
@@ -210,7 +212,7 @@ module.exports = async (req, res) => {
         const contest = contestResults[j];
         if (!contest) continue;
 
-        const { host, status } = contest;
+        const { host, status, contestType, prizeAmount } = contest;
         const hostLower = host.toLowerCase();
 
         if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
@@ -228,7 +230,11 @@ module.exports = async (req, res) => {
 
         if (Number(status) === CONTEST_STATUS.Completed) {
           hostStats[hostLower].completedContests++;
-          hostStats[hostLower].completedContestIds.push(`M-${batch[j]}`);
+          hostStats[hostLower].completedContestIds.push({
+            id: `M-${batch[j]}`,
+            contestType: Number(contestType),
+            prizeAmount: prizeAmount.toString(),
+          });
         }
       }
     }
@@ -253,7 +259,7 @@ module.exports = async (req, res) => {
         const contest = contestResults[j];
         if (!contest) continue;
 
-        const { host, status } = contest;
+        const { host, status, contestType, prizeAmount } = contest;
         const hostLower = host.toLowerCase();
 
         if (EXCLUDED_ADDRESSES.includes(hostLower)) continue;
@@ -271,7 +277,11 @@ module.exports = async (req, res) => {
 
         if (Number(status) === CONTEST_STATUS.Completed) {
           hostStats[hostLower].completedContests++;
-          hostStats[hostLower].completedContestIds.push(`T-${batch[j]}`);
+          hostStats[hostLower].completedContestIds.push({
+            id: `T-${batch[j]}`,
+            contestType: Number(contestType),
+            prizeAmount: prizeAmount.toString(),
+          });
         }
       }
     }
@@ -294,6 +304,14 @@ module.exports = async (req, res) => {
       results.forEach(({ hostLower, info }) => userInfoMap.set(hostLower, info));
     }
 
+    // Fetch ETH price once for prize value calculations
+    let ethPriceUSD = 0;
+    try {
+      ethPriceUSD = await getETHPrice();
+    } catch (e) {
+      console.log('Error fetching ETH price:', e.message);
+    }
+
     // Calculate scores for each host
     for (const hostLower of activeHosts) {
       const stats = hostStats[hostLower];
@@ -306,14 +324,46 @@ module.exports = async (req, res) => {
       let totalEntries = 0;
       if (kvClient && stats.completedContestIds.length > 0) {
         try {
-          const entryPromises = stats.completedContestIds.map(async (contestId) => {
-            const count = await kvClient.scard(`contest_entries:${contestId}`).catch(() => 0);
+          const entryPromises = stats.completedContestIds.map(async (c) => {
+            const count = await kvClient.scard(`contest_entries:${c.id}`).catch(() => 0);
             return count || 0;
           });
           const entryCounts = await Promise.all(entryPromises);
           totalEntries = entryCounts.reduce((sum, count) => sum + count, 0);
         } catch (e) {
           console.log('Error fetching entry counts:', e.message);
+        }
+      }
+
+      // Fetch prize values (USD) for all completed contests
+      let totalPrizeUSD = 0;
+      if (kvClient && stats.completedContestIds.length > 0) {
+        try {
+          const prizePromises = stats.completedContestIds.map(async (c) => {
+            // ETH contests (type 0): convert prizeAmount (wei) to USD
+            if (c.contestType === 0) {
+              const ethAmount = Number(ethers.formatEther(c.prizeAmount));
+              if (ethAmount > 0) {
+                return ethAmount * ethPriceUSD;
+              }
+              return 0;
+            }
+            // ERC20 token contests (type 1): lookup stored price
+            if (c.contestType === 1) {
+              const priceData = await kvClient.get(`contest_price_${c.id}`).catch(() => null);
+              return priceData?.prizeValueUSD || 0;
+            }
+            // NFT contests (type 2, 3): lookup stored floor price
+            if (c.contestType === 2 || c.contestType === 3) {
+              const nftData = await kvClient.get(`nft_price_${c.id}`).catch(() => null);
+              return nftData?.floorPriceUSD || 0;
+            }
+            return 0;
+          });
+          const prizeValues = await Promise.all(prizePromises);
+          totalPrizeUSD = prizeValues.reduce((sum, val) => sum + val, 0);
+        } catch (e) {
+          console.log('Error fetching prize values:', e.message);
         }
       }
 
@@ -328,14 +378,16 @@ module.exports = async (req, res) => {
       stats.upvotes = Number(upvotes);
       stats.downvotes = Number(downvotes);
 
-      // NEW SCORING SYSTEM:
+      // SCORING SYSTEM:
       // - Entry Score: 100 points per contest entry
       // - Vote Score: 100 points per net vote (upvotes - downvotes)
-      // - Token Score: 100 points per 100,000 NEYNARTODES held
+      // - Token Score: 10 points per 100,000 NEYNARTODES held
+      // - Prize Score: 500 points per $1 USD given away in completed contests
       const entryScore = totalEntries * 100;
       const voteScore = (stats.upvotes - stats.downvotes) * 100;
-      const tokenScore = Math.floor(tokenHoldings / 100000) * 100;
-      const totalScore = entryScore + voteScore + tokenScore;
+      const tokenScore = Math.floor(tokenHoldings / 100000) * 10;
+      const prizeScore = Math.floor(totalPrizeUSD) * 500;
+      const totalScore = entryScore + voteScore + tokenScore + prizeScore;
 
       hostsWithScores.push({
         address: stats.address,
@@ -348,11 +400,13 @@ module.exports = async (req, res) => {
         completedContests: stats.completedContests,
         totalEntries,
         tokenHoldings,
+        totalPrizeUSD: Math.round(totalPrizeUSD * 100) / 100,
         upvotes: stats.upvotes,
         downvotes: stats.downvotes,
         entryScore,
         tokenScore,
         voteScore,
+        prizeScore,
         totalScore,
       });
     }
@@ -393,10 +447,11 @@ module.exports = async (req, res) => {
       totalContests,
       totalHosts: hostsWithScores.length,
       scoringFormula: {
-        total: 'Entry Score + Vote Score + Token Score',
+        total: 'Entry Score + Vote Score + Token Score + Prize Score',
         entry: '100 points per contest entry received',
         vote: '100 points per net vote (upvotes - downvotes)',
-        token: '100 points per 100,000 NEYNARTODES held',
+        token: '10 points per 100,000 NEYNARTODES held',
+        prize: '500 points per $1 USD given away in completed contests',
       },
     };
 
