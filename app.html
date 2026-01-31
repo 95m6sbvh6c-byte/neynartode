@@ -3781,37 +3781,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       }
     }
 
-    // Dedicated function to load burned tokens - checks all burn sources
-    // Uses shared rpcProvider for efficiency
+    // Load burned tokens from cached API (refreshes every hour)
     async function loadBurnedTokens() {
-      // All common burn addresses on Base/Ethereum
-      const BURN_ADDRESSES = [
-        '0x000000000000000000000000000000000000dEaD', // Most common burn address
-        '0x0000000000000000000000000000000000000000', // Zero address
-      ];
-
       try {
-        // Check all sources in parallel using cached contracts (batched RPC calls)
-        const [burnAddressBalances, vmBurned] = await Promise.all([
-          // Check burn addresses
-          Promise.all(BURN_ADDRESSES.map(addr =>
-            neynartodeTokenRead.balanceOf(addr).catch(() => ethers.BigNumber.from(0))
-          )),
-          // Check VotingManager's tracked burns
-          votingManagerRead.totalTokensBurned().catch(() => ethers.BigNumber.from(0))
-        ]);
-
-        // Sum all burned tokens from burn addresses
-        let totalBurned = ethers.BigNumber.from(0);
-        for (const balance of burnAddressBalances) {
-          totalBurned = totalBurned.add(balance);
+        const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+        const resp = await fetch(`${baseUrl}/api/burned-tokens`);
+        if (resp.ok) {
+          const data = await resp.json();
+          state.totalTokensBurned = data.totalBurned || '0';
+          console.log('Burned tokens loaded from API:', state.totalTokensBurned);
+        } else {
+          state.totalTokensBurned = '0';
         }
-
-        // Add VotingManager tracked burns (these are actual burn() calls that reduce supply)
-        totalBurned = totalBurned.add(vmBurned);
-
-        state.totalTokensBurned = ethers.utils.formatEther(totalBurned);
-        console.log('Total tokens burned (all sources):', state.totalTokensBurned, '| VM burned:', ethers.utils.formatEther(vmBurned));
       } catch (e) {
         console.error('Error fetching burned tokens:', e);
         state.totalTokensBurned = '0';
