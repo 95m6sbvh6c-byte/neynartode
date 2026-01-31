@@ -9,8 +9,9 @@
  *
  * Prize Distribution (calculated but distributed manually):
  *   1st: 50% of host prize pool (ETH)
- *   2nd: 35% of host prize pool (ETH)
+ *   2nd: 30% of host prize pool (ETH)
  *   3rd: 15% of host prize pool (ETH)
+ *   Treasury: 5% of host prize pool (ETH)
  *   4th-5th: 200M NEYNARTODES each
  *   6th-10th: 100M NEYNARTODES each
  */
@@ -106,8 +107,9 @@ module.exports = async (req, res) => {
         let tokenPrize = 0;
 
         if (position === 1) ethPrize = poolETH * 0.50;
-        else if (position === 2) ethPrize = poolETH * 0.35;
+        else if (position === 2) ethPrize = poolETH * 0.30;
         else if (position === 3) ethPrize = poolETH * 0.15;
+        // Remaining 5% goes to treasury (handled manually)
 
         return {
           position,

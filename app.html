@@ -4446,7 +4446,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         let actionHtml = '';
         if (state.bestTodeResults) {
-          const prizeText = idx === 0 ? '1st - 50%' : idx === 1 ? '2nd - 35%' : '3rd - 15%';
+          const prizeText = idx === 0 ? '1st - 50%' : idx === 1 ? '2nd - 30%' : '3rd - 15%';
           actionHtml = `<div class="text-sm font-bold ${rankClass}">${prizeText}</div>`;
         } else if (state.bestTodeVotingEnded) {
           actionHtml = `<div class="text-xs text-[var(--text-muted)]">Awaiting results</div>`;
