@@ -427,10 +427,12 @@ async function announceContestWinners(contestIdStr) {
   // Add contest stats if available
   if (finalizationData && finalizationData.summary) {
     const stats = finalizationData.summary;
-    const bonusEntries = stats.totalEntries - stats.uniqueParticipants;
+    const bonusEntries = (stats.holderBonuses || 0) + (stats.replyBonuses || 0) + (stats.shareBonuses || 0) + (stats.volumeBonuses || 0);
     announcement += `📊 Contest Stats:\n`;
     announcement += `👥 ${stats.uniqueParticipants} unique entries\n`;
-    announcement += `🎟️ ${bonusEntries} bonus entries\n`;
+    if (bonusEntries > 0) {
+      announcement += `🎟️ ${bonusEntries} bonus entries\n`;
+    }
     const bonuses = [];
     if (stats.holderBonuses > 0) bonuses.push(`💎${stats.holderBonuses}`);
     if (stats.replyBonuses > 0) bonuses.push(`💬${stats.replyBonuses}`);
