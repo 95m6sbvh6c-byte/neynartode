@@ -5622,8 +5622,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                             <div class="font-semibold text-[var(--accent-light)]" title="Contest: ${(host.contestScore || 0).toLocaleString()} | Votes: ${(host.voteScore || 0).toLocaleString()}">
                               ${(host.totalScore || 0).toLocaleString()}
                             </div>
-                            <div class="text-xs text-[var(--text-muted)] mt-0.5">
-                              ${(host.entryScore || 0).toLocaleString()} entry · ${(host.voteScore || 0).toLocaleString()} vote · ${(host.tokenScore || 0).toLocaleString()} token · ${(host.prizeScore || 0).toLocaleString()} prize
+                            <div class="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                              <div>${(host.entryScore || 0).toLocaleString()} entry</div>
+                              <div>${(host.voteScore || 0).toLocaleString()} vote</div>
+                              <div>${(host.tokenScore || 0).toLocaleString()} token</div>
+                              <div>${(host.prizeScore || 0).toLocaleString()} prize</div>
                             </div>
                           </td>
                           <td class="py-4 px-2">
