@@ -410,7 +410,7 @@ module.exports = async (req, res) => {
 
     console.log(`Contest counts: M-=${totalMainContests}, T-=${totalTestContests}`);
 
-    if (totalContests <= 0) {
+    if (totalMainContests <= 0) {
       return res.status(200).json({ contests: [], total: 0, fetched: 0 });
     }
 
@@ -501,9 +501,9 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({
       contests: limitedContests,
-      total: totalContests,
+      total: totalMainContests,
       totalMain: totalMainContests,
-      totalTest: totalTestContests,
+      totalTest: 0,
       fetched: limitedContests.length,
       limit,
     });
