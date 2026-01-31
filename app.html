@@ -6055,11 +6055,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   <p class="text-sm text-[var(--text-muted)]">Last 20 contests</p>
                 </div>
                 <div class="flex items-center gap-2">
-                  <a
-                    href="https://github.com/95m6sbvh6c-byte/neynartode/blob/main/docs/GUIDE_HISTORY.md"
-                    target="_blank"
-                    class="btn-ghost text-sm"
-                  >Guide</a>
                   <button onclick="loadHistory()" class="btn-secondary text-sm py-2 px-3">
                     Refresh
                   </button>
@@ -6307,11 +6302,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             <div class="glass-card p-5">
               <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-bold text-[var(--text-primary)]">Create Contest</h2>
-                <a
-                  href="https://github.com/95m6sbvh6c-byte/neynartode/blob/main/docs/GUIDE_CREATE.md"
-                  target="_blank"
-                  class="btn-ghost text-sm"
-                >Guide</a>
               </div>
 
               <!-- Requirements Info -->
@@ -6321,6 +6311,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   <div class="text-sm text-[var(--text-secondary)]">
                     <span class="text-[var(--text-primary)] font-medium">Requirements:</span>
                     Hold 100M $NEYNARTODES to create contests. Minimum prize: $0.50 USD equivalent.
+                    <br><span class="text-[var(--text-muted)]">Limit: 3 contests per day. Quality over Quantity!</span>
                   </div>
                 </div>
               </div>
@@ -7463,6 +7454,16 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           return;
         }
 
+        // Check daily contest limit (3 per day)
+        const today = new Date().toISOString().slice(0, 10);
+        const dailyKey = `contests_launched_${state.userFid}_${today}`;
+        const launchedToday = parseInt(localStorage.getItem(dailyKey) || '0');
+        if (launchedToday >= 3) {
+          showToast('You have hit your daily limit (3 contests per day). Quality over Quantity!', 'error');
+          if (statusDiv) statusDiv.textContent = '❌ Daily limit reached';
+          return;
+        }
+
         // Determine if we're in test mode (T- prefix) or main mode (M- prefix)
         const isTestMode = CONFIG.TEST_MODE;
         const contestPrefix = isTestMode ? CONFIG.TEST_PREFIX : CONFIG.MAIN_PREFIX;
@@ -8491,6 +8492,9 @@ ${miniAppUrl}`;
           });
           window.open(warpcastUrl, '_blank');
         }
+
+        // Increment daily contest counter
+        localStorage.setItem(dailyKey, (launchedToday + 1).toString());
 
         // Add contest to state ONLY after successful on-chain tx
         // Keep contestId as string (M-1, T-1 format) for API calls
