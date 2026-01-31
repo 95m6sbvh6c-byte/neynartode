@@ -2046,7 +2046,7 @@ ${miniAppUrl}`;
 ⏱️ Time Remaining: ${timeLeft}
 💰 Host Prize Pool: ${state.hostPoolETH.toFixed(4)} ETH
 🔥 Tokens Burned: ${Number(state.totalTokensBurned).toLocaleString()} $NEYNARTODES
-💎 All-Time Prizes: ${state.totalPrizesGiven.toFixed(4)} ETH
+💎 All-Time Prizes: $${state.totalPrizesGiven.toFixed(2)} USD
 
 Host contests to climb the leaderboard and win from the prize pool!`;
 
@@ -2254,7 +2254,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       voterPoolETH: 0, // On-chain voter prize pool
       pendingClankerFees: '0', // Pending Clanker fees to collect
       totalTokensBurned: '0', // All-time Neynartodes burned from voting
-      totalPrizesGiven: 0, // All-time prizes distributed (ETH)
+      totalPrizesGiven: 0, // All-time prizes distributed (USD)
       leaderboardLoaded: false, // Track if leaderboard has been lazy-loaded
 
       // Best Tode voting (end of season)
@@ -3874,15 +3874,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           const prizesResponse = await fetch(`${baseUrl}/api/all-time-prizes`);
           if (prizesResponse.ok) {
             const prizesData = await prizesResponse.json();
-            state.totalPrizesGiven = prizesData.totalETH || 0;
+            state.totalPrizesGiven = prizesData.totalUSD || 0;
             console.log('All-time prizes loaded:', prizesData);
           } else {
-            // Fallback to current season pools
-            state.totalPrizesGiven = state.hostPoolETH + state.voterPoolETH;
+            state.totalPrizesGiven = 0;
           }
         } catch (e) {
-          console.log('Could not fetch all-time prizes, using season pools:', e.message);
-          state.totalPrizesGiven = state.hostPoolETH + state.voterPoolETH;
+          console.log('Could not fetch all-time prizes:', e.message);
+          state.totalPrizesGiven = 0;
         }
 
         console.log('Prize pools loaded successfully:', {
@@ -5488,7 +5487,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 <div class="flex items-center justify-between">
                   <div>
                     <div class="stat-label">All-Time Prizes Distributed</div>
-                    <div class="stat-value">${state.totalPrizesGiven.toFixed(4)} <span class="text-[var(--text-muted)] text-xl">ETH</span></div>
+                    <div class="stat-value">$${state.totalPrizesGiven.toFixed(2)} <span class="text-[var(--text-muted)] text-xl">USD</span></div>
                   </div>
                   <div class="flex items-center gap-3">
                     <button
@@ -5630,7 +5629,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                             </div>
                           </td>
                           <td class="py-4 px-2">
-                            <div class="flex gap-1 justify-center">
+                            <div class="flex flex-col gap-1 items-center">
                               <button
                                 onclick="voteForHost(${host.fid}, true)"
                                 ${state.votesRemaining <= 0 ? 'disabled' : ''}
@@ -8319,17 +8318,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               // For token contests: store prize token price and amount
               const prizeTokenAddr = state.prizeTokenAddress || ethers.constants.AddressZero;
               const prizeAmt = parseFloat(state.prizeTokenAmount) || 0;
+              const isETHPrize = !prizeTokenAddr || prizeTokenAddr === ethers.constants.AddressZero;
 
               await fetch(`${apiBaseUrl}/api/store?type=price`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   contestId: `prize_${contestId}`,
-                  tokenAddress: prizeTokenAddr,
+                  tokenAddress: isETHPrize ? 'ETH_NATIVE' : prizeTokenAddr,
                   prizeAmount: prizeAmt
                 })
               });
-              console.log('✅ Prize token value captured:', prizeAmt, state.prizeTokenTicker || 'tokens');
+              console.log('✅ Prize value captured:', prizeAmt, isETHPrize ? 'ETH' : (state.prizeTokenTicker || 'tokens'));
             } else if (state.prizeType === 'nft') {
               // For NFT contests: store complete metadata for cached access
               // Used by: Share button, entry display, notifications, active contest page, history tab

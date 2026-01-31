@@ -340,17 +340,16 @@ module.exports = async (req, res) => {
       if (kvClient && stats.completedContestIds.length > 0) {
         try {
           const prizePromises = stats.completedContestIds.map(async (c) => {
-            // ETH contests (type 0): convert prizeAmount (wei) to USD
+            // ETH contests (type 0): check KV cache first, fallback to on-chain calc
             if (c.contestType === 0) {
+              const cached = await kvClient.get(`contest_price_prize_${c.id}`).catch(() => null);
+              if (cached?.prizeValueUSD) return cached.prizeValueUSD;
               const ethAmount = Number(ethers.formatEther(c.prizeAmount));
-              if (ethAmount > 0) {
-                return ethAmount * ethPriceUSD;
-              }
-              return 0;
+              return ethAmount > 0 ? ethAmount * ethPriceUSD : 0;
             }
             // ERC20 token contests (type 1): lookup stored price
             if (c.contestType === 1) {
-              const priceData = await kvClient.get(`contest_price_${c.id}`).catch(() => null);
+              const priceData = await kvClient.get(`contest_price_prize_${c.id}`).catch(() => null);
               return priceData?.prizeValueUSD || 0;
             }
             // NFT contests (type 2, 3): lookup stored floor price

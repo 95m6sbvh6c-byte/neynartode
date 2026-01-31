@@ -156,28 +156,48 @@ async function storePrice(contestId, tokenAddress, prizeAmount, res) {
   }
 
   const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
-
-  // Default to NEYNARTODES if no token specified
-  const token = tokenAddress || CONFIG.NEYNARTODES_TOKEN;
-
-  // Get current price with metadata
-  const priceInfo = await getTokenPriceWithMetadata(provider, token);
   const timestamp = Math.floor(Date.now() / 1000);
 
-  // Calculate prize value in USD if prizeAmount provided
-  const prizeValueUSD = prizeAmount ? prizeAmount * priceInfo.tokenPrice : null;
+  let priceData;
 
-  const priceData = {
-    tokenAddress: token,
-    tokenPrice: priceInfo.tokenPrice,
-    ethPrice: priceInfo.ethPrice,
-    priceInETH: priceInfo.priceInETH,
-    prizeAmount: prizeAmount || null,
-    prizeValueUSD: prizeValueUSD ? Math.round(prizeValueUSD * 100) / 100 : null,
-    source: priceInfo.source,
-    timestamp,
-    capturedAt: new Date().toISOString()
-  };
+  if (tokenAddress === 'ETH_NATIVE') {
+    // Native ETH prize: prizeAmount is in ETH, get ETH price directly
+    const ethPrice = await getETHPrice(provider);
+    const prizeValueUSD = prizeAmount ? prizeAmount * ethPrice : null;
+
+    priceData = {
+      tokenAddress: 'ETH_NATIVE',
+      tokenPrice: ethPrice,
+      ethPrice,
+      priceInETH: 1,
+      prizeAmount: prizeAmount || null,
+      prizeValueUSD: prizeValueUSD ? Math.round(prizeValueUSD * 100) / 100 : null,
+      source: 'chainlink',
+      timestamp,
+      capturedAt: new Date().toISOString()
+    };
+  } else {
+    // Default to NEYNARTODES if no token specified
+    const token = tokenAddress || CONFIG.NEYNARTODES_TOKEN;
+
+    // Get current price with metadata
+    const priceInfo = await getTokenPriceWithMetadata(provider, token);
+
+    // Calculate prize value in USD if prizeAmount provided
+    const prizeValueUSD = prizeAmount ? prizeAmount * priceInfo.tokenPrice : null;
+
+    priceData = {
+      tokenAddress: token,
+      tokenPrice: priceInfo.tokenPrice,
+      ethPrice: priceInfo.ethPrice,
+      priceInETH: priceInfo.priceInETH,
+      prizeAmount: prizeAmount || null,
+      prizeValueUSD: prizeValueUSD ? Math.round(prizeValueUSD * 100) / 100 : null,
+      source: priceInfo.source,
+      timestamp,
+      capturedAt: new Date().toISOString()
+    };
+  }
 
   // Store in KV
   if (process.env.KV_REST_API_URL) {

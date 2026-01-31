@@ -57,11 +57,42 @@ module.exports = async (req, res) => {
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
     const contestManager = new ethers.Contract(CONFIG.CONTEST_MANAGER, CONTEST_MANAGER_ABI, provider);
 
+    // Get KV client for prize value lookups
+    let kvClient = null;
+    if (process.env.KV_REST_API_URL) {
+      const { kv } = require('@vercel/kv');
+      kvClient = kv;
+    }
+
     const ethPrice = await getETHPrice(provider);
     let totalETH = 0;
     let totalUSD = 0;
     let completedMainContests = 0;
     let completedTestContests = 0;
+
+    // Helper to get prize USD value for a contest
+    async function getContestPrizeUSD(contestType, prizeAmount, contestId) {
+      const type = Number(contestType);
+      if (type === PRIZE_TYPE.ETH) {
+        // Check KV cache first, fallback to on-chain calculation
+        if (kvClient) {
+          const cached = await kvClient.get(`contest_price_prize_${contestId}`).catch(() => null);
+          if (cached?.prizeValueUSD) return cached.prizeValueUSD;
+        }
+        const ethAmount = Number(ethers.formatEther(prizeAmount));
+        totalETH += ethAmount;
+        return ethAmount * ethPrice;
+      }
+      if (type === PRIZE_TYPE.ERC20 && kvClient) {
+        const priceData = await kvClient.get(`contest_price_prize_${contestId}`).catch(() => null);
+        return priceData?.prizeValueUSD || 0;
+      }
+      if ((type === PRIZE_TYPE.ERC721 || type === PRIZE_TYPE.ERC1155) && kvClient) {
+        const nftData = await kvClient.get(`nft_price_${contestId}`).catch(() => null);
+        return nftData?.floorPriceUSD || 0;
+      }
+      return 0;
+    }
 
     // Process Main contests
     try {
@@ -69,18 +100,12 @@ module.exports = async (req, res) => {
       for (let i = 1n; i < mainNextId; i++) {
         try {
           const contest = await contestManager.getContestFull(i);
-          // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
           const { contestType, prizeAmount, status } = contest;
 
           if (Number(status) !== CONTEST_STATUS.Completed) continue;
           completedMainContests++;
 
-          if (Number(contestType) === PRIZE_TYPE.ETH) {
-            const ethAmount = Number(ethers.formatEther(prizeAmount));
-            totalETH += ethAmount;
-            totalUSD += ethAmount * ethPrice;
-          }
-          // For ERC20/NFT, would need stored price data
+          totalUSD += await getContestPrizeUSD(contestType, prizeAmount, `M-${i}`);
         } catch (e) {}
       }
     } catch (e) {
@@ -98,11 +123,7 @@ module.exports = async (req, res) => {
           if (Number(status) !== CONTEST_STATUS.Completed) continue;
           completedTestContests++;
 
-          if (Number(contestType) === PRIZE_TYPE.ETH) {
-            const ethAmount = Number(ethers.formatEther(prizeAmount));
-            totalETH += ethAmount;
-            totalUSD += ethAmount * ethPrice;
-          }
+          totalUSD += await getContestPrizeUSD(contestType, prizeAmount, `T-${i}`);
         } catch (e) {}
       }
     } catch (e) {
