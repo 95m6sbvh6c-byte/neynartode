@@ -87,6 +87,8 @@ const DEX_ADDRESSES = new Set([
   '0x75a2c417b9e2f00d47ad94f8c0894066e31e38d9',
   // DEX aggregator/router
   '0x785648669b8e90a75a6a8de682258957f9028462',
+  // BaseSettler (DEX aggregator)
+  '0x49fb9c16b9b2a19452633573603c837673fd7e04',
 ].map(a => a.toLowerCase()));
 
 // Unified ContestManager ABI
