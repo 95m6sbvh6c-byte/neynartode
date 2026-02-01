@@ -5271,6 +5271,21 @@ Host contests to climb the leaderboard and win from the prize pool!`;
               ${state.isCheckingWhitelist ? 'Connecting...' : 'FEED'}
             </button>
 
+            <!-- Live Stats -->
+            <div id="splashStats" class="glass-card p-4 mb-6" style="display: none;">
+              <div class="flex justify-around text-center">
+                <div>
+                  <div id="splashActiveCount" class="text-2xl font-bold text-[var(--accent-light)]">-</div>
+                  <div class="text-xs text-[var(--text-muted)]">Active Contests</div>
+                </div>
+                <div style="width: 1px; background: var(--border-subtle);"></div>
+                <div>
+                  <div id="splashPrizePool" class="text-2xl font-bold text-[var(--accent-light)]">-</div>
+                  <div class="text-xs text-[var(--text-muted)]">Host Prize Pool</div>
+                </div>
+              </div>
+            </div>
+
             <!-- Powered by -->
             <div class="mt-10 pt-6 border-t border-[var(--border-subtle)]">
               <p class="text-xs text-[var(--text-muted)] mb-2">Powered by</p>
@@ -6886,6 +6901,48 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       const connectButton = document.getElementById('connectButton');
       if (connectButton) {
         connectButton.onclick = connectWallet;
+      }
+
+      // Fetch live stats for splash page
+      const splashStats = document.getElementById('splashStats');
+      if (splashStats && !window.splashStatsFetched) {
+        window.splashStatsFetched = true;
+        (async () => {
+          try {
+            const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+            // Fetch active contest count and host prize pool in parallel
+            const [contestRes, hostPoolETH] = await Promise.all([
+              fetch(`${baseUrl}/api/contest-history?limit=50&status=active`).then(r => r.ok ? r.json() : null).catch(() => null),
+              (async () => {
+                try {
+                  const abi = [
+                    'function testMode() external view returns (bool)',
+                    'function nextSeasonId() external view returns (uint256)',
+                    'function testNextSeasonId() external view returns (uint256)',
+                    'function seasons(uint256) external view returns (string, uint256, uint256, uint256, uint256, uint256, bool)',
+                    'function testSeasons(uint256) external view returns (string, uint256, uint256, uint256, uint256, uint256, bool)',
+                  ];
+                  const c = new ethers.Contract(CONFIG.CONTRACTS.prizeNFT, abi, rpcProvider);
+                  const isTest = await c.testMode();
+                  const nextId = isTest ? await c.testNextSeasonId() : await c.nextSeasonId();
+                  const seasonId = nextId.toNumber() - 1;
+                  if (seasonId <= 0) return 0;
+                  const s = isTest ? await c.testSeasons(seasonId) : await c.seasons(seasonId);
+                  return parseFloat(ethers.utils.formatEther(s[4]));
+                } catch (e) { return 0; }
+              })(),
+            ]);
+            const activeCount = contestRes?.total || contestRes?.contests?.length || 0;
+            const el = document.getElementById('splashStats');
+            if (el) {
+              document.getElementById('splashActiveCount').textContent = activeCount;
+              document.getElementById('splashPrizePool').textContent = hostPoolETH > 0 ? `${hostPoolETH.toFixed(4)} ETH` : '0 ETH';
+              el.style.display = 'block';
+            }
+          } catch (e) {
+            console.log('Splash stats fetch error:', e.message);
+          }
+        })();
       }
 
       // Buy token function - opens Warpcast wallet swap directly in-app
