@@ -30,7 +30,7 @@ const CONFIG = {
 
 // Excluded from leaderboard (devs/admins)
 // Note: Exclusions disabled for test mode - all hosts visible
-const EXCLUDED_FIDS = [];
+const EXCLUDED_FIDS = [1891537];
 const EXCLUDED_ADDRESSES = [
   // Disabled for testing - uncomment for production:
   // '0x78eeaa6f014667a339fcf8b4ecd74743366603fb',

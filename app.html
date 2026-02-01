@@ -7672,9 +7672,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             }
           }
 
-          if (prizeUSD < MIN_PRIZE_USD) {
-            showToast(`Minimum prize is $${MIN_PRIZE_USD.toFixed(2)}. Your prize is worth ~$${prizeUSD.toFixed(2)}.`, 'error');
-            if (statusDiv) statusDiv.textContent = '❌ Prize below minimum ($0.50)';
+          const winnerCount = Math.max(1, parseInt(state.winnerCount) || 1);
+          const minRequired = MIN_PRIZE_USD * winnerCount;
+          if (prizeUSD < minRequired) {
+            showToast(`Minimum prize is $${MIN_PRIZE_USD.toFixed(2)} per winner. With ${winnerCount} winner${winnerCount > 1 ? 's' : ''}, total must be at least $${minRequired.toFixed(2)}. Your prize is worth ~$${prizeUSD.toFixed(2)}.`, 'error');
+            if (statusDiv) statusDiv.textContent = `❌ Prize below minimum ($${minRequired.toFixed(2)} for ${winnerCount} winners)`;
             return;
           }
           console.log('   Prize validation passed:', prizeUSD.toFixed(2), 'USD');
