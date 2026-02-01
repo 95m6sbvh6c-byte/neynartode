@@ -13,7 +13,7 @@
 const { ethers } = require('ethers');
 
 const CONFIG = {
-  BASE_RPC_URL: 'https://mainnet.base.org',
+  BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
 };
 

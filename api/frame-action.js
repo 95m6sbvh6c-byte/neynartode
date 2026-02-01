@@ -14,7 +14,7 @@
 const { ethers } = require('ethers');
 
 const CONFIG = {
-  BASE_RPC_URL: 'https://mainnet.base.org',
+  BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
   NEYNARTODES_TOKEN: '0x8de1622fe07f56CDA2E2273e615a513f1D828b07',
   HOLDER_THRESHOLD: '100000000', // 100M tokens
   BUYANDBURN_ADDRESS: '0x8AffD9eB013cfC08143439207E40dd5419b6b78C', // BuyAndBurn_Quoted v2 - burns 1M with sweep refund
