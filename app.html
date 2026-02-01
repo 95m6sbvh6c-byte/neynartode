@@ -6932,7 +6932,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 } catch (e) { return 0; }
               })(),
             ]);
-            const activeCount = contestRes?.total || contestRes?.contests?.length || 0;
+            const now = new Date();
+            const activeCount = (contestRes?.contests || []).filter(c => new Date(c.endTime) > now).length;
             const el = document.getElementById('splashStats');
             if (el) {
               document.getElementById('splashActiveCount').textContent = activeCount;
