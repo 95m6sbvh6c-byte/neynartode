@@ -123,9 +123,10 @@ const BUYBURNHOLDEARN_ABI = [
  * @param {number} startTime - Contest start timestamp (unix seconds)
  * @param {number} endTime - Contest end timestamp (unix seconds)
  * @param {object} provider - Ethers provider
+ * @param {Set<string>} [participantAddresses] - Optional set of lowercase wallet addresses to filter events by
  * @returns {Promise<{tokensBurned: bigint, hostEarned: bigint, nonHolderEntries: number, holderEntries: number}>}
  */
-async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider) {
+async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider, participantAddresses = null) {
   try {
     const contract = new ethers.Contract(CONFIG.BUYBURNHOLDEARN, BUYBURNHOLDEARN_ABI, provider);
 
@@ -159,6 +160,8 @@ async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider
     for (const event of buyBurnEvents) {
       const eventTimestamp = Number(event.args.timestamp);
       if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
+        // If participant addresses provided, only count events from actual contest participants
+        if (participantAddresses && !participantAddresses.has(event.args.entrant.toLowerCase())) continue;
         tokensBurned += BigInt(event.args.burned);
         hostEarned += BigInt(event.args.toHost);
         nonHolderEntries++;
@@ -168,7 +171,6 @@ async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider
     for (const event of holderRewardEvents) {
       const eventTimestamp = Number(event.args.timestamp);
       if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
-        hostEarned += BigInt(event.args.amount);
         holderEntries++;
       }
     }
@@ -743,7 +745,12 @@ async function finalizeUnifiedContest(contestIdStr) {
   const volumeByFid = await checkVolumeBonus(users, Number(startTime), Number(endTime));
 
   // Get BuyBurnHoldEarn stats (tokens burned and host earned from contest entries)
-  const buyBurnStats = await getBuyBurnHoldEarnStats(host, Number(startTime), Number(endTime), provider);
+  // Pass participant addresses to filter events to only this contest's entrants
+  const participantAddresses = new Set();
+  for (const user of users.values()) {
+    if (user.primaryAddress) participantAddresses.add(user.primaryAddress.toLowerCase());
+  }
+  const buyBurnStats = await getBuyBurnHoldEarnStats(host, Number(startTime), Number(endTime), provider, participantAddresses);
 
   // ═══════════════════════════════════════════════════════════════════
   // STEP 4: Build entry list with bonuses
@@ -949,7 +956,7 @@ async function finalizeUnifiedContest(contestIdStr) {
           shareBonuses: shareBonusCount,
           volumeBonuses: volumeBonusCount,
           tokensBurned: ethers.formatEther(buyBurnStats.tokensBurned),
-          hostEarned: ethers.formatEther(buyBurnStats.hostEarned),
+          hostEarned: (users.size * 150000).toString(),
           nonHolderEntries: buyBurnStats.nonHolderEntries,
           holderEntries: buyBurnStats.holderEntries
         }
