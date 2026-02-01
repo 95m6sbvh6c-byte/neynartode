@@ -18,7 +18,7 @@ const { getUserAddresses: getCachedUserAddresses, getUserByWallet: getCachedUser
 const CONFIG = {
   NEYNARTODES: '0x8dE1622fE07f56cda2e2273e615A513F1d828B07',
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   NEYNAR_API_KEY: process.env.NEYNAR_API_KEY || 'AA2E0FC2-FDC0-466D-9EBA-4BCA968C9B1D',
   V4_STATE_VIEW: '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71',
   NEYNARTODES_POOL_ID: '0xfad8f807f3f300d594c5725adb8f54314d465bcb1ab8cc04e37b08c1aa80d2e7',

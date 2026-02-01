@@ -13,7 +13,7 @@ const { ethers } = require('ethers');
 const CONFIG = {
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
   VOTING_MANAGER: '0x776A53c2e95d068d269c0cCb1B0081eCfeF900EB',
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   BURN_ADDRESSES: [
     '0x000000000000000000000000000000000000dEaD',
     '0x0000000000000000000000000000000000000000',

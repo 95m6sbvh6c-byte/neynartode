@@ -18,7 +18,7 @@ const { ethers } = require('ethers');
 const BLOCKSCOUT_BASE_URL = 'https://base.blockscout.com/api/v2';
 
 // RPC for direct contract calls as fallback
-const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
+const BASE_RPC = 'https://mainnet.base.org';
 
 // IPFS gateways to try in order (ipfs.io is unreliable from serverless)
 const IPFS_GATEWAYS = [

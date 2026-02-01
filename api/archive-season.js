@@ -25,7 +25,7 @@ const CONFIG = {
   PRIZE_NFT: '0x54E3972839A79fB4D1b0F70418141723d02E56e1',
 
   // RPC
-  BASE_RPC: process.env.BASE_RPC_URL || 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC',
+  BASE_RPC: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
 };
 
 // Contract ABIs
