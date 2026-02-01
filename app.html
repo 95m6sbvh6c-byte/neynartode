@@ -5839,8 +5839,15 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     <span class="text-sm text-[var(--text-muted)]">#${contest.contestId}</span>
                   </div>
                   <div class="flex items-center gap-2 mb-3">
-                    ${hostImg}
-                    <span class="font-medium text-[var(--text-primary)]">${hostName}</span>
+                    ${contest.hostUser?.username ? `
+                      <a href="https://warpcast.com/${contest.hostUser.username}" target="_blank" class="flex items-center gap-2 hover:opacity-80 transition-opacity" style="text-decoration: none;">
+                        ${hostImg}
+                        <span class="font-medium text-[var(--text-primary)]">${hostName}</span>
+                      </a>
+                    ` : `
+                      ${hostImg}
+                      <span class="font-medium text-[var(--text-primary)]">${hostName}</span>
+                    `}
                   </div>
                   <div class="grid grid-cols-2 gap-3 mb-3">
                     <div>
