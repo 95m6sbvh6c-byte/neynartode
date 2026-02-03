@@ -611,8 +611,56 @@ async function getHistoricalTokenPriceUSD(provider, tokenAddress, blockNumber) {
 }
 
 /**
+ * Try to get token price from DexScreener API
+ * DexScreener has good coverage of V4 pools and other DEXes
+ * Returns price in USD or 0 if not found
+ */
+async function tryDexScreenerPrice(tokenAddress) {
+  try {
+    const url = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    });
+
+    if (!response.ok) {
+      return 0;
+    }
+
+    const data = await response.json();
+
+    // DexScreener returns pairs array, find the most liquid one on Base
+    if (!data.pairs || data.pairs.length === 0) {
+      return 0;
+    }
+
+    // Filter for Base chain pairs and sort by liquidity
+    const basePairs = data.pairs
+      .filter(p => p.chainId === 'base')
+      .sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+
+    if (basePairs.length === 0) {
+      return 0;
+    }
+
+    const bestPair = basePairs[0];
+    const priceUsd = parseFloat(bestPair.priceUsd);
+
+    if (priceUsd > 0) {
+      console.log(`   DexScreener price: $${priceUsd.toFixed(8)} (${bestPair.dexId})`);
+      return priceUsd;
+    }
+
+    return 0;
+  } catch (e) {
+    console.log(`   DexScreener error: ${e.message?.slice(0, 50)}`);
+    return 0;
+  }
+}
+
+/**
  * Get approximate token price in USD using ETH pair
- * Priority: Known V4 pools > V2 pools > V3 pools > V4 discovery
+ * Priority: Known V4 pools > V2 pools > V3 pools > V4 discovery > DexScreener
  */
 // Known stablecoins on Base (always ~$1 USD)
 const STABLECOINS = [
@@ -720,12 +768,18 @@ async function getTokenPriceUSD(provider, tokenAddress) {
       return v4Price;
     }
 
-    console.log('   Could not determine token price, using fallback');
-    return 0.0001; // Fallback price
+    // Try DexScreener API as final fallback (covers V4 and other DEXes)
+    const dexScreenerPrice = await tryDexScreenerPrice(tokenAddress);
+    if (dexScreenerPrice > 0) {
+      return dexScreenerPrice;
+    }
+
+    console.log('   Could not determine token price, returning $0');
+    return 0; // No fallback price - unpriced tokens get $0 value
 
   } catch (e) {
     console.log(`   Price fetch error: ${e.message}`);
-    return 0.0001;
+    return 0;
   }
 }
 
