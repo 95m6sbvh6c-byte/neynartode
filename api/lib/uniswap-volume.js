@@ -669,6 +669,103 @@ const STABLECOINS = [
   '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca', // USDbC
 ];
 
+/**
+ * Get token price AND pool liquidity in USD
+ * Returns { priceUSD, liquidityUSD, source } so callers can validate liquidity depth
+ * liquidityUSD is null for pre-vetted pools (known V4, DexScreener), 0 for fallback
+ */
+async function getTokenPriceWithLiquidity(provider, tokenAddress) {
+  if (STABLECOINS.includes(tokenAddress.toLowerCase())) {
+    return { priceUSD: 1.0, liquidityUSD: null, source: 'stablecoin' };
+  }
+
+  const ethPriceUSD = await getETHPrice(provider);
+
+  try {
+    const knownV4Price = await tryKnownV4Pool(provider, tokenAddress, ethPriceUSD);
+    if (knownV4Price) {
+      return { priceUSD: knownV4Price, liquidityUSD: null, source: 'V4-known-pool' };
+    }
+
+    for (const factoryAddress of CONFIG.V2_FACTORIES) {
+      try {
+        const factory = new ethers.Contract(factoryAddress, V2_FACTORY_ABI, provider);
+        const pairAddress = await factory.getPair(tokenAddress, CONFIG.WETH);
+        if (pairAddress && pairAddress !== ethers.ZeroAddress) {
+          const pair = new ethers.Contract(pairAddress, V2_PAIR_ABI, provider);
+          const [token0, reserves] = await Promise.all([
+            withRetry(() => pair.token0()),
+            withRetry(() => pair.getReserves())
+          ]);
+          const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+          const tokenReserve = isToken0 ? reserves.reserve0 : reserves.reserve1;
+          const ethReserve = isToken0 ? reserves.reserve1 : reserves.reserve0;
+          if (tokenReserve > 0n && ethReserve > 0n) {
+            const tokenPriceInETH = Number(ethReserve) / Number(tokenReserve);
+            const ethReserveFormatted = Number(ethReserve) / 1e18;
+            const liquidityUSD = ethReserveFormatted * ethPriceUSD * 2;
+            console.log(`   V2 price: ${tokenPriceInETH.toFixed(12)} ETH ($${(tokenPriceInETH * ethPriceUSD).toFixed(8)}) | liquidity: $${liquidityUSD.toFixed(2)}`);
+            return { priceUSD: tokenPriceInETH * ethPriceUSD, liquidityUSD, source: 'V2' };
+          }
+        }
+      } catch (e) { }
+    }
+
+    const feeTiers = [10000, 3000, 500];
+    for (const fee of feeTiers) {
+      try {
+        const v3Factory = new ethers.Contract(CONFIG.V3_FACTORY, V3_FACTORY_ABI, provider);
+        const poolAddress = await v3Factory.getPool(tokenAddress, CONFIG.WETH, fee);
+        if (poolAddress && poolAddress !== ethers.ZeroAddress) {
+          const slot0ABI = [
+            'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
+            'function token0() view returns (address)',
+            'function liquidity() view returns (uint128)'
+          ];
+          const pool = new ethers.Contract(poolAddress, slot0ABI, provider);
+          const [slot0, token0, liquidityRaw] = await Promise.all([
+            withRetry(() => pool.slot0()),
+            withRetry(() => pool.token0()),
+            withRetry(() => pool.liquidity()).catch(() => 0n)
+          ]);
+          const sqrtPriceX96 = slot0.sqrtPriceX96;
+          const price = Number(sqrtPriceX96) / (2 ** 96);
+          const priceSquared = price * price;
+          const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+          let tokenPriceInETH = isToken0 ? priceSquared : 1 / priceSquared;
+
+          let liquidityUSD = null;
+          const liquidityNum = Number(liquidityRaw);
+          if (liquidityNum > 0) {
+            const sqrtPrice = Number(sqrtPriceX96) / (2 ** 96);
+            const approxETH = liquidityNum / (sqrtPrice * 1e18);
+            liquidityUSD = approxETH * ethPriceUSD * 2;
+          }
+          console.log(`   V3 (${fee/10000}%) price: ${tokenPriceInETH.toFixed(12)} ETH ($${(tokenPriceInETH * ethPriceUSD).toFixed(8)}) | liquidity: ${liquidityUSD ? '$' + liquidityUSD.toFixed(2) : 'unknown'}`);
+          return { priceUSD: tokenPriceInETH * ethPriceUSD, liquidityUSD, source: 'V3' };
+        }
+      } catch (e) { }
+    }
+
+    const v4Price = await tryV4PriceUSD(provider, tokenAddress, ethPriceUSD);
+    if (v4Price) {
+      return { priceUSD: v4Price, liquidityUSD: null, source: 'V4-discovery' };
+    }
+
+    const dexScreenerPrice = await tryDexScreenerPrice(tokenAddress);
+    if (dexScreenerPrice > 0) {
+      return { priceUSD: dexScreenerPrice, liquidityUSD: null, source: 'DexScreener' };
+    }
+
+    console.log('   Could not determine token price, returning $0');
+    return { priceUSD: 0, liquidityUSD: 0, source: 'fallback' };
+
+  } catch (e) {
+    console.log(`   Price fetch error: ${e.message}`);
+    return { priceUSD: 0, liquidityUSD: 0, source: 'fallback' };
+  }
+}
+
 async function getTokenPriceUSD(provider, tokenAddress) {
   // Short-circuit for stablecoins
   if (STABLECOINS.includes(tokenAddress.toLowerCase())) {
@@ -848,6 +945,7 @@ module.exports = {
   findV2Pools,
   findV3Pools,
   getTokenPriceUSD,
+  getTokenPriceWithLiquidity,
   getHistoricalTokenPriceUSD,
   getETHPrice,
   CONFIG,

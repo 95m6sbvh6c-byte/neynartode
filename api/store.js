@@ -29,7 +29,10 @@
  */
 
 const { ethers } = require('ethers');
-const { getTokenPriceUSD, getETHPrice, CONFIG } = require('./lib/uniswap-volume');
+const { getTokenPriceWithLiquidity, getETHPrice, CONFIG } = require('./lib/uniswap-volume');
+
+// Minimum pool liquidity (USD) required for a token to be accepted as a prize
+const MIN_LIQUIDITY_USD = 1000;
 
 // In-memory storage (for development/testing)
 const messageStore = new Map();
@@ -103,27 +106,15 @@ async function storeMessage(contestId, message, res) {
 
 async function getTokenPriceWithMetadata(provider, tokenAddress) {
   const ethPrice = await getETHPrice(provider);
-  const tokenPriceUSD = await getTokenPriceUSD(provider, tokenAddress);
-
-  // Calculate priceInETH from USD values
-  const priceInETH = tokenPriceUSD / ethPrice;
-
-  // Determine source based on which pool type was used
-  let source = 'unknown';
-  const knownV4Tokens = ['0x8de1622fe07f56cda2e2273e615a513f1d828b07'];
-  if (knownV4Tokens.includes(tokenAddress.toLowerCase())) {
-    source = 'V4-known-pool';
-  } else if (tokenPriceUSD === 0.0001) {
-    source = 'fallback';
-  } else {
-    source = 'DEX';
-  }
+  const result = await getTokenPriceWithLiquidity(provider, tokenAddress);
+  const priceInETH = result.priceUSD / ethPrice;
 
   return {
-    tokenPrice: tokenPriceUSD,
+    tokenPrice: result.priceUSD,
     ethPrice,
     priceInETH,
-    source
+    source: result.source,
+    liquidityUSD: result.liquidityUSD
   };
 }
 
@@ -180,8 +171,22 @@ async function storePrice(contestId, tokenAddress, prizeAmount, res) {
     // Default to NEYNARTODES if no token specified
     const token = tokenAddress || CONFIG.NEYNARTODES_TOKEN;
 
-    // Get current price with metadata
+    // Get current price with metadata (includes liquidity)
     const priceInfo = await getTokenPriceWithMetadata(provider, token);
+
+    // Liquidity check: reject illiquid tokens
+    // liquidityUSD is null for known/vetted pools (which is fine)
+    // liquidityUSD is 0 for fallback (no pool found)
+    // liquidityUSD is a number for discovered V2/V3 pools
+    if (priceInfo.liquidityUSD !== null && priceInfo.liquidityUSD < MIN_LIQUIDITY_USD) {
+      console.log(`REJECTED: Contest ${contestId} token ${token} has insufficient liquidity: $${priceInfo.liquidityUSD?.toFixed(2) || 0} (min: $${MIN_LIQUIDITY_USD})`);
+      return res.status(400).json({
+        error: 'Token has insufficient liquidity',
+        liquidityUSD: priceInfo.liquidityUSD ? Math.round(priceInfo.liquidityUSD * 100) / 100 : 0,
+        minLiquidityUSD: MIN_LIQUIDITY_USD,
+        message: `This token only has $${priceInfo.liquidityUSD?.toFixed(2) || 0} in pool liquidity. Minimum required: $${MIN_LIQUIDITY_USD}.`
+      });
+    }
 
     // Calculate prize value in USD if prizeAmount provided
     const prizeValueUSD = prizeAmount ? prizeAmount * priceInfo.tokenPrice : null;
@@ -347,8 +352,8 @@ module.exports = async (req, res) => {
         }
         if (process.env.KV_REST_API_URL) {
           const { kv } = require('@vercel/kv');
-          await kv.set(`contest_price_prize_${contestId}`, { prizeValueUSD });
-          return res.status(200).json({ success: true, contestId, prizeValueUSD });
+          await kv.set(`contest_price_prize_${contestId}`, { prizeValueUSD, adminOverride: true });
+          return res.status(200).json({ success: true, contestId, prizeValueUSD, adminOverride: true });
         }
         return res.status(500).json({ error: 'KV not configured' });
       }
