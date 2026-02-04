@@ -30,7 +30,13 @@ const CONFIG = {
 
 // Excluded from leaderboard (devs/admins)
 // Note: Exclusions disabled for test mode - all hosts visible
-const EXCLUDED_FIDS = [1891537];
+const EXCLUDED_FIDS = [
+  1891537,  // neynartodes - official account
+  // Farm ring: all linked to X @nando8618
+  1027765, 1028120, 1028226, 1028609, 1028738, 1028891, 1029130, 1029267,
+  1029416, 1029631, 1029836, 1029997, 1030095, 1030154, 1030224, 1030320,
+  1030388, 1030464, 1030703, 1030791, 1030903, 1030963, 1031056, 1031145,
+];
 const EXCLUDED_ADDRESSES = [
   // Disabled for testing - uncomment for production:
   // '0x78eeaa6f014667a339fcf8b4ecd74743366603fb',
