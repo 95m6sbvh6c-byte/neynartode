@@ -113,8 +113,10 @@ const DEX_ADDRESSES = new Set([
   '0x785648669b8e90a75a6a8de682258957f9028462',
   // BaseSettler (DEX aggregator)
   '0x49fb9c16b9b2a19452633573603c837673fd7e04',
-  // Additional whitelisted address
+  // Additional whitelisted addresses
   '0xdD7d485A334B13D3Ae589e00fa8248BEC21A7121',
+  // brianwharton - tokens sent from this wallet bypass cooldown
+  '0x7b96E0f29241f3d654CA1BFBC53E1B0E5E3Ec211',
 ].map(a => a.toLowerCase()));
 
 // Unified ContestManager ABI
