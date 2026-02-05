@@ -117,6 +117,8 @@ const DEX_ADDRESSES = new Set([
   '0xdD7d485A334B13D3Ae589e00fa8248BEC21A7121',
   // brianwharton - tokens sent from this wallet bypass cooldown
   '0x7b96E0f29241f3d654CA1BFBC53E1B0E5E3Ec211',
+  // NEYNARTODES Treasury - host rewards from BuyBurnHoldEarn
+  '0xd4d84f3477eb482783aAB48F00e357C801c48928',
   // 0x Protocol Settlers (query registry at 0x00000000000004533Fe15556B1E086BB1A72cEae for updates)
   '0xdc5d8200A030798BC6227240f68b4dD9542686ef',  // Settler - Taker (swap)
   '0xce09Bdf28eC438FddE2Bf255dA806e0c357247bf',  // Settler - Metatransaction
