@@ -113,6 +113,8 @@ const DEX_ADDRESSES = new Set([
   '0x785648669b8e90a75a6a8de682258957f9028462',
   // BaseSettler (DEX aggregator)
   '0x49fb9c16b9b2a19452633573603c837673fd7e04',
+  // Additional whitelisted address
+  '0xdD7d485A334B13D3Ae589e00fa8248BEC21A7121',
 ].map(a => a.toLowerCase()));
 
 // Unified ContestManager ABI
