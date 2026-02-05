@@ -117,6 +117,8 @@ const DEX_ADDRESSES = new Set([
   '0xdD7d485A334B13D3Ae589e00fa8248BEC21A7121',
   // brianwharton - tokens sent from this wallet bypass cooldown
   '0x7b96E0f29241f3d654CA1BFBC53E1B0E5E3Ec211',
+  // 0x Settler DEX aggregator (routes trades through multiple DEXs)
+  '0xdc5d8200A030798BC6227240f68b4dD9542686ef',
 ].map(a => a.toLowerCase()));
 
 // Unified ContestManager ABI
