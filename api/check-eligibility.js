@@ -31,14 +31,34 @@ const CONFIG = {
 };
 
 // DEX addresses - transfers FROM these are purchases (no cooldown)
+// Must match the whitelist in finalize-contest.js
 const DEX_ADDRESSES = new Set([
-  '0x5d7f0d6c17a245b62e6a08280f580c59631e8136', // Uniswap V3 NEYNARTODES/WETH pool
   '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal Router
+  '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // Uniswap V3 Pool (NEYNARTODES/WETH)
   '0x2626664c2603336e57b271c5c0b26f421741e481', // Uniswap V3 SwapRouter02
-  '0x0000000000000000000000000000000000000000', // Zero address (minting)
-  '0x75a2c417b9e2f00d47ad94f8c0894066e31e38d9', // Clanker deployer
-  '0x785648669b8e90a75a6a8de682258957f9028462', // DEX aggregator/router
-  '0x49fb9c16b9b2a19452633573603c837673fd7e04', // BaseSettler (DEX aggregator)
+  '0x03a520b32c04bf3beef7beb72e919cf822ed34f1', // Uniswap Universal Router 2
+  '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae', // LI.FI Diamond
+  '0x111111125421ca6dc452d289314280a0f8842a65', // 1inch v6 Router
+  '0xdef1abe32c034e558cdd535791643c58a13acc10', // ParaSwap
+  '0x6352a56caadc4f1e25cd6c75970fa768a3304e64', // Odos Router v2
+  '0xec8b0f7ffe3ae75d7ffab09429e3675bb63503e4', // Jumper Exchange
+  '0x5d64d14d2cf4fe5fe4e65b1c7e3d11e18d493091', // Zerion Router
+  '0xdD7d485A334B13D3Ae589e00fa8248BEC21A7121', // Dexscreener moonshot
+  '0x7b96E0f29241f3d654CA1BFBC53E1B0E5E3Ec211', // team.tode.eth
+  // NEYNARTODES Treasury - host rewards from BuyBurnHoldEarn
+  '0xd4d84f3477eb482783aAB48F00e357C801c48928',
+  // BuyBurnHoldEarn v1 - contest entry rewards
+  '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28',
+  // BuyBurnHoldEarn v2 - contest entry rewards
+  '0x856Bc35576a38b8a9887E86888995F056fA87593',
+  // 0x Protocol Settlers - DEX aggregator addresses
+  '0xdc5d8200A030798BC6227240f68b4dD9542686ef',  // Settler - Taker (swap)
+  '0xce09Bdf28eC438FddE2Bf255dA806e0c357247bf',  // Settler - Metatransaction
+  '0xFf11500b35A3e48a298BCd6139B9A3D9c369537e',  // Settler - Intents
+  '0x706A7D84D3C17b63FF0DA2c38a8c178e00cD87Be',  // Settler - Bridge
+  '0x0000000000001fF3684f28c67538d4D072C22734',  // 0x AllowanceHolder
+  // Zero address (minting)
+  '0x0000000000000000000000000000000000000000',
 ].map(a => a.toLowerCase()));
 
 // Struct: host, contestType, status, castId, startTime, endTime, prizeToken, prizeAmount, nftAmount, tokenRequirement, volumeRequirement, winnerCount, winners, isTestContest
