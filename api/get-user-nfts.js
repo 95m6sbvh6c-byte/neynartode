@@ -2,7 +2,7 @@
  * Get User NFTs API
  *
  * Fetches NFTs owned by a wallet address.
- * Uses Blockscout API (Base's official explorer - free, no key needed).
+ * Uses Alchemy NFT API for reliable indexing.
  *
  * Also fetches individual NFT metadata by contract+tokenId.
  *
@@ -14,11 +14,12 @@
 
 const { ethers } = require('ethers');
 
-// Blockscout API (Base's official explorer - free, no API key needed)
-const BLOCKSCOUT_BASE_URL = 'https://base.blockscout.com/api/v2';
+// Alchemy API for NFTs (more reliable than Blockscout)
+const ALCHEMY_API_KEY = 'QooWtq9nKQlkeqKF_-rvC';
+const ALCHEMY_NFT_BASE_URL = `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
 
 // RPC for direct contract calls as fallback
-const BASE_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
+const BASE_RPC = `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
 
 // IPFS gateways to try in order (ipfs.io is unreliable from serverless)
 const IPFS_GATEWAYS = [
@@ -81,7 +82,7 @@ const NFT_ABI = [
 
 /**
  * Fetch single NFT metadata - uses direct contract call for fresh metadata
- * (Blockscout can have stale cached metadata for revealed NFTs)
+ * (APIs can have stale cached metadata for revealed NFTs)
  */
 async function getNftMetadata(contractAddress, tokenId) {
   console.log(`Fetching NFT metadata for ${contractAddress} #${tokenId} via direct contract call...`);
@@ -218,20 +219,18 @@ async function getNftMetadataFromContract(contractAddress, tokenId) {
 }
 
 /**
- * Fetch NFTs owned by an address using Blockscout API (free, no key needed)
+ * Fetch NFTs owned by an address using Alchemy NFT API
  */
-async function getNftsForOwner(ownerAddress, cursor = null) {
+async function getNftsForOwner(ownerAddress, pageKey = null) {
   try {
-    // Blockscout NFT endpoint for address
-    let url = `${BLOCKSCOUT_BASE_URL}/addresses/${ownerAddress}/nft?type=ERC-721,ERC-1155`;
+    // Alchemy NFT API endpoint
+    let url = `${ALCHEMY_NFT_BASE_URL}/getNFTsForOwner?owner=${ownerAddress}&withMetadata=true&pageSize=100`;
 
-    // Blockscout uses different pagination params
-    if (cursor) {
-      // cursor format: "token_hash:id" from next_page_params
-      url += `&${cursor}`;
+    if (pageKey) {
+      url += `&pageKey=${encodeURIComponent(pageKey)}`;
     }
 
-    console.log(`Fetching NFTs for ${ownerAddress} via Blockscout...`);
+    console.log(`Fetching NFTs for ${ownerAddress} via Alchemy...`);
 
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json' }
@@ -239,52 +238,49 @@ async function getNftsForOwner(ownerAddress, cursor = null) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Blockscout API error:', response.status, errorText);
-      throw new Error(`Blockscout API error: ${response.status}`);
+      console.error('Alchemy API error:', response.status, errorText);
+      throw new Error(`Alchemy API error: ${response.status}`);
     }
 
     const data = await response.json();
 
-    // Transform the Blockscout response to match our format
-    const nfts = (data.items || []).map(nft => {
-      const tokenType = nft.token?.type || nft.token_type || 'ERC-721';
-      const isERC1155 = tokenType.includes('1155');
+    // Transform the Alchemy response to match our format
+    const nfts = (data.ownedNfts || []).map(nft => {
+      const tokenType = nft.tokenType || 'ERC721';
+      const isERC1155 = tokenType === 'ERC1155';
 
-      let imageUrl = nft.image_url || '';
+      // Get image URL from various possible fields
+      let imageUrl = nft.image?.cachedUrl ||
+                     nft.image?.thumbnailUrl ||
+                     nft.image?.pngUrl ||
+                     nft.image?.originalUrl ||
+                     nft.raw?.metadata?.image ||
+                     '';
+
+      // Resolve IPFS URLs
       if (imageUrl.startsWith('ipfs://')) {
-        imageUrl = imageUrl.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        imageUrl = imageUrl.replace('ipfs://', 'https://nftstorage.link/ipfs/');
       }
 
       return {
-        contractAddress: nft.token?.address_hash || nft.token?.address,
-        tokenId: nft.id,
-        name: nft.metadata?.name || `#${nft.id}`,
-        collection: nft.token?.name || 'Unknown Collection',
+        contractAddress: nft.contract?.address,
+        tokenId: nft.tokenId,
+        name: nft.name || nft.raw?.metadata?.name || `#${nft.tokenId}`,
+        collection: nft.contract?.name || nft.contract?.openSeaMetadata?.collectionName || 'Unknown Collection',
         image: imageUrl,
         tokenType: isERC1155 ? 'ERC1155' : 'ERC721',
-        balance: parseInt(nft.value) || 1,
-        contractName: nft.token?.name,
-        symbol: nft.token?.symbol,
-        floorPrice: null,
+        balance: parseInt(nft.balance) || 1,
+        contractName: nft.contract?.name,
+        symbol: nft.contract?.symbol,
+        floorPrice: nft.contract?.openSeaMetadata?.floorPrice || null,
+        description: nft.description || nft.raw?.metadata?.description || '',
       };
     });
 
-    // Build pagination cursor from next_page_params if present
-    let pageKey = null;
-    if (data.next_page_params) {
-      const params = new URLSearchParams();
-      Object.entries(data.next_page_params).forEach(([key, value]) => {
-        if (value !== null && value !== undefined) {
-          params.append(key, value);
-        }
-      });
-      pageKey = params.toString();
-    }
-
     return {
       nfts,
-      pageKey,
-      totalCount: nfts.length,
+      pageKey: data.pageKey || null,
+      totalCount: data.totalCount || nfts.length,
     };
 
   } catch (error) {
