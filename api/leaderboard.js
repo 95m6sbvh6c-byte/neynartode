@@ -195,8 +195,8 @@ module.exports = async (req, res) => {
     }
 
     const hostStats = {};
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY = 500;
+    const BATCH_SIZE = 25;
+    const BATCH_DELAY = 100;
 
     // Process Main contests (M-)
     for (let i = 1; i <= totalMainContests; i += BATCH_SIZE) {
@@ -300,7 +300,7 @@ module.exports = async (req, res) => {
     const activeHosts = hostAddresses.filter(h => hostStats[h].completedContests > 0);
 
     // Batch fetch user info
-    const USER_BATCH_SIZE = 5;
+    const USER_BATCH_SIZE = 20;
     const userInfoMap = new Map();
 
     for (let i = 0; i < activeHosts.length; i += USER_BATCH_SIZE) {

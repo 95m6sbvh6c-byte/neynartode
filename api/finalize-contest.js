@@ -742,7 +742,7 @@ async function finalizeUnifiedContest(contestIdStr) {
   // Check holder status for all users (in batches)
   const holderStatus = new Map(); // FID -> boolean
   const userArray = [...users.values()];
-  const HOLDER_BATCH_SIZE = 10;
+  const HOLDER_BATCH_SIZE = 30;
 
   console.log('\n💎 Checking 100M holder status (with 36h transfer cooldown)...');
   let cooldownCount = 0;
