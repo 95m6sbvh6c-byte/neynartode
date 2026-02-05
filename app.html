@@ -322,7 +322,7 @@
             }
 
             const hostAddress = contestDetails.host;
-            const BUYBURNHOLDEARN = '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28';
+            const BUYBURNHOLDEARN_V2 = '0x85D1A086E7119B9250f618077240BdA2cA3ecd72';
 
             // Get SDK's ethereum provider
             const ethProvider = await sdk.wallet.getEthereumProvider();
@@ -331,21 +331,21 @@
             console.log('Provider address:', providerAddress);
 
             if (isHolder) {
-              // Holder: Call rewardHostForHolderEntry(host) - sends 150K from treasury to host
+              // Holder: Call holderEntry(host) - sends 150K from treasury to host + burns 25K
               console.log('Processing holder entry - sending 150K to host:', hostAddress);
 
-              // Encode rewardHostForHolderEntry(address host)
-              // Function selector: keccak256("rewardHostForHolderEntry(address)")[:4] = 0xc763489d
-              const data = '0xc763489d' + hostAddress.slice(2).toLowerCase().padStart(64, '0');
+              // Encode holderEntry(address host)
+              // Function selector: keccak256("holderEntry(address)")[:4] = 0x8da45e5c
+              const data = '0x8da45e5c' + hostAddress.slice(2).toLowerCase().padStart(64, '0');
 
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
                 params: [{
                   from: providerAddress,
-                  to: BUYBURNHOLDEARN,
+                  to: BUYBURNHOLDEARN_V2,
                   value: '0x0',
                   data: data,
-                  gas: '0x' + (150000).toString(16)
+                  gas: '0x' + (200000).toString(16)
                 }]
               });
               console.log('Holder entry tx sent:', txHash);
@@ -372,43 +372,42 @@
               showCelebration(castHash);
 
             } else {
-              // Non-holder: Call buyAndDistribute(entrant, host) - buys 1M, distributes 25/25/35/15
+              // Non-holder: Call nonHolderEntryETH(host) - pays ~$0.10 in ETH, host gets 150K + 25K burned
               console.log('Processing non-holder entry...');
               console.log('Entrant:', providerAddress, 'Host:', hostAddress);
 
-              // Get quote for ETH needed via RPC call
-              const quoteCalldata = '0x171755b1'; // getQuote() selector
-              const quoteResponse = await fetch(BASE_RPC, {
+              // Get entry fee in ETH via RPC call (uses Chainlink price feed)
+              const feeCalldata = '0xd478b02a'; // getEntryFeeETH() selector
+              const feeResponse = await fetch(BASE_RPC, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   jsonrpc: '2.0',
                   id: 1,
                   method: 'eth_call',
-                  params: [{ to: BUYBURNHOLDEARN, data: quoteCalldata }, 'latest']
+                  params: [{ to: BUYBURNHOLDEARN_V2, data: feeCalldata }, 'latest']
                 })
               });
-              const quoteData = await quoteResponse.json();
-              const ethNeeded = BigInt(quoteData.result || '0x0');
-              // Add 5% buffer
+              const feeData = await feeResponse.json();
+              const ethNeeded = BigInt(feeData.result || '0x0');
+              // Add 5% buffer for price movement
               const ethWithBuffer = ethNeeded * 105n / 100n;
               const valueHex = '0x' + ethWithBuffer.toString(16);
               console.log('Entry fee with buffer:', ethWithBuffer.toString(), 'wei');
 
-              // Encode buyAndDistribute(address entrant, address host)
-              // Function selector: keccak256("buyAndDistribute(address,address)")[:4] = 0x7dfda8d0
-              const entrantPadded = providerAddress.slice(2).toLowerCase().padStart(64, '0');
+              // Encode nonHolderEntryETH(address host)
+              // Function selector: keccak256("nonHolderEntryETH(address)")[:4] = 0x6b5e3a40
               const hostPadded = hostAddress.slice(2).toLowerCase().padStart(64, '0');
-              const data = '0x7dfda8d0' + entrantPadded + hostPadded;
+              const data = '0x6b5e3a40' + hostPadded;
 
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
                 params: [{
                   from: providerAddress,
-                  to: BUYBURNHOLDEARN,
+                  to: BUYBURNHOLDEARN_V2,
                   value: valueHex,
                   data: data,
-                  gas: '0x' + (500000).toString(16)
+                  gas: '0x' + (300000).toString(16)
                 }]
               });
               console.log('Non-holder entry tx sent:', txHash);
@@ -1400,7 +1399,7 @@
     // ENTER RAFFLE V2 - Auto like, recast, and optional buy and burn
     // ═══════════════════════════════════════════════════════════════════
 
-    const BUYBURNHOLDEARN_ADDRESS = '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28'; // BuyBurnHoldEarn - distributes 25% entrant, 25% burn, 35% treasury, 15% host
+    const BUYBURNHOLDEARN_ADDRESS = '0x85D1A086E7119B9250f618077240BdA2cA3ecd72'; // BuyBurnHoldEarn V2 - 150K to host + 25K burned per entry
     const HOLDER_THRESHOLD = ethers.BigNumber.from('100000000000000000000000000'); // 100M tokens (18 decimals)
 
     // Load which contests user has entered
@@ -1602,9 +1601,9 @@
         const iface = new ethers.utils.Interface(BUYBURNHOLDEARN_ABI);
 
         if (isHolder) {
-          // Holder entry: call rewardHostForHolderEntry(host) - sends 150K from treasury to host
-          showToast('Processing holder entry reward...', 'info');
-          const data = iface.encodeFunctionData('rewardHostForHolderEntry', [hostAddress]);
+          // Holder entry: call holderEntry(host) - sends 150K from treasury to host + burns 25K
+          showToast('Processing holder entry...', 'info');
+          const data = iface.encodeFunctionData('holderEntry', [hostAddress]);
 
           try {
             let txHash;
@@ -1613,7 +1612,7 @@
               to: BUYBURNHOLDEARN_ADDRESS,
               value: '0x0', // No ETH needed for holder entry
               data: data,
-              gas: '0x' + (150000).toString(16) // 150k gas limit
+              gas: '0x' + (200000).toString(16) // 200k gas limit
             };
 
             if (sdk?.wallet?.ethProvider) {
@@ -1648,7 +1647,7 @@
             if (!receipt) {
               showToast('Transaction submitted but confirmation timed out. Entry may still process.', 'warning');
             } else if (receipt.status === 1) {
-              showToast('Holder entry confirmed! Host received 150K NEYNARTODES', 'success');
+              showToast('Holder entry confirmed! Host received 150K + 25K burned', 'success');
             } else {
               showToast('Transaction failed on-chain', 'error');
               resetEnterButton(button, contestId);
@@ -1665,23 +1664,23 @@
             return;
           }
         } else {
-          // Non-holder entry: call buyAndDistribute(entrant, host) - buys 1M tokens, distributes 25/25/35/15
-          showToast('Getting entry fee quote...', 'info');
+          // Non-holder entry: call nonHolderEntryETH(host) - pays ~$0.10 in ETH, host gets 150K + 25K burned
+          showToast('Getting entry fee...', 'info');
 
           try {
-            // Get quote for ETH needed (uses global rpcProvider)
+            // Get entry fee in ETH (uses Chainlink price feed)
             const contract = new ethers.Contract(BUYBURNHOLDEARN_ADDRESS, BUYBURNHOLDEARN_ABI, rpcProvider);
-            const ethNeeded = await contract.callStatic.getQuote();
+            const ethNeeded = await contract.getEntryFeeETH();
             // Add 5% buffer for price movement
             const ethWithBuffer = ethNeeded.mul(105).div(100);
             const valueHex = '0x' + ethWithBuffer.toBigInt().toString(16);
 
             console.log('Entry fee:', ethers.utils.formatEther(ethWithBuffer), 'ETH');
 
-            showToast('Processing entry fee...', 'info');
+            showToast('Processing entry fee (~$0.10)...', 'info');
 
-            // Encode buyAndDistribute call
-            const data = iface.encodeFunctionData('buyAndDistribute', [fromAddress, hostAddress]);
+            // Encode nonHolderEntryETH call
+            const data = iface.encodeFunctionData('nonHolderEntryETH', [hostAddress]);
 
             let txHash;
             const txParams = {
@@ -1689,7 +1688,7 @@
               to: BUYBURNHOLDEARN_ADDRESS,
               value: valueHex,
               data: data,
-              gas: '0x' + (500000).toString(16) // 500k gas limit for V4 swap
+              gas: '0x' + (300000).toString(16) // 300k gas limit
             };
 
             if (sdk?.wallet?.ethProvider) {
@@ -1724,7 +1723,7 @@
             if (!receipt) {
               showToast('Transaction submitted but confirmation timed out. Entry may still process.', 'warning');
             } else if (receipt.status === 1) {
-              showToast('Entry confirmed! You received 250K NEYNARTODES', 'success');
+              showToast('Entry confirmed! Host received 150K + 25K burned', 'success');
             } else {
               showToast('Transaction failed on-chain', 'error');
               resetEnterButton(button, contestId);
@@ -2097,7 +2096,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       CONTRACTS: {
         // === Unified ContestManager (M- and T- prefix contests) ===
         contestManager: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
-        buyBurnHoldEarn: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28', // BuyBurnHoldEarn - distributes 25% entrant, 25% burn, 35% treasury, 15% host
+        buyBurnHoldEarn: '0x85D1A086E7119B9250f618077240BdA2cA3ecd72', // BuyBurnHoldEarn V2 - 150K to host + 25K burned per entry
 
         // === Shared Contracts ===
         prizeNFT: '0x181a7Ec7496bf525BB0F3d007bD06dB4983BeBD1',
@@ -7472,18 +7471,22 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       'event WinnersSelected(uint256 indexed contestId, address[] winners, uint256 prizePerWinner)'
     ];
 
-    // BuyBurnHoldEarn - Distributes tokens for contest entry
-    // Non-holder: buys 1M tokens, distributes 25% entrant, 25% burn, 35% treasury, 15% host
-    // Holder: sends 150K from treasury to host
+    // BuyBurnHoldEarn V2 - Contest entry with new tokenomics
+    // Non-holder: pays ~$0.10 in ETH/USDC, host gets 150K + 25K burned
+    // Holder: free entry, host gets 150K + 25K burned
     const BUYBURNHOLDEARN_ABI = [
-      'function buyAndDistribute(address entrant, address host) external payable',
-      'function rewardHostForHolderEntry(address host) external',
-      'function getQuote() external returns (uint256)',
-      'function buyAmount() external view returns (uint256)',
-      'function holderHostReward() external view returns (uint256)',
-      'function getStats() external view returns (uint256 bought, uint256 burned, uint256 toEntrants, uint256 toTreasuryTotal, uint256 toHostsTotal, uint256 holderHostRewardsTotal)',
-      'event BuyBurnHoldEarnExecuted(address indexed entrant, address indexed host, uint256 tokensBought, uint256 toEntrant, uint256 burned, uint256 toTreasury, uint256 toHost, uint256 ethSpent, uint256 timestamp)',
-      'event HolderEntryReward(address indexed host, uint256 amount, uint256 timestamp)'
+      'function holderEntry(address host) external',
+      'function nonHolderEntryETH(address host) external payable',
+      'function nonHolderEntryUSDC(address host) external',
+      'function getEntryFeeETH() view returns (uint256)',
+      'function getETHPrice() view returns (uint256)',
+      'function entryFeeUSDC() view returns (uint256)',
+      'function hostReward() view returns (uint256)',
+      'function burnAmount() view returns (uint256)',
+      'function getStats() view returns (uint256 entries, uint256 holderEntries, uint256 nonHolderEntries, uint256 hostRewardsTotal, uint256 burnedTotal, uint256 usdcCollected, uint256 ethCollected)',
+      'event HolderEntry(address indexed entrant, address indexed host, uint256 hostReward, uint256 burned, uint256 timestamp)',
+      'event NonHolderEntryETH(address indexed entrant, address indexed host, uint256 feeETH, uint256 hostReward, uint256 burned, uint256 timestamp)',
+      'event NonHolderEntryUSDC(address indexed entrant, address indexed host, uint256 feeUSDC, uint256 hostReward, uint256 burned, uint256 timestamp)'
     ];
 
     // ERC721_ABI and ERC1155_ABI are defined at the top of the file near CONFIG
