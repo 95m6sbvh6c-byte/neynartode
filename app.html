@@ -594,6 +594,22 @@
       color: var(--accent-light);
     }
 
+    .btn-accent {
+      background: linear-gradient(135deg, var(--accent) 0%, #6366f1 100%);
+      color: white;
+      font-weight: 500;
+      padding: 12px 24px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-accent:hover {
+      transform: translateY(-1px);
+      opacity: 0.9;
+    }
+
     /* ===== INPUTS ===== */
     .input-modern {
       background: var(--bg-secondary);
@@ -1288,26 +1304,28 @@
       overlay.innerHTML = `
         <div class="celebration-content">
           <div class="celebration-title">You're Entered!</div>
-          <div class="celebration-message">
-            <strong>Reply with 3+ words</strong> to get an<br>
-            <strong>extra entry</strong> into the raffle!
+          <div class="celebration-message" style="text-align: left; max-width: 280px; margin: 0 auto;">
+            <div style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-secondary);">Earn bonus entries:</div>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success);">+1</span>
+                <span>Reply with 3+ words</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success);">+1</span>
+                <span>Share the contest</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success);">+1</span>
+                <span>Hold 100M+ NEYNARTODES</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success);">+1</span>
+                <span>$20+ trading volume</span>
+              </div>
+            </div>
           </div>
-          ${replyUrl ? `
-            <button id="reply-btn" style="
-              margin-top: 1.5rem;
-              background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
-              color: white;
-              font-weight: 600;
-              padding: 14px 28px;
-              border-radius: 12px;
-              border: none;
-              cursor: pointer;
-              font-size: 1rem;
-              box-shadow: 0 4px 14px var(--accent-glow);
-              transition: all 0.2s ease;
-            ">Reply Now</button>
-          ` : ''}
-          <div style="margin-top: 1rem; color: var(--text-muted); font-size: 0.85rem;">Tap anywhere to close</div>
+          <div style="margin-top: 1.25rem; color: var(--text-muted); font-size: 0.85rem;">Tap anywhere to close</div>
         </div>
       `;
 
@@ -1369,29 +1387,10 @@
       // Launch confetti
       createConfetti();
 
-      // Handle reply button click
-      const replyBtn = overlay.querySelector('#reply-btn');
-      if (replyBtn && replyUrl) {
-        replyBtn.onclick = (e) => {
-          e.stopPropagation();
-          // Open cast in Warpcast
-          if (window.FarcasterSDK?.actions?.openUrl) {
-            window.FarcasterSDK.actions.openUrl(replyUrl);
-          } else {
-            window.open(replyUrl, '_blank');
-          }
-          // Close celebration
-          overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
-          setTimeout(() => overlay.remove(), 300);
-        };
-      }
-
-      // Click anywhere else to dismiss
+      // Click anywhere to dismiss
       overlay.onclick = (e) => {
-        if (e.target === overlay || e.target.closest('.celebration-content') && !e.target.closest('#reply-btn')) {
-          overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
-          setTimeout(() => overlay.remove(), 300);
-        }
+        overlay.style.animation = 'celebrationFadeIn 0.3s ease-out reverse forwards';
+        setTimeout(() => overlay.remove(), 300);
       };
     }
 
@@ -5886,6 +5885,17 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                     >
                       ${state.contestEntries?.[contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
                     </button>
+                    ${state.contestEntries?.[contest.contestId]?.entered && contest.castId ? `
+                    <button
+                      onclick="window.open('https://warpcast.com/~/conversations/${(contest.castId || '').split('|')[0]}', '_blank')"
+                      class="btn-accent text-sm py-2 px-4"
+                    >
+                      <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                      </svg>
+                      Reply
+                    </button>
+                    ` : ''}
                     <button
                       onclick="viewCast('${(contest.castId || '').split('|')[0]}')"
                       class="btn-secondary text-sm py-2 px-4"
