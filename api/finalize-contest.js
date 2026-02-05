@@ -117,8 +117,12 @@ const DEX_ADDRESSES = new Set([
   '0xdD7d485A334B13D3Ae589e00fa8248BEC21A7121',
   // brianwharton - tokens sent from this wallet bypass cooldown
   '0x7b96E0f29241f3d654CA1BFBC53E1B0E5E3Ec211',
-  // 0x Settler DEX aggregator (routes trades through multiple DEXs)
-  '0xdc5d8200A030798BC6227240f68b4dD9542686ef',
+  // 0x Protocol Settlers (query registry at 0x00000000000004533Fe15556B1E086BB1A72cEae for updates)
+  '0xdc5d8200A030798BC6227240f68b4dD9542686ef',  // Settler - Taker (swap)
+  '0xce09Bdf28eC438FddE2Bf255dA806e0c357247bf',  // Settler - Metatransaction
+  '0xFf11500b35A3e48a298BCd6139B9A3D9c369537e',  // Settler - Intents
+  '0x706A7D84D3C17b63FF0DA2c38a8c178e00cD87Be',  // Settler - Bridge
+  '0x0000000000001fF3684f28c67538d4D072C22734',  // 0x AllowanceHolder
 ].map(a => a.toLowerCase()));
 
 // Unified ContestManager ABI
