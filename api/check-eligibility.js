@@ -49,8 +49,10 @@ const DEX_ADDRESSES = new Set([
   '0xd4d84f3477eb482783aAB48F00e357C801c48928',
   // BuyBurnHoldEarn v1 - contest entry rewards
   '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28',
-  // BuyBurnHoldEarn v2 - contest entry rewards
+  // BuyBurnHoldEarn v2 - contest entry rewards (old)
   '0x856Bc35576a38b8a9887E86888995F056fA87593',
+  // BuyBurnHoldEarn v2 - contest entry rewards (fixed)
+  '0x85D1A086E7119B9250f618077240BdA2cA3ecd72',
   // 0x Protocol Settlers - DEX aggregator addresses
   '0xdc5d8200A030798BC6227240f68b4dD9542686ef',  // Settler - Taker (swap)
   '0xce09Bdf28eC438FddE2Bf255dA806e0c357247bf',  // Settler - Metatransaction
