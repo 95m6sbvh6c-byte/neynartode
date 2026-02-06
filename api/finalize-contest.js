@@ -66,7 +66,6 @@ const CONFIG = {
     940217,   // futurepicker - suspected multi-account abuse
     874752,   // lunamarsh - suspected multi-account abuse
     1139990,  // sonite/bengarfm - suspected multi-account abuse
-    1354724,  // aeskyhigh - suspected multi-account abuse
     2045016,  // aerieth - alt account of @aeri
     // Farm ring: all linked to X @nando8618, registered 2025-03-23
     1027765,  // lokidtuyul
