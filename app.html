@@ -1463,6 +1463,41 @@
       }
     }
 
+    // Handle reply button click - uses SDK composeCast for in-app reply
+    async function replyToContest(contestId, castId, hostFid) {
+      if (!castId) return;
+
+      const castHash = castId.split('|')[0];
+
+      // Try SDK composeCast with parentCastId for proper reply flow
+      const sdk = window.FarcasterSDK;
+      if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function' && hostFid) {
+        try {
+          await sdk.actions.composeCast({
+            parentCastId: {
+              fid: parseInt(hostFid),
+              hash: castHash
+            }
+          });
+          // Mark as replied after compose opens
+          if (!state.contestReplies) state.contestReplies = {};
+          state.contestReplies[contestId] = true;
+          render();
+          return;
+        } catch (e) {
+          console.log('composeCast reply failed, falling back to URL:', e);
+        }
+      }
+
+      // Fallback: open conversation URL
+      window.open(`https://warpcast.com/~/conversations/${castHash}`, '_blank');
+
+      // Mark as replied locally
+      if (!state.contestReplies) state.contestReplies = {};
+      state.contestReplies[contestId] = true;
+      render();
+    }
+
     // Check if user is a holder (100M+ NEYNARTODES for NEYNARTODES contests, 200M for custom token contests)
     // contestId parameter ensures we check against the correct threshold for the specific contest
     async function checkHolderStatus(contestId = 'M-1') {
@@ -2297,6 +2332,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       upcomingContests: [], // Array of scheduled contests
       contestParticipants: {}, // Map of contestId -> { participants, count, hasMore }
       contestShares: {}, // Map of contestId -> true (user has shared)
+      contestReplies: {}, // Map of contestId -> true (user has replied)
       participantsModal: null, // { contestId, loading } for participants popup
       buyBurnHoldEarnModal: false, // Show Buy Burn Hold Earn details modal
       contestsLoading: true, // Loading state for contests
@@ -5899,11 +5935,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       View Cast
                     </button>
                     <button
-                      onclick="window.open('https://warpcast.com/~/conversations/${(contest.castId || '').split('|')[0]}', '_blank')"
-                      class="btn-secondary text-sm py-2 px-4"
+                      onclick="replyToContest('${contest.contestId}', '${contest.castId || ''}', '${contest.hostUser?.fid || ''}')"
+                      class="${state.contestReplies?.[contest.contestId] ? 'btn-success' : 'btn-secondary'} text-sm py-2 px-4"
+                      id="reply-btn-${contest.contestId}"
                       ${!contest.castId ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}
+                      ${state.contestReplies?.[contest.contestId] ? 'style="opacity: 0.8;"' : ''}
                     >
-                      Reply
+                      ${state.contestReplies?.[contest.contestId] ? 'Replied ✓' : 'Reply'}
                     </button>
                     <button
                       data-contest-id="${contest.contestId}"
