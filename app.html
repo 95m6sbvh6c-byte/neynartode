@@ -5922,13 +5922,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                       ${state.contestEntries?.[contest.contestId]?.entered ? 'Entered ✓' : 'Enter Raffle'}
                     </button>
                     <button
-                      onclick="viewCast('${(contest.castId || '').split('|')[0]}')"
-                      class="btn-secondary text-sm py-2 px-4"
-                      ${!contest.castId ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}
-                    >
-                      View Cast
-                    </button>
-                    <button
                       onclick="replyToContest('${contest.contestId}', '${contest.castId || ''}', '${contest.hostUser?.fid || ''}')"
                       class="${state.contestReplies?.[contest.contestId] ? 'btn-success' : 'btn-secondary'} text-sm py-2 px-4"
                       id="reply-btn-${contest.contestId}"
