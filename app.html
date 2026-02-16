@@ -7162,7 +7162,14 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
         const playOnClick = async (e) => {
           if (window.splashAudioPlayed) return;
+
+          // Ignore clicks on the mute button — let the toggle run first
+          if (e.target && (e.target.id === 'muteToggle' || e.target.closest?.('#muteToggle'))) {
+            return;
+          }
+
           window.splashAudioPlayed = true;
+          document.removeEventListener('click', playOnClick, true);
 
           if (state.isMuted) {
             console.log('Audio muted, skipping playback');
@@ -7175,10 +7182,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             const audio = new Audio('/splash-sound.mp3');
             audio.volume = 0.5;
 
-            // Log audio element state
-            console.log('Audio element created, src:', audio.src);
-            console.log('Audio canPlayType mp3:', audio.canPlayType('audio/mpeg'));
-
             audio.onerror = (err) => {
               console.log('Audio error event:', err, audio.error?.message || audio.error?.code);
             };
@@ -7190,7 +7193,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           }
         };
 
-        document.addEventListener('click', playOnClick, { once: true, capture: true });
+        document.addEventListener('click', playOnClick, { capture: true });
       }
 
       // Login page
