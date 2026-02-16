@@ -2401,7 +2401,19 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       // Suggestions (anonymous)
       suggestions: [],
       suggestionText: '',
-      suggestionsLoading: false
+      suggestionsLoading: false,
+
+      // DAO (Todely Awesome DAO)
+      daoProposals: [],
+      daoProposalsLoading: false,
+      daoUserPower: null,
+      daoUserVotes: {},
+      daoCreateMode: false,
+      daoProposalTitle: '',
+      daoProposalDescription: '',
+      daoSubmitting: false,
+      daoVoting: null,
+      daoOpen: false
     };
 
     // ===== TOKEN DATABASE =====
@@ -5130,6 +5142,8 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         pageHtml = renderHistory();
       } else if (state.currentView === 'suggestions') {
         pageHtml = renderSuggestions();
+      } else if (state.currentView === 'dao') {
+        pageHtml = renderDAO();
       } else {
         pageHtml = renderCreateContest();
       }
@@ -5411,6 +5425,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 state.currentView === 'history' ? 'Contest History' :
                 state.currentView === 'leaderboard' ? 'Leaderboard' :
                 state.currentView === 'active' ? 'Active Contests' :
+                state.currentView === 'dao' ? 'Todely Awesome DAO' :
                 'Suggestions'}
             </h2>
             ${state.currentView === 'active' ? `
@@ -5454,6 +5469,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             ` : ''}
             ${state.currentView !== 'suggestions' ? `
               <button id="viewSuggestions" class="btn-ghost flex-1 text-[10px] py-2 px-1">Ideas</button>
+            ` : ''}
+            ${state.currentView !== 'dao' ? `
+              <button id="viewDAO" class="btn-ghost flex-1 text-[10px] py-2 px-1">DAO</button>
             ` : ''}
           </nav>
 
@@ -6230,6 +6248,148 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       `;
     }
 
+    // ===== DAO VIEW =====
+    function renderDAO() {
+      const isHolder = state.daoUserPower?.power >= 1;
+      const isAdmin = state.userFid && [1188162].includes(parseInt(state.userFid));
+      const canCreate = (isHolder && state.daoOpen) || isAdmin;
+      const now = Math.floor(Date.now() / 1000);
+      const activeProposals = state.daoProposals.filter(p => p.status === 'active' && p.endTime > now);
+      const pastProposals = state.daoProposals.filter(p => p.status !== 'active' || p.endTime <= now);
+
+      const powerBreakdown = state.daoUserPower ? `
+        <div class="text-xs space-y-1 text-right">
+          <div class="${state.daoUserPower.breakdown.holder?.met ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}">
+            ${state.daoUserPower.breakdown.holder?.met ? '&#10003;' : '&#10007;'} 100M+ Holder
+          </div>
+          <div class="${state.daoUserPower.breakdown.hosted?.met ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}">
+            ${state.daoUserPower.breakdown.hosted?.met ? '&#10003;' : '&#10007;'} Hosted a Contest
+          </div>
+          <div class="${state.daoUserPower.breakdown.voted?.met ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}">
+            ${state.daoUserPower.breakdown.voted?.met ? '&#10003;' : '&#10007;'} Voted on Leaderboard
+          </div>
+        </div>
+      ` : '<span class="text-[var(--text-muted)] text-xs">Loading...</span>';
+
+      const createSection = state.daoCreateMode ? `
+        <div class="glass-card p-4 mb-4">
+          <h3 class="text-base font-semibold text-[var(--text-primary)] mb-3">New Proposal</h3>
+          <input type="text" id="daoTitle" placeholder="Proposal title..." class="input-modern mb-3 w-full" maxlength="100" />
+          <textarea id="daoDescription" placeholder="Describe your proposal..." class="input-modern resize-none h-24 mb-3 w-full" maxlength="1000"></textarea>
+          <div class="flex gap-2">
+            <button onclick="submitDAOProposal()" class="btn-primary flex-1" ${state.daoSubmitting ? 'disabled' : ''}>
+              ${state.daoSubmitting ? 'Submitting...' : 'Submit Proposal'}
+            </button>
+            <button onclick="state.daoCreateMode = false; render();" class="btn-ghost px-4">Cancel</button>
+          </div>
+        </div>
+      ` : (canCreate ? `
+        <button onclick="state.daoCreateMode = true; render();" class="btn-primary w-full py-3 mb-4">
+          Create Proposal
+        </button>
+      ` : '');
+
+      const proposalCards = (proposals, isActive) => proposals.map(p => {
+        const totalVotes = (p.votesFor || 0) + (p.votesAgainst || 0);
+        const forPct = totalVotes > 0 ? Math.round((p.votesFor / totalVotes) * 100) : 50;
+        const againstPct = 100 - forPct;
+        const userVote = p.userVote || state.daoUserVotes[p.id];
+        const remaining = p.endTime - now;
+        const hoursLeft = Math.max(0, Math.floor(remaining / 3600));
+        const minsLeft = Math.max(0, Math.floor((remaining % 3600) / 60));
+        const timeText = remaining > 0 ? `${hoursLeft}h ${minsLeft}m left` : 'Ended';
+        const passed = (p.votesFor || 0) > (p.votesAgainst || 0);
+
+        return `
+          <div class="glass-card p-4 mb-3">
+            <div class="flex items-start justify-between mb-2">
+              <div class="flex-1 min-w-0">
+                <h4 class="font-semibold text-[var(--text-primary)] text-sm">${p.title}</h4>
+                <p class="text-xs text-[var(--text-muted)]">by @${p.creatorUsername} · ${p.voterCount || 0} voters</p>
+              </div>
+              ${isActive
+                ? `<span class="text-xs px-2 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent-light)] whitespace-nowrap ml-2">${timeText}</span>`
+                : `<span class="text-xs px-2 py-0.5 rounded-full ${passed ? 'bg-[var(--success)]/20 text-[var(--success)]' : 'bg-[var(--error)]/20 text-[var(--error)]'} whitespace-nowrap ml-2">${passed ? 'Passed' : 'Rejected'}</span>`
+              }
+            </div>
+            <p class="text-sm text-[var(--text-secondary)] mb-3">${p.description}</p>
+
+            <div class="w-full h-3 rounded-full bg-[var(--bg-tertiary)] overflow-hidden mb-2 flex">
+              <div class="h-full bg-[var(--success)]" style="width: ${forPct}%"></div>
+              <div class="h-full bg-[var(--error)]" style="width: ${againstPct}%"></div>
+            </div>
+            <div class="flex justify-between text-xs text-[var(--text-muted)] mb-3">
+              <span>For: ${p.votesFor || 0} (${forPct}%)</span>
+              <span>Against: ${p.votesAgainst || 0} (${againstPct}%)</span>
+            </div>
+
+            ${isActive && !userVote && isHolder ? `
+              <div class="flex gap-2">
+                <button onclick="castDAOVote('${p.id}', 'for')" class="flex-1 py-2 rounded-xl text-sm font-medium bg-[var(--success)]/20 text-[var(--success)] hover:bg-[var(--success)]/30 transition-all ${state.daoVoting === p.id ? 'opacity-50 pointer-events-none' : ''}">
+                  For (+${state.daoUserPower?.power || 1})
+                </button>
+                <button onclick="castDAOVote('${p.id}', 'against')" class="flex-1 py-2 rounded-xl text-sm font-medium bg-[var(--error)]/20 text-[var(--error)] hover:bg-[var(--error)]/30 transition-all ${state.daoVoting === p.id ? 'opacity-50 pointer-events-none' : ''}">
+                  Against (+${state.daoUserPower?.power || 1})
+                </button>
+              </div>
+            ` : userVote ? `
+              <div class="text-center text-xs text-[var(--text-muted)]">
+                You voted <span class="font-semibold ${userVote === 'for' ? 'text-[var(--success)]' : 'text-[var(--error)]'}">${userVote}</span>
+              </div>
+            ` : isActive && !isHolder ? `
+              <div class="text-center text-xs text-[var(--text-muted)]">Hold 100M+ NEYNARTODES to vote</div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="min-h-screen p-4 md:p-6" style="background: var(--bg-primary);">
+          <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.08) 0%, transparent 50%);"></div>
+          <div class="max-w-2xl mx-auto relative z-10">
+            ${renderHeader()}
+
+            <!-- Voting Power -->
+            <div class="glass-card p-4 mb-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-semibold text-[var(--text-primary)]">Your Voting Power</h3>
+                  <div class="text-2xl font-bold text-[var(--accent-light)]">
+                    ${state.daoUserPower ? state.daoUserPower.power : '...'} / 3
+                  </div>
+                </div>
+                ${powerBreakdown}
+              </div>
+            </div>
+
+            <!-- DAO Status -->
+            <div class="glass-card p-3 mb-4 text-center text-sm ${state.daoOpen ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}">
+              ${state.daoOpen ? 'Proposals are open' : 'Proposals are currently closed'}
+            </div>
+
+            ${createSection}
+
+            <!-- Proposals -->
+            ${state.daoProposalsLoading && state.daoProposals.length === 0 ? `
+              <div class="text-center py-8 text-[var(--text-muted)]">Loading proposals...</div>
+            ` : `
+              ${activeProposals.length > 0 ? `
+                <h3 class="text-base font-bold text-[var(--text-primary)] mb-3">Active Proposals</h3>
+                ${proposalCards(activeProposals, true)}
+              ` : `
+                <div class="text-center py-6 text-[var(--text-muted)] text-sm">No active proposals</div>
+              `}
+
+              ${pastProposals.length > 0 ? `
+                <h3 class="text-base font-bold text-[var(--text-primary)] mt-6 mb-3">Past Proposals</h3>
+                ${proposalCards(pastProposals, false)}
+              ` : ''}
+            `}
+          </div>
+        </div>
+      `;
+    }
+
     function renderSuggestions() {
       const isDev = isDevWallet(state.userAddress);
 
@@ -6986,6 +7146,113 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         })();
       }
 
+      // ===== DAO FUNCTIONS =====
+      async function loadDAOProposals() {
+        state.daoProposalsLoading = true;
+        render();
+        try {
+          const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+          let url = `${baseUrl}/api/dao-proposals?status=all&limit=50`;
+          if (state.userFid) url += `&fid=${state.userFid}`;
+          const response = await fetch(url);
+          if (response.ok) {
+            const data = await response.json();
+            state.daoProposals = data.proposals || [];
+            state.daoOpen = data.daoOpen || false;
+            state.daoUserVotes = {};
+            state.daoProposals.forEach(p => {
+              if (p.userVote) state.daoUserVotes[p.id] = p.userVote;
+            });
+          }
+        } catch (e) {
+          console.error('Error loading DAO proposals:', e);
+        }
+        state.daoProposalsLoading = false;
+        render();
+      }
+
+      async function loadDAOPower() {
+        if (!state.userFid) return;
+        try {
+          const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+          const response = await fetch(`${baseUrl}/api/dao-power?fid=${state.userFid}`);
+          if (response.ok) {
+            state.daoUserPower = await response.json();
+            render();
+          }
+        } catch (e) {
+          console.error('Error loading DAO power:', e);
+        }
+      }
+
+      async function submitDAOProposal() {
+        if (!state.userFid) { showToast('Please connect wallet first', 'warning'); return; }
+        const title = state.daoProposalTitle.trim();
+        const description = state.daoProposalDescription.trim();
+        if (!title || title.length < 5) { showToast('Title must be at least 5 characters', 'warning'); return; }
+        if (!description || description.length < 10) { showToast('Description must be at least 10 characters', 'warning'); return; }
+
+        state.daoSubmitting = true;
+        render();
+        try {
+          const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+          const response = await fetch(`${baseUrl}/api/dao-proposals`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fid: parseInt(state.userFid), title, description })
+          });
+          const data = await response.json();
+          if (data.success) {
+            showToast('Proposal created!', 'success');
+            state.daoCreateMode = false;
+            state.daoProposalTitle = '';
+            state.daoProposalDescription = '';
+            loadDAOProposals();
+          } else {
+            showToast(data.error || 'Failed to create proposal', 'error');
+          }
+        } catch (e) {
+          showToast('Failed to create proposal', 'error');
+        }
+        state.daoSubmitting = false;
+        render();
+      }
+
+      async function castDAOVote(proposalId, vote) {
+        if (!state.userFid) { showToast('Please connect wallet first', 'warning'); return; }
+        state.daoVoting = proposalId;
+        render();
+        try {
+          const baseUrl = window.location.origin || 'https://frame-opal-eight.vercel.app';
+          const response = await fetch(`${baseUrl}/api/dao-vote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposalId, fid: parseInt(state.userFid), vote })
+          });
+          const data = await response.json();
+          if (data.success) {
+            showToast(`Vote recorded! (${data.votingPower} vote power)`, 'success');
+            state.daoUserVotes[proposalId] = vote;
+            const p = state.daoProposals.find(p => p.id === proposalId);
+            if (p) {
+              p.votesFor = data.votesFor;
+              p.votesAgainst = data.votesAgainst;
+              p.voterCount = data.voterCount;
+              p.userVote = vote;
+            }
+          } else {
+            showToast(data.error || 'Failed to vote', 'error');
+          }
+        } catch (e) {
+          showToast('Failed to vote', 'error');
+        }
+        state.daoVoting = null;
+        render();
+      }
+
+      window.submitDAOProposal = submitDAOProposal;
+      window.castDAOVote = castDAOVote;
+
       // Buy token function - opens Warpcast wallet swap directly in-app
       window.openBuyToken = async () => {
         const tokenAddress = CONFIG.CONTRACTS.neynartodes;
@@ -7103,6 +7370,30 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         }
         render();
       };
+
+      // DAO tab
+      const viewDAO = document.getElementById('viewDAO');
+      if (viewDAO) viewDAO.onclick = () => {
+        state.currentView = 'dao';
+        if (window.analytics?.track) window.analytics.track('View Changed', { view: 'dao' });
+        stopCountdownTimer();
+        stopBestTodeCountdown();
+        loadDAOProposals();
+        loadDAOPower();
+        render();
+      };
+
+      // DAO form handlers
+      const daoTitleInput = document.getElementById('daoTitle');
+      if (daoTitleInput) {
+        daoTitleInput.value = state.daoProposalTitle;
+        daoTitleInput.oninput = (e) => { state.daoProposalTitle = e.target.value; };
+      }
+      const daoDescInput = document.getElementById('daoDescription');
+      if (daoDescInput) {
+        daoDescInput.value = state.daoProposalDescription;
+        daoDescInput.oninput = (e) => { state.daoProposalDescription = e.target.value; };
+      }
 
       // Suggestions form handlers
       const suggestionInput = document.getElementById('suggestionInput');
