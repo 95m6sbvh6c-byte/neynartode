@@ -40,12 +40,12 @@ module.exports = async (req, res) => {
     }
 
     if (action === 'open') {
-      await kv.set('dao:open', 'true');
+      await kv.set('dao:open', true);
       return res.status(200).json({ success: true, daoOpen: true });
     }
 
     if (action === 'close') {
-      await kv.set('dao:open', 'false');
+      await kv.set('dao:open', false);
       return res.status(200).json({ success: true, daoOpen: false });
     }
 
@@ -60,7 +60,8 @@ module.exports = async (req, res) => {
       const fid = req.query.fid ? parseInt(req.query.fid) : null;
 
       // Check if DAO window is open
-      const daoOpen = (await kv.get('dao:open')) === 'true';
+      const daoOpenVal = await kv.get('dao:open');
+      const daoOpen = daoOpenVal === true || daoOpenVal === 'true';
 
       // Get proposal IDs (newest first)
       const proposalIds = await kv.zrange('dao:proposals', 0, -1, { rev: true });
@@ -122,7 +123,8 @@ module.exports = async (req, res) => {
     try {
       // Check DAO window (admin bypasses)
       if (!isAdmin) {
-        const daoOpen = (await kv.get('dao:open')) === 'true';
+        const daoOpenVal = await kv.get('dao:open');
+        const daoOpen = daoOpenVal === true || daoOpenVal === 'true';
         if (!daoOpen) {
           return res.status(400).json({ error: 'The DAO is not currently accepting proposals' });
         }
