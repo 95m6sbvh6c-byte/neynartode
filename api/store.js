@@ -345,6 +345,16 @@ module.exports = async (req, res) => {
       if (authKey !== expectedKey) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
+      if (req.method === 'GET') {
+        const { contestId } = req.query;
+        if (!contestId) return res.status(400).json({ error: 'Missing contestId' });
+        if (process.env.KV_REST_API_URL) {
+          const { kv } = require('@vercel/kv');
+          const data = await kv.get(`contest_price_prize_${contestId}`);
+          return res.status(200).json({ contestId, data });
+        }
+        return res.status(500).json({ error: 'KV not configured' });
+      }
       if (req.method === 'POST') {
         const { contestId, prizeValueUSD } = req.body;
         if (!contestId || prizeValueUSD == null) {

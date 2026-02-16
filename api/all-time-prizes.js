@@ -72,7 +72,7 @@ module.exports = async (req, res) => {
 
     // Helper to get prize USD value for a contest
     // Cap per-contest prize at $1M to filter corrupted price data
-    const MAX_PRIZE_USD = 1_000_000;
+    const MAX_PRIZE_USD = 500;
 
     async function getContestPrizeUSD(contestType, prizeAmount, contestId, prizeTokenAddr) {
       const type = Number(contestType);

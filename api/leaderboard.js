@@ -345,7 +345,7 @@ module.exports = async (req, res) => {
 
       // Fetch prize values (USD) for all completed contests
       // Cap per-contest prize at $1M to filter corrupted price data
-      const MAX_PRIZE_USD = 1_000_000;
+      const MAX_PRIZE_USD = 500;
       let totalPrizeUSD = 0;
       if (kvClient && stats.completedContestIds.length > 0) {
         try {
