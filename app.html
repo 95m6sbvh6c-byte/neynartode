@@ -5356,10 +5356,10 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             <button
               id="muteToggle"
               onclick="toggleMute()"
-              class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors mb-4"
+              class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors mb-4 flex items-center gap-2 mx-auto"
               style="background: none; border: none; cursor: pointer; font-size: 1.25rem;"
               title="${state.isMuted ? 'Unmute' : 'Mute'}"
-            >${state.isMuted ? '🔇' : '🔊'}</button>
+            ><span>${state.isMuted ? '🔇' : '🔊'}</span><span class="text-xs">${state.isMuted ? 'Unmute the dang Neynartodes' : 'Mute the dang Neynartodes'}</span></button>
 
             <!-- Header -->
             <h1 class="text-4xl font-bold text-gradient mb-2">Neynartodes</h1>
@@ -7149,7 +7149,9 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       localStorage.setItem('neynartodes_muted', state.isMuted);
       const btn = document.getElementById('muteToggle');
       if (btn) {
-        btn.textContent = state.isMuted ? '🔇' : '🔊';
+        btn.innerHTML = state.isMuted
+          ? '<span>🔇</span><span class="text-xs">Unmute the dang Neynartodes</span>'
+          : '<span>🔊</span><span class="text-xs">Mute the dang Neynartodes</span>';
         btn.title = state.isMuted ? 'Unmute' : 'Mute';
       }
     }
