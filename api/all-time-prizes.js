@@ -11,7 +11,7 @@
  */
 
 const { ethers } = require('ethers');
-const { getETHPrice, getTokenPriceUSD } = require('./lib/uniswap-volume');
+const { getETHPrice, getTokenPriceWithLiquidity } = require('./lib/uniswap-volume');
 
 const CONFIG = {
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
@@ -92,19 +92,24 @@ module.exports = async (req, res) => {
           if (priceData?.adminOverride) return Math.min(priceData.prizeValueUSD || 0, MAX_PRIZE_USD);
           if (priceData?.prizeValueUSD && priceData.prizeValueUSD >= 0.01) return Math.min(priceData.prizeValueUSD, MAX_PRIZE_USD);
         }
-        // Fallback: calculate from on-chain token price
+        // Fallback: calculate from on-chain token price (with liquidity validation)
         if (prizeTokenAddr && prizeTokenAddr !== ethers.ZeroAddress) {
           try {
-            const tokenPrice = await getTokenPriceUSD(provider, prizeTokenAddr);
-            if (tokenPrice > 0) {
+            const priceResult = await getTokenPriceWithLiquidity(provider, prizeTokenAddr);
+            if (priceResult.priceUSD > 0 && (priceResult.liquidityUSD === null || priceResult.liquidityUSD >= 1000)) {
               const tokenContract = new ethers.Contract(prizeTokenAddr, ['function decimals() view returns (uint8)'], provider);
               const decimals = await tokenContract.decimals().catch(() => 18n);
               const amount = Number(ethers.formatUnits(prizeAmount, Number(decimals)));
-              usd = amount * tokenPrice;
+              usd = amount * priceResult.priceUSD;
               if (kvClient) {
                 await kvClient.set(`contest_price_prize_${contestId}`, { prizeValueUSD: usd }).catch(() => {});
               }
               return Math.min(usd, MAX_PRIZE_USD);
+            } else if (priceResult.liquidityUSD !== null && priceResult.liquidityUSD < 1000) {
+              console.log(`Skipping low-liquidity prize for ${contestId}: $${priceResult.liquidityUSD.toFixed(2)} liquidity`);
+              if (kvClient) {
+                await kvClient.set(`contest_price_prize_${contestId}`, { prizeValueUSD: 0 }).catch(() => {});
+              }
             }
           } catch (e) {
             console.log(`Error getting ERC20 price for ${contestId}:`, e.message);

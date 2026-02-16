@@ -174,11 +174,12 @@ async function storePrice(contestId, tokenAddress, prizeAmount, res) {
     // Get current price with metadata (includes liquidity)
     const priceInfo = await getTokenPriceWithMetadata(provider, token);
 
-    // Liquidity check: reject illiquid tokens
-    // liquidityUSD is null for known/vetted pools (which is fine)
-    // liquidityUSD is 0 for fallback (no pool found)
-    // liquidityUSD is a number for discovered V2/V3 pools
-    if (priceInfo.liquidityUSD !== null && priceInfo.liquidityUSD < MIN_LIQUIDITY_USD) {
+    // Liquidity check: reject illiquid tokens (for entry token checks only)
+    // Prize token stores (contestId starts with "prize_") always succeed but get $0 value if illiquid
+    const isPrizeStore = contestId.startsWith('prize_');
+    const hasInsufficientLiquidity = priceInfo.liquidityUSD !== null && priceInfo.liquidityUSD < MIN_LIQUIDITY_USD;
+
+    if (hasInsufficientLiquidity && !isPrizeStore) {
       console.log(`REJECTED: Contest ${contestId} token ${token} has insufficient liquidity: $${priceInfo.liquidityUSD?.toFixed(2) || 0} (min: $${MIN_LIQUIDITY_USD})`);
       return res.status(400).json({
         error: 'Token has insufficient liquidity',
@@ -189,7 +190,14 @@ async function storePrice(contestId, tokenAddress, prizeAmount, res) {
     }
 
     // Calculate prize value in USD if prizeAmount provided
-    const prizeValueUSD = prizeAmount ? prizeAmount * priceInfo.tokenPrice : null;
+    // For low-liquidity prize tokens, store $0 instead of a potentially garbage price
+    let prizeValueUSD;
+    if (hasInsufficientLiquidity) {
+      console.log(`LOW LIQUIDITY PRIZE: Contest ${contestId} token ${token} - storing $0 prize value (liquidity: $${priceInfo.liquidityUSD?.toFixed(2) || 0})`);
+      prizeValueUSD = 0;
+    } else {
+      prizeValueUSD = prizeAmount ? prizeAmount * priceInfo.tokenPrice : null;
+    }
 
     priceData = {
       tokenAddress: token,

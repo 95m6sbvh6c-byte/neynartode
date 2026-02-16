@@ -17,7 +17,7 @@
 
 const { ethers } = require('ethers');
 const { getUserByWallet: getCachedUserByWallet } = require('./lib/utils');
-const { getETHPrice, getTokenPriceUSD } = require('./lib/uniswap-volume');
+const { getETHPrice, getTokenPriceWithLiquidity } = require('./lib/uniswap-volume');
 
 const CONFIG = {
   // Unified ContestManager (M- and T- prefix contests)
@@ -364,18 +364,23 @@ module.exports = async (req, res) => {
               const priceData = await kvClient.get(`contest_price_prize_${c.id}`).catch(() => null);
               if (priceData?.adminOverride) return Math.min(priceData.prizeValueUSD || 0, MAX_PRIZE_USD);
               if (priceData?.prizeValueUSD && priceData.prizeValueUSD >= 0.01) return Math.min(priceData.prizeValueUSD, MAX_PRIZE_USD);
-              // Fallback: calculate from on-chain token price
+              // Fallback: calculate from on-chain token price (with liquidity validation)
               if (c.prizeToken && c.prizeToken !== ethers.ZeroAddress) {
                 try {
-                  const tokenPrice = await getTokenPriceUSD(provider, c.prizeToken);
-                  if (tokenPrice > 0) {
+                  const priceResult = await getTokenPriceWithLiquidity(provider, c.prizeToken);
+                  // Reject prices from pools with insufficient liquidity (<$1K)
+                  if (priceResult.priceUSD > 0 && (priceResult.liquidityUSD === null || priceResult.liquidityUSD >= 1000)) {
                     const tokenContract = new ethers.Contract(c.prizeToken, ['function decimals() view returns (uint8)'], provider);
                     const decimals = await tokenContract.decimals().catch(() => 18n);
                     const amount = Number(ethers.formatUnits(c.prizeAmount, Number(decimals)));
-                    usd = amount * tokenPrice;
+                    usd = amount * priceResult.priceUSD;
                     // Cache for future lookups
                     await kvClient.set(`contest_price_prize_${c.id}`, { prizeValueUSD: usd }).catch(() => {});
                     return Math.min(usd, MAX_PRIZE_USD);
+                  } else if (priceResult.liquidityUSD !== null && priceResult.liquidityUSD < 1000) {
+                    console.log(`Skipping low-liquidity prize for ${c.id}: $${priceResult.liquidityUSD.toFixed(2)} liquidity`);
+                    // Cache $0 so we don't re-check every time
+                    await kvClient.set(`contest_price_prize_${c.id}`, { prizeValueUSD: 0 }).catch(() => {});
                   }
                 } catch (e) {
                   console.log(`Error getting ERC20 price for ${c.id}:`, e.message);
