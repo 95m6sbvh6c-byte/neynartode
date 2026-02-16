@@ -2,10 +2,11 @@
  * DAO Voting Power API
  *
  * Calculates a user's voting power for the Todely Awesome DAO.
- * Power is based on ecosystem participation (max 3):
+ * Power is based on ecosystem participation:
  *   +1: Hold 100M+ NEYNARTODES (required)
  *   +1: Has ever hosted a contest
  *   +1: Has ever voted on the leaderboard
+ *   +1 per $5 USD given away in completed contest prizes
  *
  * GET /api/dao-power?fid=12345
  */
@@ -73,6 +74,41 @@ async function checkHosted(addresses) {
 }
 
 /**
+ * Check how much USD a host has given away in completed contest prizes
+ * Uses the leaderboard API which already calculates totalPrizeUSD per host
+ */
+async function checkPrizesGiven(addresses) {
+  if (addresses.length === 0) return { met: false, totalPrizeUSD: 0, bonusVotes: 0 };
+
+  try {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'https://frame-opal-eight.vercel.app';
+
+    const response = await fetch(`${baseUrl}/api/leaderboard?limit=50`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.hosts && data.hosts.length > 0) {
+        const addressSet = new Set(addresses.map(a => a.toLowerCase()));
+        const match = data.hosts.find(h => addressSet.has(h.address.toLowerCase()));
+        if (match && match.totalPrizeUSD > 0) {
+          const bonusVotes = Math.floor(match.totalPrizeUSD / 5);
+          return {
+            met: bonusVotes > 0,
+            totalPrizeUSD: Math.round(match.totalPrizeUSD * 100) / 100,
+            bonusVotes
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.log('Prize check failed:', e.message);
+  }
+
+  return { met: false, totalPrizeUSD: 0, bonusVotes: 0 };
+}
+
+/**
  * Check if any of the user's addresses have voted on the leaderboard
  */
 async function checkVoted(addresses, provider) {
@@ -126,17 +162,19 @@ module.exports = async (req, res) => {
       return res.status(200).json({ power: 0, maxPower: 3, breakdown: {
         holder: { met: false, balance: '0' },
         hosted: { met: false, contestCount: 0 },
-        voted: { met: false }
+        voted: { met: false },
+        prizesGiven: { met: false, totalPrizeUSD: 0, bonusVotes: 0 }
       }});
     }
 
     const provider = new ethers.JsonRpcProvider(CONFIG.BASE_RPC);
 
     // Run all checks in parallel
-    const [holder, hosted, voted] = await Promise.all([
+    const [holder, hosted, voted, prizesGiven] = await Promise.all([
       checkHolder(addresses, provider),
       checkHosted(addresses),
-      checkVoted(addresses, provider)
+      checkVoted(addresses, provider),
+      checkPrizesGiven(addresses)
     ]);
 
     // Must be a holder to have any power
@@ -145,12 +183,15 @@ module.exports = async (req, res) => {
       power = 1;
       if (hosted.met) power++;
       if (voted.met) power++;
+      power += prizesGiven.bonusVotes;
     }
+
+    const maxPower = 3 + prizesGiven.bonusVotes;
 
     const result = {
       power,
-      maxPower: 3,
-      breakdown: { holder, hosted, voted }
+      maxPower,
+      breakdown: { holder, hosted, voted, prizesGiven }
     };
 
     // Cache for 5 min
