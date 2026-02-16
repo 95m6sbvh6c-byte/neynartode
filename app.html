@@ -2353,6 +2353,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       pendingTx: null, // Pending transaction hash
       notificationsEnabled: null, // null = unknown, true = enabled, false = disabled
       notificationsWereReset: false, // true if notifications were reset by deployment
+      isMuted: localStorage.getItem('neynartodes_muted') === 'true', // Persisted mute preference
 
       // Voting
       votesRemaining: 10,
@@ -5347,9 +5348,18 @@ Host contests to climb the leaderboard and win from the prize pool!`;
 
           <div class="max-w-md w-full text-center relative z-10 animate-fade-in">
             <!-- Logo -->
-            <div class="w-28 h-28 mx-auto mb-6">
+            <div class="w-28 h-28 mx-auto mb-6 relative">
               <img src="/neynartode-sticker.png" alt="Neynartode" class="w-full h-full object-contain" style="filter: drop-shadow(0 0 30px rgba(139, 92, 246, 0.6)) drop-shadow(0 0 60px rgba(139, 92, 246, 0.4));" />
             </div>
+
+            <!-- Mute Toggle -->
+            <button
+              id="muteToggle"
+              onclick="toggleMute()"
+              class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors mb-4"
+              style="background: none; border: none; cursor: pointer; font-size: 1.25rem;"
+              title="${state.isMuted ? 'Unmute' : 'Mute'}"
+            >${state.isMuted ? '🔇' : '🔊'}</button>
 
             <!-- Header -->
             <h1 class="text-4xl font-bold text-gradient mb-2">Neynartodes</h1>
@@ -7134,6 +7144,16 @@ Host contests to climb the leaderboard and win from the prize pool!`;
     }
 
     // ===== EVENT LISTENERS =====
+    function toggleMute() {
+      state.isMuted = !state.isMuted;
+      localStorage.setItem('neynartodes_muted', state.isMuted);
+      const btn = document.getElementById('muteToggle');
+      if (btn) {
+        btn.textContent = state.isMuted ? '🔇' : '🔊';
+        btn.title = state.isMuted ? 'Unmute' : 'Mute';
+      }
+    }
+
     function attachEventListeners() {
       // Splash audio - plays on first tap (Enter button)
       if (!state.isLoggedIn && !window.splashAudioSetup) {
@@ -7143,6 +7163,12 @@ Host contests to climb the leaderboard and win from the prize pool!`;
         const playOnClick = async (e) => {
           if (window.splashAudioPlayed) return;
           window.splashAudioPlayed = true;
+
+          if (state.isMuted) {
+            console.log('Audio muted, skipping playback');
+            return;
+          }
+
           console.log('User clicked, attempting to play audio...');
 
           try {
