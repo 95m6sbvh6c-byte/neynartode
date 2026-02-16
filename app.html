@@ -5467,9 +5467,6 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             ${state.currentView !== 'history' && (!CONFIG.PUBLIC_TESTING_MODE || isUserAdmin()) ? `
               <button id="viewHistory" class="btn-ghost flex-1 text-[10px] py-2 px-1">History</button>
             ` : ''}
-            ${state.currentView !== 'suggestions' ? `
-              <button id="viewSuggestions" class="btn-ghost flex-1 text-[10px] py-2 px-1">Ideas</button>
-            ` : ''}
             ${state.currentView !== 'dao' ? `
               <button id="viewDAO" class="btn-ghost flex-1 text-[10px] py-2 px-1">DAO</button>
             ` : ''}
