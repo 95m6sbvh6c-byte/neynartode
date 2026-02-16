@@ -2087,6 +2087,67 @@ ${miniAppUrl}`;
       window.open(warpcastUrl, '_blank');
     }
 
+    async function shareDAOProposal(proposalId) {
+      const proposal = state.daoProposals.find(p => p.id === proposalId);
+      if (!proposal) return;
+      const now = Math.floor(Date.now() / 1000);
+      const totalVotes = (proposal.votesFor || 0) + (proposal.votesAgainst || 0);
+      const forPct = totalVotes > 0 ? Math.round((proposal.votesFor / totalVotes) * 100) : 0;
+      const againstPct = totalVotes > 0 ? 100 - forPct : 0;
+      const remaining = proposal.endTime - now;
+      const isActive = proposal.status === 'active' && remaining > 0;
+      const passed = (proposal.votesFor || 0) > (proposal.votesAgainst || 0);
+
+      let statusLine;
+      if (isActive) {
+        const hoursLeft = Math.floor(remaining / 3600);
+        const minsLeft = Math.floor((remaining % 3600) / 60);
+        statusLine = `${hoursLeft}h ${minsLeft}m remaining to vote!`;
+      } else {
+        statusLine = passed ? 'Proposal PASSED' : 'Proposal REJECTED';
+      }
+
+      // Build voting power breakdown
+      let powerLines = '';
+      const bp = state.daoUserPower?.breakdown;
+      if (bp) {
+        powerLines = `\nMy Voting Power: ${state.daoUserPower.power}`;
+        powerLines += `\n${bp.holder?.met ? '+1' : ' 0'} 100M+ Holder`;
+        powerLines += `\n${bp.hosted?.met ? '+1' : ' 0'} Hosted a Contest`;
+        powerLines += `\n${bp.voted?.met ? '+1' : ' 0'} Voted on Leaderboard`;
+        if (bp.prizesGiven?.bonusVotes > 0) {
+          powerLines += `\n+${bp.prizesGiven.bonusVotes} Prizes Given ($${bp.prizesGiven.totalPrizeUSD})`;
+        }
+      }
+
+      const text = `Todely Awesome DAO Proposal:
+
+"${proposal.title}"
+${proposal.description}
+
+Votes: ${proposal.votesFor || 0} For (${forPct}%) | ${proposal.votesAgainst || 0} Against (${againstPct}%)
+${statusLine}
+${powerLines}
+
+Cast your vote in the app!`;
+
+      const sdk = window.FarcasterSDK;
+      if (sdk && sdk.actions && typeof sdk.actions.composeCast === 'function') {
+        try {
+          await sdk.actions.composeCast({
+            text: text,
+            embeds: ['https://frame-opal-eight.vercel.app/']
+          });
+          return;
+        } catch (e) {
+          console.log('composeCast failed, falling back to URL:', e);
+        }
+      }
+
+      const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent('https://frame-opal-eight.vercel.app/')}`;
+      window.open(warpcastUrl, '_blank');
+    }
+
     // Share season stats (prize pool, tokens burned, time remaining)
     async function shareSeasonStats() {
       const countdown = getSeasonCountdown();
@@ -6265,6 +6326,11 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           <div class="${state.daoUserPower.breakdown.voted?.met ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}">
             ${state.daoUserPower.breakdown.voted?.met ? '&#10003;' : '&#10007;'} Voted on Leaderboard
           </div>
+          ${state.daoUserPower.breakdown.prizesGiven?.bonusVotes > 0 ? `
+            <div class="text-[var(--success)]">
+              +${state.daoUserPower.breakdown.prizesGiven.bonusVotes} Prizes Given ($${state.daoUserPower.breakdown.prizesGiven.totalPrizeUSD})
+            </div>
+          ` : ''}
         </div>
       ` : '<span class="text-[var(--text-muted)] text-xs">Loading...</span>';
 
@@ -6336,6 +6402,13 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             ` : isActive && !isHolder ? `
               <div class="text-center text-xs text-[var(--text-muted)]">Hold 100M+ NEYNARTODES to vote</div>
             ` : ''}
+
+            <div class="mt-2 flex justify-end">
+              <button onclick="shareDAOProposal('${p.id}')" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent-light)] transition-colors flex items-center gap-1">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                Share
+              </button>
+            </div>
           </div>
         `;
       }).join('');
@@ -6352,7 +6425,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                 <div>
                   <h3 class="text-sm font-semibold text-[var(--text-primary)]">Your Voting Power</h3>
                   <div class="text-2xl font-bold text-[var(--accent-light)]">
-                    ${state.daoUserPower ? state.daoUserPower.power : '...'} / 3
+                    ${state.daoUserPower ? state.daoUserPower.power : '...'} / ${state.daoUserPower ? state.daoUserPower.maxPower : '3'}
                   </div>
                 </div>
                 ${powerBreakdown}
