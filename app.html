@@ -335,8 +335,8 @@
               console.log('Processing holder entry - sending 150K to host:', hostAddress);
 
               // Encode holderEntry(address host)
-              // Function selector: keccak256("holderEntry(address)")[:4] = 0x8da45e5c
-              const data = '0x8da45e5c' + hostAddress.slice(2).toLowerCase().padStart(64, '0');
+              // Function selector: keccak256("holderEntry(address)")[:4] = 0xe913912c
+              const data = '0xe913912c' + hostAddress.slice(2).toLowerCase().padStart(64, '0');
 
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
@@ -372,45 +372,106 @@
               showCelebration(castHash);
 
             } else {
-              // Non-holder: Call nonHolderEntryETH(host) - pays ~$0.10 in ETH, host gets 150K + 25K burned
+              // Non-holder: Pay ~$0.10 entry fee (ETH if sufficient balance, else USDC fallback)
               console.log('Processing non-holder entry...');
               console.log('Entrant:', providerAddress, 'Host:', hostAddress);
 
-              // Get entry fee in ETH via RPC call (uses Chainlink price feed)
-              const feeCalldata = '0xd478b02a'; // getEntryFeeETH() selector
+              const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+              const USDC_ENTRY_FEE = 100000; // 0.10 USDC (6 decimals)
+              const hostPadded = hostAddress.slice(2).toLowerCase().padStart(64, '0');
+              const ownerPadded = providerAddress.slice(2).toLowerCase().padStart(64, '0');
+
+              // Check ETH balance to decide payment method
+              const balResponse = await fetch(BASE_RPC, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [providerAddress, 'latest'] })
+              });
+              const balData = await balResponse.json();
+              const ethBalance = BigInt(balData.result || '0x0');
+
+              // Get ETH entry fee from contract
               const feeResponse = await fetch(BASE_RPC, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  jsonrpc: '2.0',
-                  id: 1,
-                  method: 'eth_call',
-                  params: [{ to: BUYBURNHOLDEARN_V2, data: feeCalldata }, 'latest']
-                })
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: BUYBURNHOLDEARN_V2, data: '0xd478b02a' }, 'latest'] })
               });
               const feeData = await feeResponse.json();
-              const ethNeeded = BigInt(feeData.result || '0x0');
-              // Add 5% buffer for price movement
-              const ethWithBuffer = ethNeeded * 105n / 100n;
-              const valueHex = '0x' + ethWithBuffer.toString(16);
-              console.log('Entry fee with buffer:', ethWithBuffer.toString(), 'wei');
+              const ethEntryFee = BigInt(feeData.result || '0x0');
+              const ethWithBuffer = ethEntryFee * 105n / 100n;
 
-              // Encode nonHolderEntryETH(address host)
-              // Function selector: keccak256("nonHolderEntryETH(address)")[:4] = 0x6b5e3a40
-              const hostPadded = hostAddress.slice(2).toLowerCase().padStart(64, '0');
-              const data = '0x6b5e3a40' + hostPadded;
+              // Need entry fee + gas buffer (~0.001 ETH) to safely use ETH path
+              const gasBuffer = 1000000000000000n; // 0.001 ETH
+              const useETH = ethBalance >= (ethWithBuffer + gasBuffer);
+              console.log('ETH balance:', ethBalance.toString(), 'Fee:', ethWithBuffer.toString(), 'Use ETH:', useETH);
 
-              const txHash = await ethProvider.request({
-                method: 'eth_sendTransaction',
-                params: [{
-                  from: providerAddress,
-                  to: BUYBURNHOLDEARN_V2,
-                  value: valueHex,
-                  data: data,
-                  gas: '0x' + (300000).toString(16)
-                }]
-              });
-              console.log('Non-holder entry tx sent:', txHash);
+              let txHash;
+
+              if (useETH) {
+                // --- ETH path ---
+                sdk.actions.setPrimaryButton({ text: 'Entering (ETH)...', loading: true, disabled: true });
+                const valueHex = '0x' + ethWithBuffer.toString(16);
+                // nonHolderEntryETH(address) selector: 0x8d0613e4
+                const data = '0x8d0613e4' + hostPadded;
+
+                txHash = await ethProvider.request({
+                  method: 'eth_sendTransaction',
+                  params: [{ from: providerAddress, to: BUYBURNHOLDEARN_V2, value: valueHex, data: data, gas: '0x' + (300000).toString(16) }]
+                });
+                console.log('ETH entry tx sent:', txHash);
+
+              } else {
+                // --- USDC fallback path ---
+                console.log('Insufficient ETH for fee+gas, using USDC path');
+                const spenderPadded = BUYBURNHOLDEARN_V2.slice(2).toLowerCase().padStart(64, '0');
+
+                // Check USDC allowance
+                const allowanceResponse = await fetch(BASE_RPC, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0', id: 1, method: 'eth_call',
+                    params: [{ to: USDC_ADDRESS, data: '0xdd62ed3e' + ownerPadded + spenderPadded }, 'latest']
+                  })
+                });
+                const allowanceData = await allowanceResponse.json();
+                const currentAllowance = BigInt(allowanceData.result || '0x0');
+
+                // Approve if needed
+                if (currentAllowance < BigInt(USDC_ENTRY_FEE)) {
+                  sdk.actions.setPrimaryButton({ text: 'Approve USDC...', loading: true, disabled: true });
+                  const approveAmount = '0x' + (BigInt(USDC_ENTRY_FEE) * 100n).toString(16).padStart(64, '0');
+                  const approveData = '0x095ea7b3' + spenderPadded + approveAmount;
+
+                  const approveTx = await ethProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [{ from: providerAddress, to: USDC_ADDRESS, value: '0x0', data: approveData, gas: '0x' + (60000).toString(16) }]
+                  });
+
+                  let approveConfirmed = false;
+                  for (let i = 0; i < 30; i++) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const receiptRes = await fetch(BASE_RPC, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getTransactionReceipt', params: [approveTx] })
+                    });
+                    const receiptData = await receiptRes.json();
+                    if (receiptData.result && receiptData.result.status === '0x1') { approveConfirmed = true; break; }
+                  }
+                  if (!approveConfirmed) throw new Error('USDC approval timed out');
+                }
+
+                sdk.actions.setPrimaryButton({ text: 'Entering (USDC)...', loading: true, disabled: true });
+                // nonHolderEntryUSDC(address) selector: 0x883057ca
+                const data = '0x883057ca' + hostPadded;
+
+                txHash = await ethProvider.request({
+                  method: 'eth_sendTransaction',
+                  params: [{ from: providerAddress, to: BUYBURNHOLDEARN_V2, value: '0x0', data: data, gas: '0x' + (300000).toString(16) }]
+                });
+                console.log('USDC entry tx sent:', txHash);
+              }
 
               sdk.actions.setPrimaryButton({
                 text: 'Entered ✓',
@@ -1161,7 +1222,7 @@
               <div class="space-y-2">
                 <div class="flex items-center justify-between">
                   <span class="text-sm text-[var(--text-muted)]">Entry Fee</span>
-                  <span class="font-semibold text-[var(--accent-light)]">~$0.10 in ETH</span>
+                  <span class="font-semibold text-[var(--accent-light)]">~$0.10 (ETH or USDC)</span>
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-sm text-[var(--text-muted)]">To Contest Host</span>
@@ -1698,54 +1759,118 @@
             return;
           }
         } else {
-          // Non-holder entry: call nonHolderEntryETH(host) - pays ~$0.10 in ETH, host gets 150K + 25K burned
-          showToast('Getting entry fee...', 'info');
+          // Non-holder entry: pay ~$0.10 (ETH if sufficient balance, else USDC fallback)
+          const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+          const USDC_ENTRY_FEE = 100000; // 0.10 USDC (6 decimals)
 
           try {
-            // Get entry fee in ETH (uses Chainlink price feed)
+            // Check ETH balance to decide payment method
+            const ethBalance = await rpcProvider.getBalance(fromAddress);
             const contract = new ethers.Contract(BUYBURNHOLDEARN_ADDRESS, BUYBURNHOLDEARN_ABI, rpcProvider);
-            const ethNeeded = await contract.getEntryFeeETH();
-            // Add 5% buffer for price movement
-            const ethWithBuffer = ethNeeded.mul(105).div(100);
-            const valueHex = '0x' + ethWithBuffer.toBigInt().toString(16);
+            const ethEntryFee = await contract.getEntryFeeETH();
+            const ethWithBuffer = ethEntryFee.mul(105).div(100);
 
-            console.log('Entry fee:', ethers.utils.formatEther(ethWithBuffer), 'ETH');
-
-            showToast('Processing entry fee (~$0.10)...', 'info');
-
-            // Encode nonHolderEntryETH call
-            const data = iface.encodeFunctionData('nonHolderEntryETH', [hostAddress]);
+            // Need entry fee + ~0.001 ETH for gas to safely use ETH path
+            const gasBuffer = ethers.utils.parseEther('0.001');
+            const useETH = ethBalance.gte(ethWithBuffer.add(gasBuffer));
+            console.log('ETH balance:', ethers.utils.formatEther(ethBalance), 'Fee:', ethers.utils.formatEther(ethWithBuffer), 'Use ETH:', useETH);
 
             let txHash;
-            const txParams = {
-              from: fromAddress,
-              to: BUYBURNHOLDEARN_ADDRESS,
-              value: valueHex,
-              data: data,
-              gas: '0x' + (300000).toString(16) // 300k gas limit
-            };
 
-            if (sdk?.wallet?.ethProvider) {
-              console.log('Using Farcaster SDK for non-holder entry');
-              txHash = await sdk.wallet.ethProvider.request({
-                method: 'eth_sendTransaction',
-                params: [txParams]
-              });
-            } else if (window.ethereum) {
-              console.log('Using window.ethereum for non-holder entry');
-              txHash = await window.ethereum.request({
-                method: 'eth_sendTransaction',
-                params: [txParams]
-              });
+            if (useETH) {
+              // --- ETH path ---
+              showToast('Processing entry fee (~$0.10 ETH)...', 'info');
+              const data = iface.encodeFunctionData('nonHolderEntryETH', [hostAddress]);
+              const valueHex = '0x' + ethWithBuffer.toBigInt().toString(16);
+
+              const txParams = {
+                from: fromAddress,
+                to: BUYBURNHOLDEARN_ADDRESS,
+                value: valueHex,
+                data: data,
+                gas: '0x' + (300000).toString(16)
+              };
+
+              if (sdk?.wallet?.ethProvider) {
+                txHash = await sdk.wallet.ethProvider.request({ method: 'eth_sendTransaction', params: [txParams] });
+              } else if (window.ethereum) {
+                txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [txParams] });
+              } else {
+                showToast('No wallet available', 'error');
+                resetEnterButton(button, contestId);
+                return;
+              }
+              console.log('ETH entry tx sent:', txHash);
+
             } else {
-              showToast('No wallet available', 'error');
-              resetEnterButton(button, contestId);
-              return;
+              // --- USDC fallback path ---
+              console.log('Insufficient ETH for fee+gas, using USDC path');
+
+              const usdcContract = new ethers.Contract(USDC_ADDRESS, [
+                'function allowance(address owner, address spender) view returns (uint256)',
+                'function approve(address spender, uint256 amount) returns (bool)'
+              ], rpcProvider);
+
+              const currentAllowance = await usdcContract.allowance(fromAddress, BUYBURNHOLDEARN_ADDRESS);
+
+              // Approve USDC if needed
+              if (currentAllowance.lt(USDC_ENTRY_FEE)) {
+                showToast('Approving USDC spend...', 'info');
+
+                const approveIface = new ethers.utils.Interface([
+                  'function approve(address spender, uint256 amount) returns (bool)'
+                ]);
+                const approveData = approveIface.encodeFunctionData('approve', [BUYBURNHOLDEARN_ADDRESS, USDC_ENTRY_FEE * 100]);
+
+                let approveTxHash;
+                const approveTxParams = { from: fromAddress, to: USDC_ADDRESS, value: '0x0', data: approveData, gas: '0x' + (60000).toString(16) };
+
+                if (sdk?.wallet?.ethProvider) {
+                  approveTxHash = await sdk.wallet.ethProvider.request({ method: 'eth_sendTransaction', params: [approveTxParams] });
+                } else if (window.ethereum) {
+                  approveTxHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [approveTxParams] });
+                } else {
+                  showToast('No wallet available', 'error');
+                  resetEnterButton(button, contestId);
+                  return;
+                }
+
+                showToast('Waiting for USDC approval...', 'info');
+                let approveReceipt = null;
+                let approveAttempts = 0;
+                while (!approveReceipt && approveAttempts < 30) {
+                  await new Promise(r => setTimeout(r, 2000));
+                  approveReceipt = await rpcProvider.getTransactionReceipt(approveTxHash).catch(() => null);
+                  approveAttempts++;
+                }
+
+                if (!approveReceipt || approveReceipt.status !== 1) {
+                  showToast('USDC approval failed or timed out', 'error');
+                  resetEnterButton(button, contestId);
+                  return;
+                }
+              }
+
+              showToast('Processing entry fee (0.10 USDC)...', 'info');
+              const data = iface.encodeFunctionData('nonHolderEntryUSDC', [hostAddress]);
+
+              const txParams = { from: fromAddress, to: BUYBURNHOLDEARN_ADDRESS, value: '0x0', data: data, gas: '0x' + (300000).toString(16) };
+
+              if (sdk?.wallet?.ethProvider) {
+                txHash = await sdk.wallet.ethProvider.request({ method: 'eth_sendTransaction', params: [txParams] });
+              } else if (window.ethereum) {
+                txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [txParams] });
+              } else {
+                showToast('No wallet available', 'error');
+                resetEnterButton(button, contestId);
+                return;
+              }
+              console.log('USDC entry tx sent:', txHash);
             }
 
             showToast('Waiting for transaction confirmation...', 'info');
 
-            // Wait for transaction to be mined (uses global rpcProvider)
+            // Wait for transaction to be mined
             let receipt = null;
             let attempts = 0;
             while (!receipt && attempts < 60) {
