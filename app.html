@@ -440,7 +440,7 @@
                 // Approve if needed
                 if (currentAllowance < BigInt(USDC_ENTRY_FEE)) {
                   sdk.actions.setPrimaryButton({ text: 'Approve USDC...', loading: true, disabled: true });
-                  const approveAmount = '0x' + (BigInt(USDC_ENTRY_FEE) * 100n).toString(16).padStart(64, '0');
+                  const approveAmount = '0x' + BigInt(USDC_ENTRY_FEE).toString(16).padStart(64, '0');
                   const approveData = '0x095ea7b3' + spenderPadded + approveAmount;
 
                   const approveTx = await ethProvider.request({
@@ -1820,7 +1820,7 @@
                 const approveIface = new ethers.utils.Interface([
                   'function approve(address spender, uint256 amount) returns (bool)'
                 ]);
-                const approveData = approveIface.encodeFunctionData('approve', [BUYBURNHOLDEARN_ADDRESS, USDC_ENTRY_FEE * 100]);
+                const approveData = approveIface.encodeFunctionData('approve', [BUYBURNHOLDEARN_ADDRESS, USDC_ENTRY_FEE]);
 
                 let approveTxHash;
                 const approveTxParams = { from: fromAddress, to: USDC_ADDRESS, value: '0x0', data: approveData, gas: '0x' + (60000).toString(16) };
