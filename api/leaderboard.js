@@ -32,6 +32,7 @@ const CONFIG = {
 // Note: Exclusions disabled for test mode - all hosts visible
 const EXCLUDED_FIDS = [
   1891537,  // neynartodes - official account
+  1188162,  // cb91waverider (Cornbread) - dev, excluded for this season
   // Farm ring: all linked to X @nando8618
   1027765, 1028120, 1028226, 1028609, 1028738, 1028891, 1029130, 1029267,
   1029416, 1029631, 1029836, 1029997, 1030095, 1030154, 1030224, 1030320,
