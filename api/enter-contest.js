@@ -37,8 +37,9 @@ module.exports = async (req, res) => {
 
   const { fid, contestId, castHash, addresses } = req.body;
 
-  if (!fid) {
-    return res.status(400).json({ error: 'Missing fid' });
+  const parsedFid = parseInt(fid);
+  if (!fid || isNaN(parsedFid) || parsedFid <= 0) {
+    return res.status(400).json({ error: 'Missing or invalid fid' });
   }
   if (!contestId) {
     return res.status(400).json({ error: 'Missing contestId' });
@@ -56,7 +57,7 @@ module.exports = async (req, res) => {
 
   try {
     // Check if user already entered this contest
-    const existingEntry = await kv.get(`entry:${contestId}:${fid}`);
+    const existingEntry = await kv.get(`entry:${contestId}:${parsedFid}`);
     if (existingEntry) {
       return res.status(200).json({
         success: true,
@@ -78,7 +79,7 @@ module.exports = async (req, res) => {
 
     // Record entry in KV (no signer required, no auto-like)
     const entry = {
-      fid: parseInt(fid),
+      fid: parsedFid,
       contestId: contestId.toString(),
       castHash: castHash || null,
       addresses,
@@ -87,12 +88,12 @@ module.exports = async (req, res) => {
       enteredAt: new Date().toISOString()
     };
 
-    await kv.set(`entry:${contestId}:${fid}`, entry);
+    await kv.set(`entry:${contestId}:${parsedFid}`, entry);
 
     // Also add to contest entries set for easy lookup
-    await kv.sadd(`contest_entries:${contestId}`, fid.toString());
+    await kv.sadd(`contest_entries:${contestId}`, parsedFid.toString());
 
-    console.log(`Entry recorded for FID ${fid} in contest ${contestId}`);
+    console.log(`Entry recorded for FID ${parsedFid} in contest ${contestId}`);
 
     return res.status(200).json({
       success: true,

@@ -27,8 +27,9 @@ module.exports = async (req, res) => {
   const { fid, contestId } = req.body;
 
   // Validate inputs
-  if (!fid || !contestId) {
-    return res.status(400).json({ error: 'Missing fid or contestId' });
+  const parsedFid = parseInt(fid);
+  if (!fid || isNaN(parsedFid) || parsedFid <= 0 || !contestId) {
+    return res.status(400).json({ error: 'Missing or invalid fid or contestId' });
   }
 
   // Validate contest ID format (must be M-X or T-X)
@@ -44,7 +45,7 @@ module.exports = async (req, res) => {
 
   try {
     const shareKey = `contest_shares:${contestId}`;
-    const userShareKey = `share:${contestId}:${fid}`;
+    const userShareKey = `share:${contestId}:${parsedFid}`;
 
     // Check if user already shared
     const existingShare = await kv.get(userShareKey);
@@ -58,7 +59,7 @@ module.exports = async (req, res) => {
 
     // Record the share
     const shareData = {
-      fid: parseInt(fid),
+      fid: parsedFid,
       contestId,
       timestamp: Date.now()
     };
@@ -67,9 +68,9 @@ module.exports = async (req, res) => {
     await kv.set(userShareKey, shareData);
 
     // Add FID to contest shares set (for finalization lookup)
-    await kv.sadd(shareKey, fid.toString());
+    await kv.sadd(shareKey, parsedFid.toString());
 
-    console.log(`Share recorded: FID ${fid} shared contest ${contestId}`);
+    console.log(`Share recorded: FID ${parsedFid} shared contest ${contestId}`);
 
     return res.status(200).json({
       success: true,

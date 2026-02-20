@@ -609,7 +609,7 @@ async function finalizeUnifiedContest(contestIdStr) {
     const fids = await kv.smembers(entryKey);
 
     if (Array.isArray(fids)) {
-      enteredFids = new Set(fids.map(f => parseInt(f)));
+      enteredFids = new Set(fids.map(f => parseInt(f)).filter(f => !isNaN(f) && f > 0));
     }
 
     console.log(`\n👥 Users who clicked Enter: ${enteredFids.size}`);
