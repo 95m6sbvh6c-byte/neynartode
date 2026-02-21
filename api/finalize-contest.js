@@ -95,6 +95,11 @@ const CONFIG = {
     1030963,  // rontok
     1031056,  // gombloh
     1031145,  // rokid
+    // inseth network: token cycling through intermediary wallets
+    237841,   // inseth - farm ring operator, 22 sybil wallets
+    1040937,  // jarwosamidi - operations hub, cycles tokens through intermediary
+    1001959,  // ladlalion1 - funded by inseth funder + intermediary
+    2806580,  // farwabatool622 - 3-day-old account funded by intermediary
   ],
 };
 
