@@ -68,6 +68,7 @@ const CONFIG = {
     1139990,  // sonite/bengarfm - suspected multi-account abuse
     2045016,  // aerieth - alt account of @aeri
     // Farm ring: all linked to X @nando8618, registered 2025-03-23
+    1027658,  // iskaeth (Iska.eth) - same registration date as farm ring
     1027765,  // lokidtuyul
     1028120,  // shanksd
     1028226,  // badjul

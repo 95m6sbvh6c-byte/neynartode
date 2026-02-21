@@ -394,7 +394,7 @@
               const feeResponse = await fetch(BASE_RPC, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: BUYBURNHOLDEARN_V2, data: '0xd478b02a' }, 'latest'] })
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: BUYBURNHOLDEARN_V2, data: '0x00551c00' }, 'latest'] })
               });
               const feeData = await feeResponse.json();
               const ethEntryFee = BigInt(feeData.result || '0x0');
