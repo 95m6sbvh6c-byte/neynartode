@@ -101,6 +101,7 @@ const CONFIG = {
     1001959,  // ladlalion1 - funded by inseth funder + intermediary
     2806580,  // farwabatool622 - 3-day-old account funded by intermediary
     1149760,  // surrounding - funded by inseth funder + jarwosamidi, sends to intermediary
+    2138148,  // farcy - 30 transfers from inseth funder, cycles tokens through intermediary
   ],
 };
 
