@@ -460,6 +460,8 @@
                     if (receiptData.result && receiptData.result.status === '0x1') { approveConfirmed = true; break; }
                   }
                   if (!approveConfirmed) throw new Error('USDC approval timed out');
+                  // Wait for RPC state propagation so wallet simulation sees the new allowance
+                  await new Promise(r => setTimeout(r, 4000));
                 }
 
                 sdk.actions.setPrimaryButton({ text: 'Entering (USDC)...', loading: true, disabled: true });
@@ -1849,6 +1851,8 @@
                   resetEnterButton(button, contestId);
                   return;
                 }
+                // Wait for RPC state propagation so wallet simulation sees the new allowance
+                await new Promise(r => setTimeout(r, 4000));
               }
 
               showToast('Processing entry fee (0.10 USDC)...', 'info');
