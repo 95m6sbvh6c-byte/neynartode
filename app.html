@@ -1700,7 +1700,7 @@
       try {
         // Check if holder and process BuyBurnHoldEarn transaction
         // Pass actual contestId to check against correct threshold (100M for NEYNARTODES, 200M for custom tokens)
-        const isHolder = await checkHolderStatus(contestId);
+        let isHolder = await checkHolderStatus(contestId);
         const sdk = window.FarcasterSDK;
 
         // Get user's wallet address
