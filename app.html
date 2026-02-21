@@ -330,6 +330,25 @@
             const providerAddress = accounts[0];
             console.log('Provider address:', providerAddress);
 
+            // V3 contract checks msg.sender balance, so verify the TX sender specifically
+            // The earlier isHolder check may have used a different verified address
+            if (isHolder && providerAddress.toLowerCase() !== from.toLowerCase()) {
+              console.log('Provider differs from verified address, re-checking holder status for TX sender...');
+              const NEYNARTODES_TOKEN_CHECK = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
+              const HOLDER_THRESHOLD_CHECK = BigInt('100000000000000000000000000');
+              const senderBalResp = await fetch(BASE_RPC, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: NEYNARTODES_TOKEN_CHECK, data: '0x70a08231000000000000000000000000' + providerAddress.slice(2).toLowerCase() }, 'latest'] })
+              });
+              const senderBalData = await senderBalResp.json();
+              const senderBalance = BigInt(senderBalData.result || '0x0');
+              if (senderBalance < HOLDER_THRESHOLD_CHECK) {
+                console.log('TX sender does not hold 100M, falling back to non-holder entry');
+                isHolder = false;
+              }
+            }
+
             // Get backend authorization signature (verifies FID)
             if (!userFid) throw new Error('No Farcaster FID found');
 
@@ -1725,6 +1744,25 @@
           return;
         }
         const { v: authV, r: authR, s: authS } = await authResponse.json();
+
+        // V3 contract checks msg.sender balance — verify the actual TX sender holds 100M
+        // checkHolderStatus may have summed across all verified addresses
+        if (isHolder) {
+          try {
+            const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
+            const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
+            const tokenContract = new ethers.Contract(NEYNARTODES_TOKEN, ['function balanceOf(address) view returns (uint256)'], rpcProvider);
+            const senderBal = await tokenContract.balanceOf(fromAddress);
+            const threshold = ethers.utils.parseUnits('100000000', 18);
+            if (senderBal.lt(threshold)) {
+              console.log('TX sender does not hold 100M, falling back to non-holder entry. Balance:', ethers.utils.formatUnits(senderBal, 18));
+              isHolder = false;
+            }
+          } catch (e) {
+            console.log('Sender balance check failed, falling back to non-holder:', e.message);
+            isHolder = false;
+          }
+        }
 
         // Process BuyBurnHoldEarn transaction
         const iface = new ethers.utils.Interface(BUYBURNHOLDEARN_ABI);
