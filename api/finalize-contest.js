@@ -30,8 +30,10 @@ const CONFIG = {
   // Unified ContestManager (M- and T- prefix contests)
   CONTEST_MANAGER: '0xF56Fe30e1eAb5178da1AA2CbBf14d1e3C0Ba3944',
 
-  // BuyBurnHoldEarn - tracks token burns and host rewards from contest entries
+  // BuyBurnHoldEarn V1 - tracks token burns and host rewards (legacy contests)
   BUYBURNHOLDEARN: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28',
+  // BuyBurnHoldEarn V3 - signature-gated entries (new contests)
+  BUYBURNHOLDEARN_V3: '0x8340116C435307d90Df320d19F0871544653D232',
 
   // Token
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
@@ -125,6 +127,8 @@ const DEX_ADDRESSES = new Set([
   '0x856Bc35576a38b8a9887E86888995F056fA87593',
   // BuyBurnHoldEarn v2 - contest entry rewards (fixed)
   '0x85D1A086E7119B9250f618077240BdA2cA3ecd72',
+  // BuyBurnHoldEarn V3 - signature-gated entries
+  '0x8340116C435307d90Df320d19F0871544653D232',
   // 0x Protocol Settlers (query registry at 0x00000000000004533Fe15556B1E086BB1A72cEae for updates)
   '0xdc5d8200A030798BC6227240f68b4dD9542686ef',  // Settler - Taker (swap)
   '0xce09Bdf28eC438FddE2Bf255dA806e0c357247bf',  // Settler - Metatransaction
@@ -151,10 +155,17 @@ const CONTEST_MANAGER_ABI = [
   'function cancelTestContest(uint256 contestId, string calldata reason) external',
 ];
 
-// BuyBurnHoldEarn ABI - for querying token burns and host rewards
+// BuyBurnHoldEarn V1 ABI - for querying token burns and host rewards (legacy)
 const BUYBURNHOLDEARN_ABI = [
   'event BuyBurnHoldEarnExecuted(address indexed entrant, address indexed host, uint256 tokensBought, uint256 toEntrant, uint256 burned, uint256 toTreasury, uint256 toHost, uint256 ethSpent, uint256 timestamp)',
   'event HolderEntryReward(address indexed host, uint256 amount, uint256 timestamp)'
+];
+
+// BuyBurnHoldEarn V3 ABI - signature-gated entries
+const BUYBURNHOLDEARN_V3_ABI = [
+  'event HolderEntry(address indexed entrant, address indexed host, uint256 hostReward, uint256 burned, uint256 timestamp)',
+  'event NonHolderEntryUSDC(address indexed entrant, address indexed host, uint256 feeUSDC, uint256 hostReward, uint256 burned, uint256 timestamp)',
+  'event NonHolderEntryETH(address indexed entrant, address indexed host, uint256 feeETH, uint256 hostReward, uint256 burned, uint256 timestamp)'
 ];
 
 // ═══════════════════════════════════════════════════════════════════
@@ -187,24 +198,22 @@ async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider
     console.log(`\n🔥 Querying BuyBurnHoldEarn events for host ${hostAddress.slice(0, 10)}...`);
     console.log(`   Block range: ${fromBlock} to ${currentBlock}`);
 
-    // Query BuyBurnHoldEarnExecuted events for this host
-    const buyBurnFilter = contract.filters.BuyBurnHoldEarnExecuted(null, hostAddress);
-    const buyBurnEvents = await contract.queryFilter(buyBurnFilter, fromBlock, currentBlock).catch(() => []);
-
-    // Query HolderEntryReward events for this host
-    const holderRewardFilter = contract.filters.HolderEntryReward(hostAddress);
-    const holderRewardEvents = await contract.queryFilter(holderRewardFilter, fromBlock, currentBlock).catch(() => []);
-
     // Filter events by timestamp (within contest period)
     let tokensBurned = 0n;
     let hostEarned = 0n;
     let nonHolderEntries = 0;
     let holderEntries = 0;
 
+    // --- Query V1 events (legacy contests) ---
+    const buyBurnFilter = contract.filters.BuyBurnHoldEarnExecuted(null, hostAddress);
+    const buyBurnEvents = await contract.queryFilter(buyBurnFilter, fromBlock, currentBlock).catch(() => []);
+
+    const holderRewardFilter = contract.filters.HolderEntryReward(hostAddress);
+    const holderRewardEvents = await contract.queryFilter(holderRewardFilter, fromBlock, currentBlock).catch(() => []);
+
     for (const event of buyBurnEvents) {
       const eventTimestamp = Number(event.args.timestamp);
       if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
-        // If participant addresses provided, only count events from actual contest participants
         if (participantAddresses && !participantAddresses.has(event.args.entrant.toLowerCase())) continue;
         tokensBurned += BigInt(event.args.burned);
         hostEarned += BigInt(event.args.toHost);
@@ -216,6 +225,43 @@ async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider
       const eventTimestamp = Number(event.args.timestamp);
       if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
         holderEntries++;
+      }
+    }
+
+    // --- Query V3 events (signature-gated contests) ---
+    if (CONFIG.BUYBURNHOLDEARN_V3 && CONFIG.BUYBURNHOLDEARN_V3 !== '0x8340116C435307d90Df320d19F0871544653D232') {
+      const v3Contract = new ethers.Contract(CONFIG.BUYBURNHOLDEARN_V3, BUYBURNHOLDEARN_V3_ABI, provider);
+
+      const v3HolderEvents = await v3Contract.queryFilter(
+        v3Contract.filters.HolderEntry(null, hostAddress), fromBlock, currentBlock
+      ).catch(() => []);
+
+      const v3UsdcEvents = await v3Contract.queryFilter(
+        v3Contract.filters.NonHolderEntryUSDC(null, hostAddress), fromBlock, currentBlock
+      ).catch(() => []);
+
+      const v3EthEvents = await v3Contract.queryFilter(
+        v3Contract.filters.NonHolderEntryETH(null, hostAddress), fromBlock, currentBlock
+      ).catch(() => []);
+
+      for (const event of v3HolderEvents) {
+        const eventTimestamp = Number(event.args.timestamp);
+        if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
+          if (participantAddresses && !participantAddresses.has(event.args.entrant.toLowerCase())) continue;
+          tokensBurned += BigInt(event.args.burned);
+          hostEarned += BigInt(event.args.hostReward);
+          holderEntries++;
+        }
+      }
+
+      for (const event of [...v3UsdcEvents, ...v3EthEvents]) {
+        const eventTimestamp = Number(event.args.timestamp);
+        if (eventTimestamp >= startTime && eventTimestamp <= endTime) {
+          if (participantAddresses && !participantAddresses.has(event.args.entrant.toLowerCase())) continue;
+          tokensBurned += BigInt(event.args.burned);
+          hostEarned += BigInt(event.args.hostReward);
+          nonHolderEntries++;
+        }
       }
     }
 

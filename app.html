@@ -322,7 +322,7 @@
             }
 
             const hostAddress = contestDetails.host;
-            const BUYBURNHOLDEARN_V2 = '0x85D1A086E7119B9250f618077240BdA2cA3ecd72';
+            const BUYBURNHOLDEARN_V3 = '0x8340116C435307d90Df320d19F0871544653D232';
 
             // Get SDK's ethereum provider
             const ethProvider = await sdk.wallet.getEthereumProvider();
@@ -330,28 +330,47 @@
             const providerAddress = accounts[0];
             console.log('Provider address:', providerAddress);
 
+            // Get backend authorization signature (verifies FID)
+            const userFid = window.FarcasterContext?.user?.fid;
+            if (!userFid) throw new Error('No Farcaster FID found');
+
+            sdk.actions.setPrimaryButton({ text: 'Authorizing...', loading: true, disabled: true });
+            const authResponse = await fetch('/api/authorize-entry', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fid: userFid, host: hostAddress, entrantAddress: providerAddress, contestId: entryKey })
+            });
+            if (!authResponse.ok) {
+              const authErr = await authResponse.json().catch(() => ({}));
+              throw new Error(authErr.error || 'Entry authorization failed');
+            }
+            const { v, r, s } = await authResponse.json();
+            // Encode v as uint8 (padded to 32 bytes), r and s are already bytes32
+            const vPadded = v.toString(16).padStart(64, '0');
+            const rHex = r.slice(2); // remove 0x prefix
+            const sHex = s.slice(2);
+
             if (isHolder) {
-              // Holder: Call holderEntry(host) - sends 150K from treasury to host + burns 25K
+              // Holder: Call holderEntry(host, v, r, s) - sends 150K from treasury to host + burns 25K
               console.log('Processing holder entry - sending 150K to host:', hostAddress);
 
-              // Encode holderEntry(address host)
-              // Function selector: keccak256("holderEntry(address)")[:4] = 0xe913912c
-              const data = '0xe913912c' + hostAddress.slice(2).toLowerCase().padStart(64, '0');
+              // holderEntry(address,uint8,bytes32,bytes32) selector: 0x95ec8a34
+              const hostPaddedHolder = hostAddress.slice(2).toLowerCase().padStart(64, '0');
+              const data = '0x95ec8a34' + hostPaddedHolder + vPadded + rHex + sHex;
 
               const txHash = await ethProvider.request({
                 method: 'eth_sendTransaction',
                 params: [{
                   from: providerAddress,
-                  to: BUYBURNHOLDEARN_V2,
+                  to: BUYBURNHOLDEARN_V3,
                   value: '0x0',
                   data: data,
-                  gas: '0x' + (200000).toString(16)
+                  gas: '0x' + (250000).toString(16)
                 }]
               });
               console.log('Holder entry tx sent:', txHash);
 
               // Record entry
-              const userFid = window.FarcasterContext?.user?.fid;
               await fetch('/api/enter-contest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -394,7 +413,7 @@
               const feeResponse = await fetch(BASE_RPC, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: BUYBURNHOLDEARN_V2, data: '0x00551c00' }, 'latest'] })
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: BUYBURNHOLDEARN_V3, data: '0x00551c00' }, 'latest'] })
               });
               const feeData = await feeResponse.json();
               const ethEntryFee = BigInt(feeData.result || '0x0');
@@ -411,19 +430,19 @@
                 // --- ETH path ---
                 sdk.actions.setPrimaryButton({ text: 'Entering (ETH)...', loading: true, disabled: true });
                 const valueHex = '0x' + ethWithBuffer.toString(16);
-                // nonHolderEntryETH(address) selector: 0x8d0613e4
-                const data = '0x8d0613e4' + hostPadded;
+                // nonHolderEntryETH(address,uint8,bytes32,bytes32) selector: 0x0f682a3e
+                const data = '0x0f682a3e' + hostPadded + vPadded + rHex + sHex;
 
                 txHash = await ethProvider.request({
                   method: 'eth_sendTransaction',
-                  params: [{ from: providerAddress, to: BUYBURNHOLDEARN_V2, value: valueHex, data: data, gas: '0x' + (300000).toString(16) }]
+                  params: [{ from: providerAddress, to: BUYBURNHOLDEARN_V3, value: valueHex, data: data, gas: '0x' + (300000).toString(16) }]
                 });
                 console.log('ETH entry tx sent:', txHash);
 
               } else {
                 // --- USDC fallback path ---
                 console.log('Insufficient ETH for fee+gas, using USDC path');
-                const spenderPadded = BUYBURNHOLDEARN_V2.slice(2).toLowerCase().padStart(64, '0');
+                const spenderPadded = BUYBURNHOLDEARN_V3.slice(2).toLowerCase().padStart(64, '0');
 
                 // Check USDC allowance
                 const allowanceResponse = await fetch(BASE_RPC, {
@@ -465,12 +484,12 @@
                 }
 
                 sdk.actions.setPrimaryButton({ text: 'Entering (USDC)...', loading: true, disabled: true });
-                // nonHolderEntryUSDC(address) selector: 0x883057ca
-                const data = '0x883057ca' + hostPadded;
+                // nonHolderEntryUSDC(address,uint8,bytes32,bytes32) selector: 0x39fc46e7
+                const data = '0x39fc46e7' + hostPadded + vPadded + rHex + sHex;
 
                 txHash = await ethProvider.request({
                   method: 'eth_sendTransaction',
-                  params: [{ from: providerAddress, to: BUYBURNHOLDEARN_V2, value: '0x0', data: data, gas: '0x' + (300000).toString(16) }]
+                  params: [{ from: providerAddress, to: BUYBURNHOLDEARN_V3, value: '0x0', data: data, gas: '0x' + (300000).toString(16) }]
                 });
                 console.log('USDC entry tx sent:', txHash);
               }
@@ -483,8 +502,7 @@
 
               showCelebration(castHash);
 
-              // Record entry
-              const userFid = window.FarcasterContext?.user?.fid;
+              // Record entry (userFid already declared above during authorization)
               if (userFid && castHash) {
                 fetch('/api/enter-contest', {
                   method: 'POST',
@@ -1467,7 +1485,7 @@
     // ENTER RAFFLE V2 - Auto like, recast, and optional buy and burn
     // ═══════════════════════════════════════════════════════════════════
 
-    const BUYBURNHOLDEARN_ADDRESS = '0x85D1A086E7119B9250f618077240BdA2cA3ecd72'; // BuyBurnHoldEarn V2 - 150K to host + 25K burned per entry
+    const BUYBURNHOLDEARN_ADDRESS = '0x8340116C435307d90Df320d19F0871544653D232'; // BuyBurnHoldEarn V3 - signature-gated, 150K to host + 25K burned per entry
     const HOLDER_THRESHOLD = ethers.BigNumber.from('100000000000000000000000000'); // 100M tokens (18 decimals)
 
     // Load which contests user has entered
@@ -1694,13 +1712,28 @@
 
         console.log('Entry details:', { isHolder, entrant: fromAddress, host: hostAddress });
 
+        // Get backend authorization signature (verifies FID)
+        showToast('Authorizing entry...', 'info');
+        const authResponse = await fetch('/api/authorize-entry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fid: state.userFid, host: hostAddress, entrantAddress: fromAddress, contestId: entryKey })
+        });
+        if (!authResponse.ok) {
+          const authErr = await authResponse.json().catch(() => ({}));
+          showToast(authErr.error || 'Entry authorization failed', 'error');
+          resetEnterButton(button, contestId);
+          return;
+        }
+        const { v: authV, r: authR, s: authS } = await authResponse.json();
+
         // Process BuyBurnHoldEarn transaction
         const iface = new ethers.utils.Interface(BUYBURNHOLDEARN_ABI);
 
         if (isHolder) {
-          // Holder entry: call holderEntry(host) - sends 150K from treasury to host + burns 25K
+          // Holder entry: call holderEntry(host, v, r, s) - sends 150K from treasury to host + burns 25K
           showToast('Processing holder entry...', 'info');
-          const data = iface.encodeFunctionData('holderEntry', [hostAddress]);
+          const data = iface.encodeFunctionData('holderEntry', [hostAddress, authV, authR, authS]);
 
           try {
             let txHash;
@@ -1782,7 +1815,7 @@
             if (useETH) {
               // --- ETH path ---
               showToast('Processing entry fee (~$0.10 ETH)...', 'info');
-              const data = iface.encodeFunctionData('nonHolderEntryETH', [hostAddress]);
+              const data = iface.encodeFunctionData('nonHolderEntryETH', [hostAddress, authV, authR, authS]);
               const valueHex = '0x' + ethWithBuffer.toBigInt().toString(16);
 
               const txParams = {
@@ -1856,7 +1889,7 @@
               }
 
               showToast('Processing entry fee (0.10 USDC)...', 'info');
-              const data = iface.encodeFunctionData('nonHolderEntryUSDC', [hostAddress]);
+              const data = iface.encodeFunctionData('nonHolderEntryUSDC', [hostAddress, authV, authR, authS]);
 
               const txParams = { from: fromAddress, to: BUYBURNHOLDEARN_ADDRESS, value: '0x0', data: data, gas: '0x' + (300000).toString(16) };
 
@@ -8026,18 +8059,20 @@ Host contests to climb the leaderboard and win from the prize pool!`;
       'event WinnersSelected(uint256 indexed contestId, address[] winners, uint256 prizePerWinner)'
     ];
 
-    // BuyBurnHoldEarn V2 - Contest entry with new tokenomics
+    // BuyBurnHoldEarn V3 - Signature-gated contest entries
+    // All entry functions require backend signature (v, r, s) proving valid FID
     // Non-holder: pays ~$0.10 in ETH/USDC, host gets 150K + 25K burned
     // Holder: free entry, host gets 150K + 25K burned
     const BUYBURNHOLDEARN_ABI = [
-      'function holderEntry(address host) external',
-      'function nonHolderEntryETH(address host) external payable',
-      'function nonHolderEntryUSDC(address host) external',
+      'function holderEntry(address host, uint8 v, bytes32 r, bytes32 s) external',
+      'function nonHolderEntryETH(address host, uint8 v, bytes32 r, bytes32 s) external payable',
+      'function nonHolderEntryUSDC(address host, uint8 v, bytes32 r, bytes32 s) external',
       'function getEntryFeeETH() view returns (uint256)',
       'function getETHPrice() view returns (uint256)',
       'function entryFeeUSDC() view returns (uint256)',
       'function hostReward() view returns (uint256)',
       'function burnAmount() view returns (uint256)',
+      'function nonces(address) view returns (uint256)',
       'function getStats() view returns (uint256 entries, uint256 holderEntries, uint256 nonHolderEntries, uint256 hostRewardsTotal, uint256 burnedTotal, uint256 usdcCollected, uint256 ethCollected)',
       'event HolderEntry(address indexed entrant, address indexed host, uint256 hostReward, uint256 burned, uint256 timestamp)',
       'event NonHolderEntryETH(address indexed entrant, address indexed host, uint256 feeETH, uint256 hostReward, uint256 burned, uint256 timestamp)',
