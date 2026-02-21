@@ -331,7 +331,6 @@
             console.log('Provider address:', providerAddress);
 
             // Get backend authorization signature (verifies FID)
-            const userFid = window.FarcasterContext?.user?.fid;
             if (!userFid) throw new Error('No Farcaster FID found');
 
             sdk.actions.setPrimaryButton({ text: 'Authorizing...', loading: true, disabled: true });
