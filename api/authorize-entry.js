@@ -26,8 +26,8 @@ const { ethers } = require('ethers');
 // Blocked FIDs are only enforced in finalize-contest.js (can enter, can't win).
 const BLOCKED_FIDS = [];
 
-const BBHE_V3 = process.env.BBHE_V3_ADDRESS || '0x8340116C435307d90Df320d19F0871544653D232';
-const RPC = 'https://mainnet.base.org';
+const BBHE_V4 = process.env.BBHE_V3_ADDRESS || '0xEa670a28cA538055Dcf8cF5B383463922456526F';
+const RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
 
 const NONCE_ABI = ['function nonces(address) view returns (uint256)'];
 
@@ -81,9 +81,9 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Already entered this contest' });
     }
 
-    // Read the current nonce from the V3 contract
+    // Read the current nonce from the V4 contract
     const provider = new ethers.JsonRpcProvider(RPC);
-    const contract = new ethers.Contract(BBHE_V3, NONCE_ABI, provider);
+    const contract = new ethers.Contract(BBHE_V4, NONCE_ABI, provider);
     const nonce = await contract.nonces(entrantAddress);
 
     // Sign the authorization message

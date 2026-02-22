@@ -32,8 +32,8 @@ const CONFIG = {
 
   // BuyBurnHoldEarn V1 - tracks token burns and host rewards (legacy contests)
   BUYBURNHOLDEARN: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28',
-  // BuyBurnHoldEarn V3 - signature-gated entries (new contests)
-  BUYBURNHOLDEARN_V3: '0x8340116C435307d90Df320d19F0871544653D232',
+  // BuyBurnHoldEarn V4 - signature-gated entries, no on-chain balance check
+  BUYBURNHOLDEARN_V3: '0xEa670a28cA538055Dcf8cF5B383463922456526F',
 
   // Token
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
@@ -142,6 +142,8 @@ const DEX_ADDRESSES = new Set([
   '0x85D1A086E7119B9250f618077240BdA2cA3ecd72',
   // BuyBurnHoldEarn V3 - signature-gated entries
   '0x8340116C435307d90Df320d19F0871544653D232',
+  // BuyBurnHoldEarn V4 - no on-chain balance check
+  '0xEa670a28cA538055Dcf8cF5B383463922456526F',
   // 0x Protocol Settlers (query registry at 0x00000000000004533Fe15556B1E086BB1A72cEae for updates)
   '0xdc5d8200A030798BC6227240f68b4dD9542686ef',  // Settler - Taker (swap)
   '0xce09Bdf28eC438FddE2Bf255dA806e0c357247bf',  // Settler - Metatransaction
@@ -241,8 +243,8 @@ async function getBuyBurnHoldEarnStats(hostAddress, startTime, endTime, provider
       }
     }
 
-    // --- Query V3 events (signature-gated contests) ---
-    if (CONFIG.BUYBURNHOLDEARN_V3 && CONFIG.BUYBURNHOLDEARN_V3 !== '0x8340116C435307d90Df320d19F0871544653D232') {
+    // --- Query V4 events (signature-gated contests, no on-chain balance check) ---
+    if (CONFIG.BUYBURNHOLDEARN_V3) {
       const v3Contract = new ethers.Contract(CONFIG.BUYBURNHOLDEARN_V3, BUYBURNHOLDEARN_V3_ABI, provider);
 
       const v3HolderEvents = await v3Contract.queryFilter(

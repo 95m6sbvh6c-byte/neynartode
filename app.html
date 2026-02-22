@@ -322,7 +322,7 @@
             }
 
             const hostAddress = contestDetails.host;
-            const BUYBURNHOLDEARN_V3 = '0x8340116C435307d90Df320d19F0871544653D232';
+            const BUYBURNHOLDEARN_V3 = '0xEa670a28cA538055Dcf8cF5B383463922456526F'; // V4 - no on-chain balance check
 
             // Get SDK's ethereum provider
             const ethProvider = await sdk.wallet.getEthereumProvider();
@@ -330,28 +330,8 @@
             const providerAddress = accounts[0];
             console.log('Provider address:', providerAddress);
 
-            // V3 contract checks msg.sender RAW balance (no cooldown concept).
-            // The API uses cooldown-adjusted balance which can incorrectly mark holders as non-holders.
-            // Always check the actual sender's on-chain balance — this is the definitive check.
-            try {
-              const NEYNARTODES_TOKEN_CHECK = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
-              const HOLDER_THRESHOLD_CHECK = BigInt('100000000000000000000000000');
-              const SENDER_RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
-              const senderBalResp = await fetch(SENDER_RPC, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: NEYNARTODES_TOKEN_CHECK, data: '0x70a08231000000000000000000000000' + providerAddress.slice(2).toLowerCase() }, 'latest'] })
-              });
-              const senderBalData = await senderBalResp.json();
-              const senderBalance = BigInt(senderBalData.result || '0x0');
-              const senderIsHolder = senderBalance >= HOLDER_THRESHOLD_CHECK;
-              if (senderIsHolder !== isHolder) {
-                console.log(`Sender balance override: API said ${isHolder}, sender raw balance says ${senderIsHolder} (${(senderBalance / BigInt(10**18)).toString()} tokens)`);
-              }
-              isHolder = senderIsHolder;
-            } catch (e) {
-              console.log('Sender balance check failed, using API result:', e.message);
-            }
+            // V4 has no on-chain balance check — backend checks all verified wallets and signs accordingly.
+            // The API's holder determination (across all Farcaster-verified addresses) is authoritative.
 
             // Get backend authorization signature (verifies FID)
             if (!userFid) throw new Error('No Farcaster FID found');
@@ -1507,7 +1487,7 @@
     // ENTER RAFFLE V2 - Auto like, recast, and optional buy and burn
     // ═══════════════════════════════════════════════════════════════════
 
-    const BUYBURNHOLDEARN_ADDRESS = '0x8340116C435307d90Df320d19F0871544653D232'; // BuyBurnHoldEarn V3 - signature-gated, 150K to host + 25K burned per entry
+    const BUYBURNHOLDEARN_ADDRESS = '0xEa670a28cA538055Dcf8cF5B383463922456526F'; // BuyBurnHoldEarn V4 - signature-gated, no on-chain balance check
     const HOLDER_THRESHOLD = ethers.BigNumber.from('100000000000000000000000000'); // 100M tokens (18 decimals)
 
     // Load which contests user has entered
@@ -1749,23 +1729,7 @@
         }
         const { v: authV, r: authR, s: authS } = await authResponse.json();
 
-        // V3 contract checks msg.sender RAW balance (no cooldown concept).
-        // The API uses cooldown-adjusted balance which can incorrectly mark holders as non-holders.
-        // Always check the actual sender's on-chain balance — this is the definitive check.
-        try {
-          const NEYNARTODES_TOKEN = '0x8de1622fe07f56CDA2E2273e615a513f1D828b07';
-          const rpcProvider = new ethers.providers.JsonRpcProvider(CONFIG.BASE_RPC_URL);
-          const tokenContract = new ethers.Contract(NEYNARTODES_TOKEN, ['function balanceOf(address) view returns (uint256)'], rpcProvider);
-          const senderBal = await tokenContract.balanceOf(fromAddress);
-          const threshold = ethers.utils.parseUnits('100000000', 18);
-          const senderIsHolder = senderBal.gte(threshold);
-          if (senderIsHolder !== isHolder) {
-            console.log(`Sender balance override: API said ${isHolder}, sender raw balance says ${senderIsHolder} (${ethers.utils.formatUnits(senderBal, 18)} tokens)`);
-          }
-          isHolder = senderIsHolder;
-        } catch (e) {
-          console.log('Sender balance check failed, using API result:', e.message);
-        }
+        // V4 has no on-chain balance check — backend checks all verified wallets and signs accordingly.
 
         // Process BuyBurnHoldEarn transaction
         const iface = new ethers.utils.Interface(BUYBURNHOLDEARN_ABI);
