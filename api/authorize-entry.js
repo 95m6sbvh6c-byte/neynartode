@@ -26,7 +26,7 @@ const { ethers } = require('ethers');
 // Blocked FIDs are only enforced in finalize-contest.js (can enter, can't win).
 const BLOCKED_FIDS = [];
 
-const BBHE_V4 = process.env.BBHE_V3_ADDRESS || '0xEa670a28cA538055Dcf8cF5B383463922456526F';
+const BBHE_V4 = '0xEa670a28cA538055Dcf8cF5B383463922456526F';
 const RPC = 'https://base-mainnet.g.alchemy.com/v2/QooWtq9nKQlkeqKF_-rvC';
 
 const NONCE_ABI = ['function nonces(address) view returns (uint256)'];
