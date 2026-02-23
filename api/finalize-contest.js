@@ -32,8 +32,8 @@ const CONFIG = {
 
   // BuyBurnHoldEarn V1 - tracks token burns and host rewards (legacy contests)
   BUYBURNHOLDEARN: '0xCfa90CfE67Ca3a08f862671Bd7Fb808662efAC28',
-  // BuyBurnHoldEarn V4 - signature-gated entries, no on-chain balance check
-  BUYBURNHOLDEARN_V3: '0xEa670a28cA538055Dcf8cF5B383463922456526F',
+  // BuyBurnHoldEarn V2 - contest entry rewards
+  BUYBURNHOLDEARN_V3: '0x85D1A086E7119B9250f618077240BdA2cA3ecd72',
 
   // Token
   NEYNARTODES_TOKEN: '0x8de1622fe07f56cda2e2273e615a513f1d828b07',
