@@ -6730,7 +6730,7 @@ Host contests to climb the leaderboard and win from the prize pool!`;
                   <div class="text-sm">
                     <span class="text-[var(--text-primary)] font-bold">Requirements:</span>
                     <span class="text-[var(--text-secondary)]">Hold 100M+ $NEYNARTODES to launch a contest</span>
-                    <br><span class="text-[var(--text-muted)]">Max 3 contests per 24 hours. Quality over Quantity!</span>
+                    <br><span class="text-[var(--text-muted)]">Max 3 active contests at a time. Quality over Quantity!</span>
                   </div>
                 </div>
               </div>
@@ -8073,13 +8073,17 @@ Host contests to climb the leaderboard and win from the prize pool!`;
           return;
         }
 
-        // Check daily contest limit (3 per day)
-        const today = new Date().toISOString().slice(0, 10);
-        const dailyKey = `contests_launched_${state.userFid}_${today}`;
-        const launchedToday = parseInt(localStorage.getItem(dailyKey) || '0');
-        if (launchedToday >= 3) {
-          showToast('You have hit your daily limit (3 contests per day). Quality over Quantity!', 'error');
-          if (statusDiv) statusDiv.textContent = '❌ Daily limit reached';
+        // Check active contest limit (max 3 active at any time)
+        const now = new Date();
+        const myActiveContests = (state.upcomingContests || []).filter(c => {
+          const isActive = new Date(c.endTime) > now;
+          const isMyContest = (c.hostUser && c.hostUser.fid && c.hostUser.fid === state.userFid) ||
+                              (c.host && c.host.toLowerCase() === (state.userAddress || '').toLowerCase());
+          return isActive && isMyContest;
+        });
+        if (myActiveContests.length >= 3) {
+          showToast('You already have 3 active contests. Wait for one to end before launching another!', 'error');
+          if (statusDiv) statusDiv.textContent = '❌ Active contest limit reached';
           return;
         }
 
@@ -9133,8 +9137,6 @@ ${miniAppUrl}`;
           window.open(warpcastUrl, '_blank');
         }
 
-        // Increment daily contest counter
-        localStorage.setItem(dailyKey, (launchedToday + 1).toString());
 
         // Add contest to state ONLY after successful on-chain tx
         // Keep contestId as string (M-1, T-1 format) for API calls
