@@ -7834,7 +7834,20 @@ Host contests to climb the leaderboard and win from the prize pool!`;
             return;
           }
 
-          // NOTE: Season end restriction removed - unified ContestManager handles its own timing
+          // Block contests that would extend past the current season
+          if (state.seasonEndTime) {
+            const contestStartMs = state.startMode === 'scheduled' && state.startDate
+              ? new Date(state.startDate).getTime()
+              : Date.now();
+            const contestEndMs = contestStartMs + (totalMinutes * 60 * 1000);
+            const seasonEndMs = state.seasonEndTime * 1000;
+            if (contestEndMs > seasonEndMs) {
+              const seasonEndDate = new Date(seasonEndMs);
+              showToast(`Contest would end after the season! Season ends ${seasonEndDate.toLocaleDateString()} ${seasonEndDate.toLocaleTimeString()}.`, 'error');
+              if (statusDiv) statusDiv.textContent = '❌ Contest extends past season end';
+              return;
+            }
+          }
 
           // Validate scheduled start date
           if (state.startMode === 'scheduled' && !state.startDate) {
